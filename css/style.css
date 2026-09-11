@@ -1,0 +1,161 @@
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; padding: 0; width: 100%; height: 100%;
+  overflow: hidden; background: #6ba6dd; color: #fff;
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: none;
+  font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', sans-serif;
+}
+
+canvas { display: block; position: absolute; top: 0; left: 0; }
+img { image-rendering: pixelated; -ms-interpolation-mode: nearest-neighbor; }
+.hidden { display: none !important; }
+
+#app { position: fixed; inset: 0; }
+
+#worldZone { position: absolute; inset: 0; z-index: 1; }
+
+#crosshair {
+  position: absolute; top: 50%; left: 50%; width: 22px; height: 22px;
+  margin: -11px 0 0 -11px; pointer-events: none; z-index: 6; mix-blend-mode: difference;
+}
+#crosshair::before, #crosshair::after { content: ''; position: absolute; background: #fff; }
+#crosshair::before { top: 10px; left: 1px; width: 20px; height: 2px; }
+#crosshair::after { top: 1px; left: 10px; width: 2px; height: 20px; }
+
+#damageOverlay, #waterOverlay {
+  position: absolute; inset: 0; pointer-events: none; z-index: 5; opacity: 0;
+  transition: opacity 0.12s linear;
+}
+#damageOverlay { background: radial-gradient(circle, rgba(180,0,0,0.1) 30%, rgba(190,0,0,0.85) 100%); }
+#waterOverlay { background: rgba(40, 90, 170, 0.55); }
+
+/* ---------------------------------------------------------------- HUD */
+#hud {
+  position: absolute; left: 0; right: 0; bottom: 12px; z-index: 10;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  pointer-events: none;
+}
+
+#statusBars { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.iconRow { display: flex; gap: 1px; height: 21px; }
+.statIcon { width: 21px; height: 21px; }
+.bubble {
+  width: 16px; height: 16px; margin: 2px; border-radius: 50%;
+  background: #cfe9ff; border: 2px solid #10233d;
+}
+.bubble.empty { background: transparent; border-color: rgba(16,35,61,0.45); }
+
+#heldLabel {
+  font-size: 15px; text-shadow: 2px 2px 0 rgba(0,0,0,0.7);
+  padding: 2px 10px; transition: opacity 0.2s;
+}
+
+#hotbar { display: flex; gap: 4px; pointer-events: auto; }
+
+.slot {
+  width: 48px; height: 48px; position: relative;
+  background: rgba(0,0,0,0.42);
+  border: 2px solid rgba(255,255,255,0.28);
+  border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+}
+.slot.selected { border-color: #fff; box-shadow: 0 0 0 2px rgba(255,255,255,0.35); transform: scale(1.06); }
+.slot.picked { border-color: #ffd34d; background: rgba(255,211,77,0.2); }
+.slot.flash { background: rgba(255,255,255,0.45); }
+.slot img { width: 38px; height: 38px; }
+.slot .count {
+  position: absolute; right: 2px; bottom: 0;
+  font-size: 13px; font-weight: 700; text-shadow: 2px 2px 0 rgba(0,0,0,0.8);
+}
+
+/* ---------------------------------------------------------------- controls */
+#joystickZone {
+  position: absolute; left: 24px; bottom: 96px; width: 132px; height: 132px; z-index: 12;
+}
+#joystickBase {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: rgba(255,255,255,0.13); border: 2px solid rgba(255,255,255,0.35);
+}
+#joystickKnob {
+  position: absolute; left: 38px; top: 38px; width: 56px; height: 56px; border-radius: 50%;
+  background: rgba(255,255,255,0.5); border: 2px solid rgba(255,255,255,0.8);
+}
+
+.rbtn {
+  width: 62px; height: 62px; border-radius: 50%;
+  background: rgba(0,0,0,0.4); border: 2px solid rgba(255,255,255,0.45);
+  color: #fff; font-size: 24px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0;
+}
+.rbtn:active, .rbtn.active { background: rgba(255,255,255,0.32); }
+.rbtn.jump { width: 76px; height: 76px; font-size: 16px; font-weight: 700; }
+
+#rightControls {
+  position: absolute; right: 24px; bottom: 96px; z-index: 12;
+  display: flex; flex-direction: column; gap: 12px; align-items: center;
+}
+
+#topRight {
+  position: absolute; right: 16px; top: 16px; z-index: 12;
+  display: flex; gap: 10px;
+}
+#topRight .rbtn { width: 50px; height: 50px; font-size: 20px; }
+
+#debugPanel {
+  position: absolute; left: 12px; top: 12px; z-index: 11;
+  background: rgba(0,0,0,0.55); padding: 8px 10px; border-radius: 6px;
+  font-size: 12px; line-height: 1.5; white-space: pre; pointer-events: none;
+}
+
+#hint {
+  position: absolute; left: 50%; top: 18%; transform: translateX(-50%);
+  z-index: 14; background: rgba(0,0,0,0.65); padding: 10px 16px; border-radius: 8px;
+  font-size: 14px; text-align: center; pointer-events: none; max-width: 80vw;
+}
+
+/* ---------------------------------------------------------------- overlays */
+.overlay {
+  position: absolute; inset: 0; z-index: 100;
+  background: rgba(12, 16, 24, 0.88);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 18px; padding: 24px; text-align: center;
+}
+
+.overlay h1 { font-size: 34px; margin: 0; letter-spacing: 2px; text-shadow: 3px 3px 0 rgba(0,0,0,0.6); }
+.overlay h2 { font-size: 26px; margin: 0; color: #ff6a6a; }
+.overlay p { margin: 0; font-size: 14px; color: #c8d2e0; line-height: 1.6; max-width: 460px; }
+
+.bigBtn {
+  min-width: 250px; padding: 16px 22px; font-size: 18px; font-weight: 700;
+  color: #fff; background: #3f7a35; border: 3px solid #2a5424; border-radius: 6px;
+}
+.bigBtn.alt { background: #3a5a8c; border-color: #27405f; }
+.bigBtn.ghost { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.3); }
+.bigBtn:active { filter: brightness(1.25); }
+
+#seedInput {
+  width: 250px; padding: 12px; font-size: 15px; text-align: center;
+  border-radius: 6px; border: 2px solid rgba(255,255,255,0.3);
+  background: rgba(0,0,0,0.4); color: #fff;
+}
+
+#inventoryScreen { background: rgba(12, 16, 24, 0.94); justify-content: flex-start; padding-top: 28px; }
+#invBody { width: 100%; max-width: 560px; display: flex; flex-direction: column; align-items: center; gap: 12px; overflow-y: auto; }
+.invGrid { display: grid; grid-template-columns: repeat(9, 48px); gap: 4px; justify-content: center; }
+.invGrid.hotRow { border-top: 2px solid rgba(255,255,255,0.2); padding-top: 10px; }
+.invSubtitle { font-size: 13px; color: #9fb0c4; }
+.invNote { font-size: 12px; color: #8d9cad; max-width: 460px; }
+
+@media (max-width: 640px) {
+  .invGrid { grid-template-columns: repeat(6, 46px); }
+  .slot { width: 44px; height: 44px; }
+  .slot img { width: 34px; height: 34px; }
+  #hotbar .slot { width: 40px; height: 40px; }
+  #hotbar .slot img { width: 30px; height: 30px; }
+  #joystickZone { left: 14px; bottom: 84px; }
+  #rightControls { right: 14px; bottom: 84px; }
+}

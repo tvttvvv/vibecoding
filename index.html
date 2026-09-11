@@ -3,421 +3,89 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>복셀 월드</title>
-<style>
-  html, body {
-    margin: 0; padding: 0; width: 100%; height: 100%;
-    overflow: hidden; background: #87CEEB;
-    -webkit-user-select: none; user-select: none;
-    touch-action: none;
-    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-  }
-  canvas { display: block; }
-
-  #crosshair {
-    position: fixed; top: 50%; left: 50%;
-    width: 20px; height: 20px; margin: -10px 0 0 -10px;
-    pointer-events: none; z-index: 10;
-  }
-  #crosshair::before, #crosshair::after {
-    content: ''; position: absolute; background: rgba(255,255,255,0.85);
-  }
-  #crosshair::before { top: 9px; left: 2px; width: 16px; height: 2px; }
-  #crosshair::after { top: 2px; left: 9px; width: 2px; height: 16px; }
-
-  #blockBar {
-    position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
-    display: flex; gap: 8px; z-index: 20;
-    background: rgba(0,0,0,0.35); padding: 8px; border-radius: 14px;
-  }
-  .blockBtn {
-    width: 52px; height: 52px; border-radius: 10px;
-    border: 3px solid transparent; box-sizing: border-box;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 22px;
-  }
-  .blockBtn.selected { border-color: #fff; box-shadow: 0 0 8px rgba(255,255,255,0.8); }
-  .blockBtn[data-type="grass"] { background: #5aa244; }
-  .blockBtn[data-type="dirt"]  { background: #7a5230; }
-  .blockBtn[data-type="stone"] { background: #8a8a8a; }
-
-  #joystickZone {
-    position: fixed; left: 30px; bottom: 30px;
-    width: 130px; height: 130px; z-index: 20;
-  }
-  #joystickBase {
-    position: absolute; width: 130px; height: 130px; border-radius: 50%;
-    background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.4);
-  }
-  #joystickKnob {
-    position: absolute; width: 56px; height: 56px; border-radius: 50%;
-    background: rgba(255,255,255,0.55); border: 2px solid rgba(255,255,255,0.8);
-    left: 37px; top: 37px;
-  }
-
-  #vertControls {
-    position: fixed; right: 20px; top: 50%; transform: translateY(-50%);
-    display: flex; flex-direction: column; gap: 12px; z-index: 20;
-  }
-  #actionControls {
-    position: fixed; right: 20px; bottom: 30px;
-    display: flex; flex-direction: column; gap: 14px; z-index: 20;
-  }
-  .roundBtn {
-    width: 62px; height: 62px; border-radius: 50%;
-    background: rgba(0,0,0,0.4); border: 2px solid rgba(255,255,255,0.5);
-    color: #fff; font-size: 26px;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .roundBtn:active { background: rgba(255,255,255,0.3); }
-
-  #lookZone {
-    position: fixed; top: 0; right: 0; bottom: 0; left: 170px;
-    z-index: 5;
-  }
-</style>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>복셀 크래프트</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23795433'/><rect width='16' height='5' fill='%235d9c3c'/></svg>">
+<link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
-<div id="lookZone"></div>
-<div id="crosshair"></div>
+<div id="app">
+  <div id="worldZone"></div>
 
-<div id="blockBar">
-  <div class="blockBtn selected" data-type="grass">🌱</div>
-  <div class="blockBtn" data-type="dirt">🟫</div>
-  <div class="blockBtn" data-type="stone">⬜</div>
-</div>
+  <div id="crosshair"></div>
+  <div id="damageOverlay"></div>
+  <div id="waterOverlay"></div>
 
-<div id="joystickZone">
-  <div id="joystickBase"></div>
-  <div id="joystickKnob"></div>
-</div>
+  <div id="hud">
+    <div id="statusBars">
+      <div id="airRow" class="iconRow hidden"></div>
+      <div id="foodRow" class="iconRow"></div>
+      <div id="healthRow" class="iconRow"></div>
+    </div>
+    <div id="heldLabel" class="hidden"></div>
+    <div id="hotbar"></div>
+  </div>
 
-<div id="vertControls">
-  <div class="roundBtn" id="btnUp">▲</div>
-  <div class="roundBtn" id="btnDown">▼</div>
-</div>
+  <div id="joystickZone">
+    <div id="joystickBase"></div>
+    <div id="joystickKnob"></div>
+  </div>
 
-<div id="actionControls">
-  <div class="roundBtn" id="btnMine">⛏️</div>
-  <div class="roundBtn" id="btnPlace">🧱</div>
+  <div id="rightControls">
+    <button id="btnFlyUp" class="rbtn hidden">▲</button>
+    <button id="btnFlyDown" class="rbtn hidden">▼</button>
+    <button id="btnJump" class="rbtn jump">점프</button>
+  </div>
+
+  <div id="topRight">
+    <button id="btnFly" class="rbtn hidden">✈</button>
+    <button id="btnInventory" class="rbtn">🎒</button>
+    <button id="btnDebug" class="rbtn">ℹ</button>
+  </div>
+
+  <div id="debugPanel" class="hidden"></div>
+  <div id="hint" class="hidden"></div>
+
+  <div id="inventoryScreen" class="overlay hidden">
+    <h1 id="invTitle">인벤토리</h1>
+    <div id="invBody"></div>
+    <button id="invClose" class="bigBtn ghost">닫기</button>
+  </div>
+
+  <div id="deathScreen" class="overlay hidden">
+    <h2>당신은 죽었습니다</h2>
+    <p>가지고 있던 아이템은 죽은 자리에 떨어졌습니다.</p>
+    <button class="bigBtn" data-respawn-mode="survival">서바이벌로 부활</button>
+    <button class="bigBtn alt" data-respawn-mode="creative">크리에이티브로 전환</button>
+  </div>
+
+  <div id="loadingScreen" class="overlay hidden">
+    <h1>복셀 크래프트</h1>
+    <p id="loadingText">세계를 만드는 중...</p>
+  </div>
+
+  <div id="menuScreen" class="overlay">
+    <h1>복셀 크래프트</h1>
+    <p>아이패드 터치로 즐기는 복셀 세계. 무한 지형, 강과 바다, 숲과 사막, 동굴과 광석이 기다립니다.</p>
+    <input id="seedInput" type="text" placeholder="시드 (비우면 랜덤)" autocomplete="off">
+    <button class="bigBtn" data-start-mode="survival">서바이벌 시작</button>
+    <button class="bigBtn alt" data-start-mode="creative">크리에이티브 시작</button>
+    <p>서바이벌: 체력·배고픔·산소, 중력과 낙하 피해, 블록을 캐서 모읍니다.<br>
+       크리에이티브: 비행, 무한 블록, 피해 없음.</p>
+  </div>
 </div>
 
 <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
-<script>
-(function () {
-  'use strict';
-
-  // ------------------------------------------------------------------
-  // Scene / camera / renderer
-  // ------------------------------------------------------------------
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x87CEEB);
-  scene.fog = new THREE.Fog(0x87CEEB, 40, 90);
-
-  const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 200);
-
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  document.body.appendChild(renderer.domElement);
-
-  window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-  });
-
-  const ambient = new THREE.AmbientLight(0xffffff, 0.65);
-  scene.add(ambient);
-  const sun = new THREE.DirectionalLight(0xffffff, 0.7);
-  sun.position.set(30, 50, 20);
-  scene.add(sun);
-
-  // Player rig: yawObject handles left/right turn, pitchObject handles up/down look.
-  const pitchObject = new THREE.Object3D();
-  pitchObject.add(camera);
-  const yawObject = new THREE.Object3D();
-  yawObject.add(pitchObject);
-  yawObject.position.set(0, 12, 0);
-  scene.add(yawObject);
-
-  // ------------------------------------------------------------------
-  // Procedurally painted block textures (no external image files)
-  // ------------------------------------------------------------------
-  function noisyTexture(base, spots, size) {
-    size = size || 16;
-    const canvas = document.createElement('canvas');
-    canvas.width = size; canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = base;
-    ctx.fillRect(0, 0, size, size);
-    for (let i = 0; i < size * size * 0.35; i++) {
-      ctx.fillStyle = spots[Math.floor(Math.random() * spots.length)];
-      ctx.fillRect(Math.floor(Math.random() * size), Math.floor(Math.random() * size), 1, 1);
-    }
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.magFilter = THREE.NearestFilter;
-    tex.minFilter = THREE.NearestFilter;
-    return tex;
-  }
-
-  function grassSideTexture() {
-    const size = 16;
-    const canvas = document.createElement('canvas');
-    canvas.width = size; canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#6b4a2a';
-    ctx.fillRect(0, 0, size, size);
-    for (let i = 0; i < 40; i++) {
-      ctx.fillStyle = ['#5e4024', '#78542f', '#6b4a2a'][Math.floor(Math.random() * 3)];
-      ctx.fillRect(Math.floor(Math.random() * size), 4 + Math.floor(Math.random() * (size - 4)), 1, 1);
-    }
-    ctx.fillStyle = '#5aa244';
-    ctx.fillRect(0, 0, size, 4);
-    for (let i = 0; i < 24; i++) {
-      ctx.fillStyle = ['#4c8c39', '#69b752', '#5aa244'][Math.floor(Math.random() * 3)];
-      ctx.fillRect(Math.floor(Math.random() * size), Math.floor(Math.random() * 4), 1, 1);
-    }
-    for (let x = 0; x < size; x++) {
-      if (Math.random() > 0.5) ctx.fillStyle = '#5aa244'; else ctx.fillStyle = '#6b4a2a';
-      ctx.fillRect(x, 4, 1, 1);
-    }
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.magFilter = THREE.NearestFilter;
-    tex.minFilter = THREE.NearestFilter;
-    return tex;
-  }
-
-  const textures = {
-    grassTop: noisyTexture('#5aa244', ['#4c8c39', '#69b752'], 16),
-    grassSide: grassSideTexture(),
-    dirt: noisyTexture('#6b4a2a', ['#5e4024', '#78542f'], 16),
-    stone: noisyTexture('#8a8a8a', ['#7a7a7a', '#989898', '#6f6f6f'], 16)
-  };
-
-  function mat(tex) { return new THREE.MeshLambertMaterial({ map: tex }); }
-
-  const materialSets = {
-    grass: [mat(textures.grassSide), mat(textures.grassSide), mat(textures.grassTop), mat(textures.dirt), mat(textures.grassSide), mat(textures.grassSide)],
-    dirt: [mat(textures.dirt), mat(textures.dirt), mat(textures.dirt), mat(textures.dirt), mat(textures.dirt), mat(textures.dirt)],
-    stone: [mat(textures.stone), mat(textures.stone), mat(textures.stone), mat(textures.stone), mat(textures.stone), mat(textures.stone)]
-  };
-
-  const blockGeometry = new THREE.BoxGeometry(1, 1, 1);
-
-  // ------------------------------------------------------------------
-  // World storage & generation
-  // ------------------------------------------------------------------
-  const blocks = new Map();
-  const blockMeshes = [];
-  function key(x, y, z) { return x + ',' + y + ',' + z; }
-
-  function addBlock(x, y, z, type) {
-    const k = key(x, y, z);
-    if (blocks.has(k)) return;
-    const mesh = new THREE.Mesh(blockGeometry, materialSets[type]);
-    mesh.position.set(x, y, z);
-    scene.add(mesh);
-    blocks.set(k, { mesh, type, x, y, z });
-    blockMeshes.push(mesh);
-  }
-
-  function removeBlockAt(x, y, z) {
-    const k = key(x, y, z);
-    const b = blocks.get(k);
-    if (!b) return;
-    scene.remove(b.mesh);
-    const idx = blockMeshes.indexOf(b.mesh);
-    if (idx !== -1) blockMeshes.splice(idx, 1);
-    blocks.delete(k);
-  }
-
-  function heightAt(x, z) {
-    return Math.round(4 + Math.sin(x * 0.3) * 2 + Math.cos(z * 0.3) * 2 + Math.sin((x + z) * 0.2) * 1.5);
-  }
-
-  const RADIUS = 14;
-  for (let x = -RADIUS; x <= RADIUS; x++) {
-    for (let z = -RADIUS; z <= RADIUS; z++) {
-      if (x * x + z * z > RADIUS * RADIUS) continue;
-      const h = heightAt(x, z);
-      for (let depth = 0; depth <= 4; depth++) {
-        const y = h - depth;
-        let type;
-        if (depth === 0) type = 'grass';
-        else if (depth <= 2) type = 'dirt';
-        else type = 'stone';
-        addBlock(x, y, z, type);
-      }
-    }
-  }
-
-  // ------------------------------------------------------------------
-  // Touch look control (drag anywhere in #lookZone)
-  // ------------------------------------------------------------------
-  const lookZone = document.getElementById('lookZone');
-  let lookTouchId = null;
-  let lastLookX = 0, lastLookY = 0;
-  const LOOK_SENSITIVITY = 0.0045;
-
-  lookZone.addEventListener('touchstart', (e) => {
-    const t = e.changedTouches[0];
-    lookTouchId = t.identifier;
-    lastLookX = t.clientX;
-    lastLookY = t.clientY;
-  }, { passive: true });
-
-  lookZone.addEventListener('touchmove', (e) => {
-    for (const t of e.changedTouches) {
-      if (t.identifier !== lookTouchId) continue;
-      const dx = t.clientX - lastLookX;
-      const dy = t.clientY - lastLookY;
-      lastLookX = t.clientX;
-      lastLookY = t.clientY;
-      yawObject.rotation.y -= dx * LOOK_SENSITIVITY;
-      pitchObject.rotation.x -= dy * LOOK_SENSITIVITY;
-      pitchObject.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitchObject.rotation.x));
-    }
-  }, { passive: true });
-
-  lookZone.addEventListener('touchend', (e) => {
-    for (const t of e.changedTouches) {
-      if (t.identifier === lookTouchId) lookTouchId = null;
-    }
-  }, { passive: true });
-
-  // ------------------------------------------------------------------
-  // Virtual joystick (movement)
-  // ------------------------------------------------------------------
-  const joystickZone = document.getElementById('joystickZone');
-  const joystickKnob = document.getElementById('joystickKnob');
-  let joyTouchId = null;
-  let joyVec = { x: 0, y: 0 };
-  const JOY_RADIUS = 45;
-
-  function updateKnob(dx, dy) {
-    const dist = Math.min(JOY_RADIUS, Math.hypot(dx, dy));
-    const angle = Math.atan2(dy, dx);
-    const kx = Math.cos(angle) * dist;
-    const ky = Math.sin(angle) * dist;
-    joystickKnob.style.left = (37 + kx) + 'px';
-    joystickKnob.style.top = (37 + ky) + 'px';
-    joyVec.x = kx / JOY_RADIUS;
-    joyVec.y = ky / JOY_RADIUS;
-  }
-
-  function resetKnob() {
-    joystickKnob.style.left = '37px';
-    joystickKnob.style.top = '37px';
-    joyVec.x = 0; joyVec.y = 0;
-  }
-
-  joystickZone.addEventListener('touchstart', (e) => {
-    const t = e.changedTouches[0];
-    joyTouchId = t.identifier;
-    const rect = joystickZone.getBoundingClientRect();
-    updateKnob(t.clientX - (rect.left + rect.width / 2), t.clientY - (rect.top + rect.height / 2));
-  }, { passive: true });
-
-  joystickZone.addEventListener('touchmove', (e) => {
-    for (const t of e.changedTouches) {
-      if (t.identifier !== joyTouchId) continue;
-      const rect = joystickZone.getBoundingClientRect();
-      updateKnob(t.clientX - (rect.left + rect.width / 2), t.clientY - (rect.top + rect.height / 2));
-    }
-  }, { passive: true });
-
-  joystickZone.addEventListener('touchend', (e) => {
-    for (const t of e.changedTouches) {
-      if (t.identifier === joyTouchId) { joyTouchId = null; resetKnob(); }
-    }
-  }, { passive: true });
-
-  // ------------------------------------------------------------------
-  // Ascend / descend buttons
-  // ------------------------------------------------------------------
-  let ascending = false, descending = false;
-  function bindHold(el, onStart, onEnd) {
-    el.addEventListener('touchstart', (e) => { e.preventDefault(); onStart(); }, { passive: false });
-    el.addEventListener('touchend', (e) => { e.preventDefault(); onEnd(); }, { passive: false });
-    el.addEventListener('touchcancel', (e) => { onEnd(); }, { passive: true });
-  }
-  bindHold(document.getElementById('btnUp'), () => ascending = true, () => ascending = false);
-  bindHold(document.getElementById('btnDown'), () => descending = true, () => descending = false);
-
-  // ------------------------------------------------------------------
-  // Block type selector
-  // ------------------------------------------------------------------
-  let selectedType = 'grass';
-  document.querySelectorAll('.blockBtn').forEach((btn) => {
-    btn.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      document.querySelectorAll('.blockBtn').forEach((b) => b.classList.remove('selected'));
-      btn.classList.add('selected');
-      selectedType = btn.dataset.type;
-    }, { passive: false });
-  });
-
-  // ------------------------------------------------------------------
-  // Mine / place (raycast from screen centre = crosshair)
-  // ------------------------------------------------------------------
-  const raycaster = new THREE.Raycaster();
-  raycaster.far = 8;
-  const centerNDC = new THREE.Vector2(0, 0);
-
-  function castFromCrosshair() {
-    scene.updateMatrixWorld(true);
-    raycaster.setFromCamera(centerNDC, camera);
-    const hits = raycaster.intersectObjects(blockMeshes);
-    return hits.length ? hits[0] : null;
-  }
-
-  document.getElementById('btnMine').addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    const hit = castFromCrosshair();
-    if (!hit) return;
-    const p = hit.object.position;
-    removeBlockAt(p.x, p.y, p.z);
-  }, { passive: false });
-
-  document.getElementById('btnPlace').addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    const hit = castFromCrosshair();
-    if (!hit) return;
-    const p = hit.object.position.clone().add(hit.face.normal);
-    addBlock(Math.round(p.x), Math.round(p.y), Math.round(p.z), selectedType);
-  }, { passive: false });
-
-  // ------------------------------------------------------------------
-  // Main loop
-  // ------------------------------------------------------------------
-  const clock = new THREE.Clock();
-  const MOVE_SPEED = 6;
-  const VERTICAL_SPEED = 5;
-  const forward = new THREE.Vector3();
-  const right = new THREE.Vector3();
-
-  function animate() {
-    requestAnimationFrame(animate);
-    const dt = Math.min(clock.getDelta(), 0.1);
-
-    forward.set(0, 0, -1).applyQuaternion(yawObject.quaternion);
-    forward.y = 0; forward.normalize();
-    right.set(1, 0, 0).applyQuaternion(yawObject.quaternion);
-    right.y = 0; right.normalize();
-
-    if (Math.abs(joyVec.x) > 0.02 || Math.abs(joyVec.y) > 0.02) {
-      yawObject.position.addScaledVector(forward, -joyVec.y * MOVE_SPEED * dt);
-      yawObject.position.addScaledVector(right, joyVec.x * MOVE_SPEED * dt);
-    }
-    if (ascending) yawObject.position.y += VERTICAL_SPEED * dt;
-    if (descending) yawObject.position.y -= VERTICAL_SPEED * dt;
-
-    renderer.render(scene, camera);
-  }
-  animate();
-})();
-</script>
+<script src="js/noise.js"></script>
+<script src="js/textures.js"></script>
+<script src="js/blocks.js"></script>
+<script src="js/world.js"></script>
+<script src="js/player.js"></script>
+<script src="js/inventory.js"></script>
+<script src="js/controls.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/game.js"></script>
 </body>
 </html>
