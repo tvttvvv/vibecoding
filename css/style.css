@@ -17,14 +17,6 @@ img { image-rendering: pixelated; -ms-interpolation-mode: nearest-neighbor; }
 
 #worldZone { position: absolute; inset: 0; z-index: 1; }
 
-#crosshair {
-  position: absolute; top: 50%; left: 50%; width: 22px; height: 22px;
-  margin: -11px 0 0 -11px; pointer-events: none; z-index: 6; mix-blend-mode: difference;
-}
-#crosshair::before, #crosshair::after { content: ''; position: absolute; background: #fff; }
-#crosshair::before { top: 10px; left: 1px; width: 20px; height: 2px; }
-#crosshair::after { top: 1px; left: 10px; width: 2px; height: 20px; }
-
 #damageOverlay, #waterOverlay {
   position: absolute; inset: 0; pointer-events: none; z-index: 5; opacity: 0;
   transition: opacity 0.12s linear;
@@ -34,83 +26,115 @@ img { image-rendering: pixelated; -ms-interpolation-mode: nearest-neighbor; }
 
 /* ---------------------------------------------------------------- HUD */
 #hud {
-  position: absolute; left: 0; right: 0; bottom: 12px; z-index: 10;
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  position: absolute; left: 0; right: 0; bottom: 10px; z-index: 14;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
   pointer-events: none;
 }
 
-#statusBars { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-.iconRow { display: flex; gap: 1px; height: 21px; }
-.statIcon { width: 21px; height: 21px; }
+/* armour over health on the left, air over hunger on the right, both pinned to
+   the ends of the hotbar the way Minecraft lays them out */
+#statusBars {
+  display: flex; justify-content: space-between; align-items: flex-end;
+  width: var(--hotbar-w); max-width: 94vw;
+}
+.barSide { display: flex; flex-direction: column; gap: 1px; }
+.barSide.right { align-items: flex-end; }
+.iconRow { display: flex; gap: 1px; height: 18px; }
+.barSide.right .iconRow { flex-direction: row-reverse; }
+.statIcon { width: 18px; height: 18px; }
 .bubble {
-  width: 16px; height: 16px; margin: 2px; border-radius: 50%;
+  width: 14px; height: 14px; margin: 2px; border-radius: 50%;
   background: #cfe9ff; border: 2px solid #10233d;
 }
 .bubble.empty { background: transparent; border-color: rgba(16,35,61,0.45); }
 
 #heldLabel {
-  font-size: 15px; text-shadow: 2px 2px 0 rgba(0,0,0,0.7);
+  font-size: 14px; text-shadow: 2px 2px 0 rgba(0,0,0,0.8);
   padding: 2px 10px; transition: opacity 0.2s;
 }
 
-#hotbar { display: flex; gap: 4px; pointer-events: auto; }
+#hotbarRow { position: relative; display: flex; align-items: center; pointer-events: auto; }
+#btnInventory { position: absolute; left: 100%; margin-left: 10px; }
+#hotbar { display: flex; gap: 2px; }
 
 .slot {
-  width: 48px; height: 48px; position: relative;
-  background: rgba(0,0,0,0.42);
-  border: 2px solid rgba(255,255,255,0.28);
-  border-radius: 4px;
+  width: 42px; height: 42px; position: relative;
+  background: rgba(0,0,0,0.45);
+  border: 2px solid rgba(160,160,160,0.6);
   display: flex; align-items: center; justify-content: center;
 }
-.slot.selected { border-color: #fff; box-shadow: 0 0 0 2px rgba(255,255,255,0.35); transform: scale(1.06); }
-.slot.picked { border-color: #ffd34d; background: rgba(255,211,77,0.2); }
+.slot.selected {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.5);
+  background: rgba(255,255,255,0.14);
+}
 .slot.flash { background: rgba(255,255,255,0.45); }
-.slot img { width: 38px; height: 38px; }
+.slot img { width: 34px; height: 34px; }
 .slot .count {
-  position: absolute; right: 2px; bottom: 0;
-  font-size: 13px; font-weight: 700; text-shadow: 2px 2px 0 rgba(0,0,0,0.8);
+  position: absolute; right: 1px; bottom: -2px;
+  font-size: 13px; font-weight: 700; text-shadow: 2px 2px 0 rgba(0,0,0,0.9);
 }
 
 /* ---------------------------------------------------------------- controls */
 /* touch anywhere in this area to summon the stick, Minecraft-style */
+/* only the lower-left corner drives the stick, so blocks anywhere else on
+   screen stay tappable */
 #joystickZone {
-  position: absolute; left: 0; top: 60px; width: 46%; bottom: 84px; z-index: 12;
+  position: absolute; left: 0; width: 44%; height: 46%; bottom: 92px; z-index: 12;
 }
 #joyVisual {
-  position: fixed; width: 132px; height: 132px; margin: -66px 0 0 -66px;
-  z-index: 13; pointer-events: none; opacity: 0.4;
+  position: fixed; width: 128px; height: 128px; margin: -64px 0 0 -64px;
+  z-index: 13; pointer-events: none; opacity: 0.55;
   transition: opacity 0.14s linear;
 }
-#joyVisual.active { opacity: 0.92; }
+#joyVisual.active { opacity: 1; }
 #joystickBase {
   position: absolute; inset: 0; border-radius: 50%;
-  background: rgba(255,255,255,0.13); border: 2px solid rgba(255,255,255,0.35);
+  background: rgba(0,0,0,0.28);
+  border: 3px solid rgba(255,255,255,0.5);
 }
 #joystickKnob {
-  position: absolute; left: 38px; top: 38px; width: 56px; height: 56px; border-radius: 50%;
-  background: rgba(255,255,255,0.5); border: 2px solid rgba(255,255,255,0.8);
+  position: absolute; left: 41px; top: 41px; width: 46px; height: 46px;
+  border-radius: 50%;
+  background: rgba(230,230,230,0.85);
+  border: 2px solid rgba(255,255,255,0.9);
 }
 
-.rbtn {
-  width: 62px; height: 62px; border-radius: 50%;
-  background: rgba(0,0,0,0.4); border: 2px solid rgba(255,255,255,0.45);
-  color: #fff; font-size: 24px; line-height: 1;
+.mcbtn {
+  width: 68px; height: 68px; border-radius: 10px;
+  background: rgba(0,0,0,0.42); border: 2px solid rgba(255,255,255,0.4);
+  color: #fff; font-size: 20px; line-height: 1; padding: 0;
   display: flex; align-items: center; justify-content: center;
-  padding: 0;
 }
-.rbtn:active, .rbtn.active { background: rgba(255,255,255,0.32); }
-.rbtn.jump { width: 76px; height: 76px; font-size: 16px; font-weight: 700; }
+.mcbtn:active, .mcbtn.active { background: rgba(255,255,255,0.3); }
+.mcbtn.small { width: 44px; height: 44px; border-radius: 8px; font-size: 16px; }
+.mcbtn.jump { width: 78px; height: 78px; }
+
+.chev {
+  display: block; width: 20px; height: 20px;
+  border-right: 5px solid #fff; border-top: 5px solid #fff;
+}
+.chev.up { transform: rotate(-45deg); margin-top: 8px; }
+.chev.down { transform: rotate(135deg); margin-bottom: 8px; }
+
+/* the "..." inventory button that sits beside the hotbar in Bedrock */
+.dots { display: block; width: 22px; height: 4px; position: relative; }
+.dots, .dots::before, .dots::after {
+  background: #fff; border-radius: 1px;
+}
+.dots::before, .dots::after { content: ''; position: absolute; left: 0; width: 22px; height: 4px; }
+.dots::before { top: -7px; }
+.dots::after { top: 7px; }
 
 #rightControls {
-  position: absolute; right: 24px; bottom: 96px; z-index: 12;
-  display: flex; flex-direction: column; gap: 12px; align-items: center;
+  position: absolute; right: 20px; bottom: 100px; z-index: 12;
+  display: flex; flex-direction: column; gap: 10px; align-items: center;
 }
 
 #topRight {
-  position: absolute; right: 16px; top: 16px; z-index: 12;
-  display: flex; gap: 10px;
+  position: absolute; right: 14px; top: 14px; z-index: 12;
+  display: flex; gap: 8px;
 }
-#topRight .rbtn { width: 50px; height: 50px; font-size: 20px; }
 
 #debugPanel {
   position: absolute; left: 12px; top: 12px; z-index: 11;
@@ -152,7 +176,7 @@ img { image-rendering: pixelated; -ms-interpolation-mode: nearest-neighbor; }
 }
 
 /* ---------------------------------------------------------------- panels */
-:root { --slot: 46px; }
+:root { --slot: 46px; --hotbar-w: 394px; }
 
 #screen {
   background: rgba(10, 13, 20, 0.9);
@@ -278,12 +302,30 @@ img { image-rendering: pixelated; -ms-interpolation-mode: nearest-neighbor; }
 .bookNeed { font-size: 11px; color: #4f4f4f; word-break: keep-all; }
 
 @media (max-width: 760px) {
-  :root { --slot: 38px; }
+  :root { --slot: 38px; --hotbar-w: 340px; }
+  .iconRow { height: 15px; }
+  .statIcon { width: 15px; height: 15px; }
+  .bubble { width: 11px; height: 11px; }
+  .slot { width: 36px; height: 36px; }
+  .slot img { width: 30px; height: 30px; }
+  .mcbtn { width: 58px; height: 58px; }
+  .mcbtn.jump { width: 66px; height: 66px; }
   #screen { flex-direction: column; align-items: center; }
   .previewBox { width: 64px; height: 92px; }
   .previewBox img { width: 44px; height: 88px; }
-  #hotbar .slot { width: 40px; height: 40px; }
-  #hotbar .slot img { width: 30px; height: 30px; }
-  #joystickZone { left: 14px; bottom: 84px; }
-  #rightControls { right: 14px; bottom: 84px; }
+  #joystickZone { bottom: 88px; width: 48%; height: 52%; }
+  #rightControls { right: 12px; bottom: 92px; }
+}
+
+/* narrow phones: shrink the hotbar so the inventory button still fits beside it */
+@media (max-width: 520px) {
+  :root { --hotbar-w: 286px; }
+  .slot { width: 30px; height: 30px; }
+  .slot img { width: 24px; height: 24px; }
+  .slot .count { font-size: 11px; }
+  .mcbtn.small { width: 38px; height: 38px; }
+  #btnInventory { margin-left: 6px; }
+  .iconRow { height: 13px; }
+  .statIcon { width: 13px; height: 13px; }
+  .bubble { width: 9px; height: 9px; margin: 2px; }
 }

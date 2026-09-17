@@ -7,26 +7,34 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>복셀 크래프트</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23795433'/><rect width='16' height='5' fill='%235d9c3c'/></svg>">
-<link rel="stylesheet" href="css/style.css?v=7">
+<link rel="stylesheet" href="css/style.css?v=8">
 </head>
 <body>
 
 <div id="app">
   <div id="worldZone"></div>
 
-  <div id="crosshair"></div>
   <div id="damageOverlay"></div>
   <div id="waterOverlay"></div>
 
   <div id="hud">
-    <div id="statusBars">
-      <div id="airRow" class="iconRow hidden"></div>
-      <div id="armorRow" class="iconRow hidden"></div>
-      <div id="foodRow" class="iconRow"></div>
-      <div id="healthRow" class="iconRow"></div>
-    </div>
     <div id="heldLabel" class="hidden"></div>
-    <div id="hotbar"></div>
+    <div id="statusBars">
+      <div class="barSide">
+        <div id="armorRow" class="iconRow hidden"></div>
+        <div id="healthRow" class="iconRow"></div>
+      </div>
+      <div class="barSide right">
+        <div id="airRow" class="iconRow hidden"></div>
+        <div id="foodRow" class="iconRow"></div>
+      </div>
+    </div>
+    <div id="hotbarRow">
+      <div id="hotbar"></div>
+      <button id="btnInventory" class="mcbtn small" aria-label="인벤토리">
+        <span class="dots"></span>
+      </button>
+    </div>
   </div>
 
   <div id="joystickZone"></div>
@@ -36,15 +44,14 @@
   </div>
 
   <div id="rightControls">
-    <button id="btnFlyUp" class="rbtn hidden">▲</button>
-    <button id="btnFlyDown" class="rbtn hidden">▼</button>
-    <button id="btnJump" class="rbtn jump">점프</button>
+    <button id="btnFlyUp" class="mcbtn hidden" aria-label="상승"><i class="chev up"></i></button>
+    <button id="btnFlyDown" class="mcbtn hidden" aria-label="하강"><i class="chev down"></i></button>
+    <button id="btnJump" class="mcbtn jump" aria-label="점프"><i class="chev up"></i></button>
   </div>
 
   <div id="topRight">
-    <button id="btnFly" class="rbtn hidden">✈</button>
-    <button id="btnInventory" class="rbtn">🎒</button>
-    <button id="btnDebug" class="rbtn">ℹ</button>
+    <button id="btnFly" class="mcbtn small hidden" aria-label="비행">✈</button>
+    <button id="btnDebug" class="mcbtn small" aria-label="정보">i</button>
   </div>
 
   <div id="debugPanel" class="hidden"></div>
@@ -78,7 +85,7 @@
 
   <div id="menuScreen" class="overlay">
     <h1>복셀 크래프트</h1>
-    <p class="buildTag">버전 v7</p>
+    <p class="buildTag">버전 v8</p>
     <p>무한 지형, 강과 바다, 숲과 사막, 동굴과 광석. 캐고, 만들고, 살아남으세요.</p>
     <input id="seedInput" type="text" placeholder="시드 (비우면 랜덤)" autocomplete="off">
     <button class="bigBtn" data-start-mode="survival">서바이벌 시작</button>
@@ -89,16 +96,16 @@
 </div>
 
 <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
-<script src="js/noise.js?v=7"></script>
-<script src="js/textures.js?v=7"></script>
-<script src="js/blocks.js?v=7"></script>
-<script src="js/items.js?v=7"></script>
-<script src="js/recipes.js?v=7"></script>
-<script src="js/world.js?v=7"></script>
-<script src="js/player.js?v=7"></script>
-<script src="js/inventory.js?v=7"></script>
-<script src="js/controls.js?v=7"></script>
-<script src="js/ui.js?v=7"></script>
-<script src="js/game.js?v=7"></script>
+<script src="js/noise.js?v=8"></script>
+<script src="js/textures.js?v=8"></script>
+<script src="js/blocks.js?v=8"></script>
+<script src="js/items.js?v=8"></script>
+<script src="js/recipes.js?v=8"></script>
+<script src="js/world.js?v=8"></script>
+<script src="js/player.js?v=8"></script>
+<script src="js/inventory.js?v=8"></script>
+<script src="js/controls.js?v=8"></script>
+<script src="js/ui.js?v=8"></script>
+<script src="js/game.js?v=8"></script>
 </body>
 </html>

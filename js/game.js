@@ -168,17 +168,26 @@
   };
 
   // ------------------------------------------------------------ interaction
-  Game.currentTarget = function () {
-    const p = this.player;
-    const origin = new THREE.Vector3(p.pos.x, p.eyeY(), p.pos.z);
-    const dir = new THREE.Vector3();
-    p.lookDir(dir);
-    return this.world.raycast(origin, dir, REACH);
+  // Bedrock aims wherever the finger is, so every interaction casts through the
+  // touch point rather than a fixed crosshair at the centre of the screen.
+  Game.targetAt = function (screenX, screenY) {
+    this._ndc = this._ndc || new THREE.Vector2();
+    this._caster = this._caster || new THREE.Raycaster();
+    this._ndc.set(
+      (screenX / window.innerWidth) * 2 - 1,
+      -(screenY / window.innerHeight) * 2 + 1
+    );
+    this._caster.setFromCamera(this._ndc, this.camera);
+    return this.world.raycast(this._caster.ray.origin, this._caster.ray.direction, REACH);
   };
 
-  Game.tryPlace = function () {
+  Game.currentTarget = function () {
+    return this.targetAt(Controls.state.pointX, Controls.state.pointY);
+  };
+
+  Game.tryPlace = function (screenX, screenY) {
     if (this.paused || !this.started || this.player.dead) return;
-    const hit = this.currentTarget();
+    const hit = screenX === undefined ? this.currentTarget() : this.targetAt(screenX, screenY);
     if (!hit) return;
 
     const targetDef = B.byId[hit.id];
@@ -298,7 +307,9 @@
 
   Game.updateMining = function (dt) {
     const m = this.mining;
-    const hit = Controls.state.mining && !this.paused && !this.player.dead ? this.currentTarget() : null;
+    const hit = Controls.state.mining && !this.paused && !this.player.dead
+      ? this.targetAt(Controls.state.pointX, Controls.state.pointY)
+      : null;
 
     if (!hit) {
       m.target = null;
@@ -516,8 +527,8 @@
         this.loading = false;
         UI.setLoading(false);
         UI.toast(this.mode === 'survival'
-          ? '화면을 꾹 누르면 채굴, 짧게 톡 누르면 블록 설치'
-          : '크리에이티브: 비행 버튼으로 날 수 있어요', 4200);
+          ? '블록을 꾹 누르면 그 블록을 캐고, 톡 누르면 그 자리에 블록을 놓습니다'
+          : '크리에이티브: 비행 버튼으로 날 수 있어요. 블록을 눌러 캐고 놓으세요', 4600);
         const g = this.world.groundY(Math.floor(p.pos.x), Math.floor(p.pos.z));
         if (g >= 0) {
           p.pos.y = g + 1.2;
@@ -551,10 +562,10 @@
     this.world.update(p.pos.x, p.pos.z, 6);
     this.updateSky(dt);
 
-    const hit = this.paused || p.dead ? null : this.currentTarget();
-    if (hit) {
+    const aim = this.mining.target;
+    if (aim && !this.paused && !p.dead) {
       this.selectionBox.visible = true;
-      this.selectionBox.position.set(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5);
+      this.selectionBox.position.set(aim.x + 0.5, aim.y + 0.5, aim.z + 0.5);
     } else {
       this.selectionBox.visible = false;
     }
@@ -594,7 +605,7 @@
       jumpBtn: el('btnJump'),
       upBtn: el('btnFlyUp'),
       downBtn: el('btnFlyDown'),
-      onTap: () => this.tryPlace()
+      onTap: (x, y) => this.tryPlace(x, y)
     });
 
     document.querySelectorAll('[data-start-mode]').forEach((btn) => {

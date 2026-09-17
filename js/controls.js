@@ -14,7 +14,11 @@
     down: false,
     lookDX: 0,
     lookDY: 0,
-    mining: false
+    mining: false,
+    // where on screen the interaction is aimed, Bedrock-style: the block you
+    // touch is the block you hit, rather than whatever a centre crosshair sees
+    pointX: 0,
+    pointY: 0
   };
 
   let joyTouch = null;
@@ -168,6 +172,8 @@
         startTime: performance.now(),
         dragged: false
       };
+      state.pointX = t.clientX;
+      state.pointY = t.clientY;
     }, { passive: true });
 
     worldZone.addEventListener('touchmove', (e) => {
@@ -197,7 +203,7 @@
       for (const t of e.changedTouches) {
         if (t.identifier !== lookTouch.id) continue;
         const held = performance.now() - lookTouch.startTime;
-        if (!lookTouch.dragged && held < HOLD_MS && onTap) onTap();
+        if (!lookTouch.dragged && held < HOLD_MS && onTap) onTap(lookTouch.startX, lookTouch.startY);
         lookTouch = null;
         state.mining = false;
       }
@@ -223,6 +229,8 @@
         startTime: performance.now(),
         dragged: false
       };
+      state.pointX = e.clientX;
+      state.pointY = e.clientY;
     });
     window.addEventListener('mousemove', (e) => {
       if (!lookTouch || lookTouch.id !== 'mouse') return;
@@ -238,7 +246,7 @@
     window.addEventListener('mouseup', () => {
       if (!lookTouch || lookTouch.id !== 'mouse') return;
       const held = performance.now() - lookTouch.startTime;
-      if (!lookTouch.dragged && held < HOLD_MS && onTap) onTap();
+      if (!lookTouch.dragged && held < HOLD_MS && onTap) onTap(lookTouch.startX, lookTouch.startY);
       lookTouch = null;
       state.mining = false;
     });
@@ -260,6 +268,8 @@
   function tickHold() {
     if (lookTouch && !lookTouch.dragged && performance.now() - lookTouch.startTime > HOLD_MS) {
       state.mining = true;
+      state.pointX = lookTouch.startX;
+      state.pointY = lookTouch.startY;
     }
   }
 
