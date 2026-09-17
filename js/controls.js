@@ -21,21 +21,39 @@
   let lookTouch = null;
   let onTap = null;
 
+  // Touch devices replay every touch as a compatibility mouse/click burst, and
+  // a touchstart inside a scroller is not cancelable, so preventDefault cannot
+  // suppress it. Every mouse path below is therefore skipped right after a
+  // touch, otherwise each gesture runs twice and undoes itself.
+  let lastTouchAt = -1e9;
+  function markTouch() { lastTouchAt = performance.now(); }
+  function recentTouch() { return performance.now() - lastTouchAt < 700; }
+
   function bindHold(el, setter) {
     if (!el) return;
-    const on = (e) => { e.preventDefault(); setter(true); };
-    const off = (e) => { e.preventDefault(); setter(false); };
-    el.addEventListener('touchstart', on, { passive: false });
-    el.addEventListener('touchend', off, { passive: false });
-    el.addEventListener('touchcancel', off, { passive: false });
-    el.addEventListener('mousedown', on);
-    window.addEventListener('mouseup', () => setter(false));
+    const on = (e) => { if (e.cancelable) e.preventDefault(); setter(true); };
+    const off = (e) => { if (e.cancelable) e.preventDefault(); setter(false); };
+    el.addEventListener('touchstart', (e) => { markTouch(); on(e); }, { passive: false });
+    el.addEventListener('touchend', (e) => { markTouch(); off(e); }, { passive: false });
+    el.addEventListener('touchcancel', (e) => { markTouch(); off(e); }, { passive: false });
+    el.addEventListener('mousedown', (e) => { if (!recentTouch()) on(e); });
+    window.addEventListener('mouseup', () => { if (!recentTouch()) setter(false); });
   }
 
   function bindTap(el, handler) {
     if (!el) return;
-    el.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); handler(e); }, { passive: false });
-    el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); handler(e); });
+    el.addEventListener('touchstart', (e) => {
+      markTouch();
+      if (e.cancelable) e.preventDefault();
+      e.stopPropagation();
+      handler(e);
+    }, { passive: false });
+    el.addEventListener('click', (e) => {
+      if (recentTouch()) return;
+      e.preventDefault();
+      e.stopPropagation();
+      handler(e);
+    });
   }
 
   function init(opts) {
@@ -102,14 +120,16 @@
     }
 
     joyZone.addEventListener('touchstart', (e) => {
-      e.preventDefault();
+      markTouch();
+      if (e.cancelable) e.preventDefault();
       if (joyTouch !== null) return;
       const t = e.changedTouches[0];
       startJoy(t.clientX, t.clientY, t.identifier);
     }, { passive: false });
 
     joyZone.addEventListener('touchmove', (e) => {
-      e.preventDefault();
+      markTouch();
+      if (e.cancelable) e.preventDefault();
       for (const t of e.changedTouches) {
         if (t.identifier !== joyTouch) continue;
         setKnob(t.clientX - joyOrigin.x, t.clientY - joyOrigin.y);
@@ -117,6 +137,7 @@
     }, { passive: false });
 
     const onJoyEnd = (e) => {
+      markTouch();
       for (const t of e.changedTouches) {
         if (t.identifier === joyTouch) endJoy();
       }
@@ -125,7 +146,7 @@
     joyZone.addEventListener('touchcancel', onJoyEnd, { passive: true });
 
     joyZone.addEventListener('mousedown', (e) => {
-      if (joyTouch !== null) return;
+      if (recentTouch() || joyTouch !== null) return;
       startJoy(e.clientX, e.clientY, 'mouse');
     });
     window.addEventListener('mousemove', (e) => {
@@ -137,6 +158,7 @@
     });
 
     worldZone.addEventListener('touchstart', (e) => {
+      markTouch();
       if (lookTouch !== null) return;
       const t = e.changedTouches[0];
       lookTouch = {
@@ -149,6 +171,7 @@
     }, { passive: true });
 
     worldZone.addEventListener('touchmove', (e) => {
+      markTouch();
       if (!lookTouch) return;
       for (const t of e.changedTouches) {
         if (t.identifier !== lookTouch.id) continue;
@@ -169,6 +192,7 @@
     }, { passive: true });
 
     const endLook = (e) => {
+      markTouch();
       if (!lookTouch) return;
       for (const t of e.changedTouches) {
         if (t.identifier !== lookTouch.id) continue;
@@ -191,7 +215,7 @@
 
   function initMouseFallback(worldZone) {
     worldZone.addEventListener('mousedown', (e) => {
-      if (lookTouch !== null) return;
+      if (recentTouch() || lookTouch !== null) return;
       lookTouch = {
         id: 'mouse',
         x: e.clientX, y: e.clientY,
@@ -246,5 +270,5 @@
     return d;
   }
 
-  global.Controls = { state, init, tickHold, consumeLook, bindTap, bindHold, LOOK_SENS };
+  global.Controls = { state, init, tickHold, consumeLook, bindTap, bindHold, markTouch, recentTouch, LOOK_SENS };
 })(window);

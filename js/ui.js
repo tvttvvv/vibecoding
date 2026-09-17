@@ -174,19 +174,45 @@
     };
 
     panel.addEventListener('touchstart', (e) => {
-      if (begin(e.touches[0].clientX, e.touches[0].clientY)) e.preventDefault();
+      Controls.markTouch();
+      if (!begin(e.touches[0].clientX, e.touches[0].clientY)) return;
+      if (e.cancelable) e.preventDefault();
     }, { passive: false });
     panel.addEventListener('touchmove', (e) => {
+      Controls.markTouch();
       if (!active) return;
-      e.preventDefault();
+      if (e.cancelable) e.preventDefault();
       move(e.touches[0].clientX, e.touches[0].clientY);
     }, { passive: false });
-    panel.addEventListener('touchend', (e) => { if (active) { e.preventDefault(); finish(); } }, { passive: false });
-    panel.addEventListener('touchcancel', () => { active = null; }, { passive: true });
+    panel.addEventListener('touchend', (e) => {
+      Controls.markTouch();
+      if (!active) return;
+      if (e.cancelable) e.preventDefault();
+      finish();
+    }, { passive: false });
+    // a cancelled touch aborts without acting, but must still settle the panel
+    panel.addEventListener('touchcancel', () => {
+      if (!active) return;
+      clearTimeout(active.timer);
+      const wasDrag = active.moved;
+      active = null;
+      this._dragging = false;
+      if (wasDrag) this.renderScreen();
+    }, { passive: true });
 
-    panel.addEventListener('mousedown', (e) => { begin(e.clientX, e.clientY); });
-    window.addEventListener('mousemove', (e) => { if (active) move(e.clientX, e.clientY); });
-    window.addEventListener('mouseup', () => finish());
+    // the synthetic mouse burst that follows a touch would replay the gesture
+    panel.addEventListener('mousedown', (e) => {
+      if (Controls.recentTouch()) return;
+      begin(e.clientX, e.clientY);
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (Controls.recentTouch() || !active) return;
+      move(e.clientX, e.clientY);
+    });
+    window.addEventListener('mouseup', () => {
+      if (Controls.recentTouch()) return;
+      finish();
+    });
   };
 
   UI.longPressSlot = function (kind, index) {
