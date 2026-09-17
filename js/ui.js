@@ -28,6 +28,8 @@
       el('debugPanel').classList.toggle('hidden', !this.debugOn);
     });
     Controls.bindTap(el('screenClose'), () => this.closeScreen());
+    this.initSlotGestures();
+
     Controls.bindTap(el('btnRecipeBook'), () => {
       this.recipeBookOpen = !this.recipeBookOpen;
       this.renderScreen();
@@ -98,13 +100,184 @@
     return node;
   };
 
-  UI.makeSlot = function (stack, onTap, extraClass) {
+  // `action` is either a tap callback (creative palette, recipe book) or a
+  // {kind, index} descriptor handled by the drag/long-press gesture layer
+  UI.makeSlot = function (stack, action, extraClass) {
     const node = document.createElement('div');
     node.className = 'slot' + (extraClass ? ' ' + extraClass : '');
     this.fillSlot(node, stack);
     if (stack) node.title = Items.name(stack.id);
-    if (onTap) Controls.bindTap(node, onTap);
+    if (typeof action === 'function') Controls.bindTap(node, action);
+    else if (action) {
+      node.dataset.kind = action.kind;
+      node.dataset.index = action.index;
+    }
     return node;
+  };
+
+  // ---------------------------------------------------------------- gestures
+  // tap = move whole stack, long press = split in half / place one,
+  // drag across slots = drop one item into each, like Minecraft
+  UI.initSlotGestures = function () {
+    const panel = el('screenPanel');
+    const LONG_MS = 300;
+    const MOVE_TOL = 9;
+    let active = null;
+
+    const slotAt = (x, y) => {
+      const node = document.elementFromPoint(x, y);
+      if (!node || !node.closest) return null;
+      const slot = node.closest('[data-kind]');
+      if (!slot || !panel.contains(slot)) return null;
+      return { kind: slot.dataset.kind, index: +slot.dataset.index };
+    };
+
+    const begin = (x, y) => {
+      const s = slotAt(x, y);
+      if (!s) return false;
+      active = { slot: s, x0: x, y0: y, moved: false, longFired: false, visited: {} };
+      active.timer = setTimeout(() => {
+        if (!active || active.moved) return;
+        active.longFired = true;
+        this.longPressSlot(s.kind, s.index);
+      }, LONG_MS);
+      return true;
+    };
+
+    const move = (x, y) => {
+      if (!active) return;
+      if (!active.moved && Math.hypot(x - active.x0, y - active.y0) > MOVE_TOL) {
+        active.moved = true;
+        this._dragging = true;
+        clearTimeout(active.timer);
+        const k = active.slot.kind + ':' + active.slot.index;
+        active.visited[k] = true;
+        this.dropOneInto(active.slot.kind, active.slot.index);
+      }
+      if (!active.moved) return;
+      const s = slotAt(x, y);
+      if (!s) return;
+      const key = s.kind + ':' + s.index;
+      if (active.visited[key]) return;
+      active.visited[key] = true;
+      this.dropOneInto(s.kind, s.index);
+    };
+
+    const finish = () => {
+      if (!active) return;
+      clearTimeout(active.timer);
+      const wasDrag = active.moved;
+      if (!active.moved && !active.longFired) this.tapSlot(active.slot.kind, active.slot.index);
+      active = null;
+      this._dragging = false;
+      if (wasDrag) this.renderScreen();
+    };
+
+    panel.addEventListener('touchstart', (e) => {
+      if (begin(e.touches[0].clientX, e.touches[0].clientY)) e.preventDefault();
+    }, { passive: false });
+    panel.addEventListener('touchmove', (e) => {
+      if (!active) return;
+      e.preventDefault();
+      move(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: false });
+    panel.addEventListener('touchend', (e) => { if (active) { e.preventDefault(); finish(); } }, { passive: false });
+    panel.addEventListener('touchcancel', () => { active = null; }, { passive: true });
+
+    panel.addEventListener('mousedown', (e) => { begin(e.clientX, e.clientY); });
+    window.addEventListener('mousemove', (e) => { if (active) move(e.clientX, e.clientY); });
+    window.addEventListener('mouseup', () => finish());
+  };
+
+  UI.longPressSlot = function (kind, index) {
+    const inv = this.game.inventory;
+    if (kind === 'result' || kind === 'fout') { this.tapSlot(kind, index); return; }
+
+    if (inv.held) {
+      this.dropOneInto(kind, index);
+      return;
+    }
+
+    const arr = this.arrayFor(kind);
+    const cur = arr[index];
+    if (!cur || cur.count < 2) { this.tapSlot(kind, index); return; }
+
+    const take = Math.ceil(cur.count / 2);
+    cur.count -= take;
+    const split = { id: cur.id, count: take };
+    if (cur.dur !== undefined) split.dur = cur.dur;
+    if (cur.count <= 0) arr[index] = null;
+    inv.held = split;
+    inv.changed();
+    this.renderScreen();
+  };
+
+  UI.dropOneInto = function (kind, index) {
+    const inv = this.game.inventory;
+    if (!inv.held || kind === 'result' || kind === 'fout') return;
+
+    const arr = this.arrayFor(kind);
+    if (!arr) return;
+    const cur = arr[index];
+
+    if (kind === 'armor') {
+      if (cur || !this.armorFits(index, inv.held)) return;
+    }
+    if (kind === 'fin' && Recipes.smelting[inv.held.id] === undefined) return;
+    if (kind === 'ffuel' && Items.fuelSeconds(inv.held.id) <= 0) return;
+
+    if (!cur) {
+      const one = { id: inv.held.id, count: 1 };
+      if (inv.held.dur !== undefined) one.dur = inv.held.dur;
+      arr[index] = one;
+    } else if (cur.id === inv.held.id && !cur.dur && !inv.held.dur &&
+               cur.count < Items.stackMax(cur.id)) {
+      cur.count += 1;
+    } else {
+      return;
+    }
+
+    inv.held.count -= 1;
+    if (inv.held.count <= 0) inv.held = null;
+    inv.changed();
+
+    // A full re-render swaps out the DOM node the touch was captured on, which
+    // silently kills the rest of the swipe — patch the touched slots instead.
+    if (this._dragging) {
+      this.refreshSlotNode(kind, index);
+      this.refreshSlotNode('result', 0);
+      this.renderHeldFloat();
+    } else {
+      this.renderScreen();
+    }
+  };
+
+  UI.refreshSlotNode = function (kind, index) {
+    const node = document.querySelector(
+      '#screenPanel [data-kind="' + kind + '"][data-index="' + index + '"]');
+    if (!node) return;
+    let stack = null;
+    if (kind === 'result') {
+      const r = this.craftResult();
+      stack = r ? r.stack : null;
+    } else {
+      const arr = this.arrayFor(kind);
+      stack = arr ? arr[index] : null;
+    }
+    this.fillSlot(node, stack);
+  };
+
+  UI.renderHeldFloat = function () {
+    const inv = this.game.inventory;
+    const float = el('heldFloat');
+    if (!inv.held) { float.classList.add('hidden'); return; }
+    float.innerHTML = '';
+    const label = document.createElement('span');
+    label.className = 'heldText';
+    label.textContent = '들고 있음';
+    float.appendChild(label);
+    float.appendChild(this.makeSlot(inv.held, null, 'heldSlot'));
+    float.classList.remove('hidden');
   };
 
   UI.renderHotbar = function () {
@@ -347,19 +520,7 @@
       body.appendChild(this.buildHotRow());
     }
 
-    const float = el('heldFloat');
-    if (inv.held) {
-      float.innerHTML = '';
-      const label = document.createElement('span');
-      label.className = 'heldText';
-      label.textContent = '들고 있음';
-      float.appendChild(label);
-      float.appendChild(this.makeSlot(inv.held, null, 'heldSlot'));
-      float.classList.remove('hidden');
-    } else {
-      float.classList.add('hidden');
-    }
-
+    this.renderHeldFloat();
     this.renderRecipeBook();
   };
 
@@ -373,7 +534,7 @@
       armorCol.className = 'armorCol';
       for (let i = 0; i < 4; i++) {
         const piece = Items.PIECE_ORDER[i];
-        const slot = this.makeSlot(inv.armor[i], () => this.tapSlot('armor', i), 'armorSlot');
+        const slot = this.makeSlot(inv.armor[i], { kind: 'armor', index: i }, 'armorSlot');
         if (!inv.armor[i]) slot.dataset.hint = PIECE_LABEL[piece];
         armorCol.appendChild(slot);
       }
@@ -404,7 +565,7 @@
     for (let y = 0; y < w; y++) {
       for (let x = 0; x < w; x++) {
         const idx = y * 3 + x;
-        grid.appendChild(this.makeSlot(inv.craft[idx], () => this.tapSlot('craft', idx)));
+        grid.appendChild(this.makeSlot(inv.craft[idx], { kind: 'craft', index: idx }));
       }
     }
     craftArea.appendChild(grid);
@@ -415,7 +576,7 @@
     craftArea.appendChild(arrow);
 
     const result = this.craftResult();
-    craftArea.appendChild(this.makeSlot(result ? result.stack : null, () => this.tapSlot('result', 0), 'resultSlot'));
+    craftArea.appendChild(this.makeSlot(result ? result.stack : null, { kind: 'result', index: 0 }, 'resultSlot'));
     top.appendChild(craftArea);
 
     body.appendChild(top);
@@ -423,7 +584,7 @@
     if (this.screen.kind === 'inventory') {
       const note = document.createElement('p');
       note.className = 'invNote';
-      note.textContent = '2x2 작업칸이에요. 3x3이 필요하면 제작대를 만들어 설치한 뒤 눌러보세요.';
+      note.textContent = '2x2 작업칸입니다. 3x3은 제작대를 설치하고 누르세요. 누르기: 전체 옮기기 · 길게 누르기: 반으로 나누기 / 1개만 놓기 · 꾹 눌러 스와이프: 지나간 칸마다 1개씩';
       body.appendChild(note);
     }
   };
@@ -435,7 +596,7 @@
 
     const col = document.createElement('div');
     col.className = 'furnaceCol';
-    col.appendChild(this.makeSlot(f.input[0], () => this.tapSlot('fin', 0)));
+    col.appendChild(this.makeSlot(f.input[0], { kind: 'fin', index: 0 }));
 
     const flame = document.createElement('div');
     flame.className = 'flame';
@@ -445,7 +606,7 @@
     flame.appendChild(flameFill);
     col.appendChild(flame);
 
-    col.appendChild(this.makeSlot(f.fuel[0], () => this.tapSlot('ffuel', 0)));
+    col.appendChild(this.makeSlot(f.fuel[0], { kind: 'ffuel', index: 0 }));
     wrap.appendChild(col);
 
     const prog = document.createElement('div');
@@ -455,7 +616,7 @@
     prog.appendChild(progFill);
     wrap.appendChild(prog);
 
-    wrap.appendChild(this.makeSlot(f.output[0], () => this.tapSlot('fout', 0), 'resultSlot'));
+    wrap.appendChild(this.makeSlot(f.output[0], { kind: 'fout', index: 0 }, 'resultSlot'));
     body.appendChild(wrap);
 
     const note = document.createElement('p');
@@ -490,7 +651,7 @@
     const grid = document.createElement('div');
     grid.className = 'invGrid';
     for (let i = 9; i < 36; i++) {
-      grid.appendChild(this.makeSlot(inv.slots[i], () => this.tapSlot('inv', i)));
+      grid.appendChild(this.makeSlot(inv.slots[i], { kind: 'inv', index: i }));
     }
     return grid;
   };
@@ -500,7 +661,7 @@
     const grid = document.createElement('div');
     grid.className = 'invGrid hotRow';
     for (let i = 0; i < 9; i++) {
-      grid.appendChild(this.makeSlot(inv.slots[i], () => this.tapSlot('inv', i)));
+      grid.appendChild(this.makeSlot(inv.slots[i], { kind: 'inv', index: i }));
     }
     return grid;
   };

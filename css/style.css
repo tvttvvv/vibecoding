@@ -229,8 +229,8 @@ img { image-rendering: pixelated; -ms-interpolation-mode: nearest-neighbor; }
 .durBar span { display: block; height: 100%; }
 
 #heldFloat {
-  position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 8px; z-index: 120;
+  position: fixed; left: 50%; bottom: 76px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px; z-index: 120; pointer-events: none;
   background: rgba(20,24,32,0.92); padding: 8px 12px; border-radius: 8px;
   border: 2px solid rgba(255,255,255,0.35);
 }
