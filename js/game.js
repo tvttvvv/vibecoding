@@ -588,6 +588,7 @@
 
     Controls.init({
       joystick: el('joystickZone'),
+      joyVisual: el('joyVisual'),
       knob: el('joystickKnob'),
       worldZone: el('worldZone'),
       jumpBtn: el('btnJump'),

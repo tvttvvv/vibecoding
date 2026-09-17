@@ -132,7 +132,12 @@
     if (!survival) return;
 
     const armorPts = this.game.inventory ? this.game.inventory.armorPoints() : 0;
-    const sig = player.health + '|' + player.food + '|' + Math.round(player.air * 4) + '|' + armorPts;
+    const airRatio = player.air / PlayerConst.MAX_AIR;
+    const showAir = airRatio < 0.999;
+    // showAir must be part of the signature: the last tick of refilling air
+    // rounds to the same bucket as full, and the row would never hide again
+    const sig = player.health + '|' + player.food + '|' +
+      Math.ceil(airRatio * 10) + '|' + showAir + '|' + armorPts;
     if (sig === this._statSig) return;
     this._statSig = sig;
 
@@ -147,8 +152,6 @@
     }
     el('armorRow').classList.toggle('hidden', armorPts <= 0);
 
-    const airRatio = player.air / PlayerConst.MAX_AIR;
-    const showAir = airRatio < 0.999;
     el('airRow').classList.toggle('hidden', !showAir);
     if (showAir) {
       const filled = Math.ceil(airRatio * 10);

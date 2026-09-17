@@ -11,10 +11,19 @@
   const JUMP_V = 8.6;
   const WALK_SPEED = 4.4;
   const SPRINT_SPEED = 5.7;
-  const SWIM_SPEED = 2.6;
+  const SWIM_SPEED = 2.4;
   const FLY_SPEED = 11;
   const MAX_FALL = 55;
   const MAX_AIR = 15;
+
+  // Water is buoyant, not weightless: you ease up while holding jump and sink
+  // slowly when you let go. Rising is capped below walking speed so bobbing at
+  // the surface can never beat travelling on land.
+  const WATER_GRAVITY = 9;
+  const WATER_SINK_MAX = -1.6;
+  const WATER_RISE_ACCEL = 15;
+  const WATER_RISE_MAX = 2.2;
+  const WATER_CLIMB_V = 3.4;
 
   function Player(mode) {
     this.pos = { x: 0.5, y: 40, z: 0.5 };
@@ -106,9 +115,13 @@
   Player.prototype.update = function (dt, input, world) {
     if (this.dead) return;
 
-    const feetBlock = world.getBlock(Math.floor(this.pos.x), Math.floor(this.pos.y + 0.1), Math.floor(this.pos.z));
-    const eyeBlock = world.getBlock(Math.floor(this.pos.x), Math.floor(this.eyeY()), Math.floor(this.pos.z));
-    this.inWater = B.byId[feetBlock].liquid;
+    const bx = Math.floor(this.pos.x), bz = Math.floor(this.pos.z);
+    const feetBlock = world.getBlock(bx, Math.floor(this.pos.y + 0.1), bz);
+    const bodyBlock = world.getBlock(bx, Math.floor(this.pos.y + 0.9), bz);
+    const eyeBlock = world.getBlock(bx, Math.floor(this.eyeY()), bz);
+    // any part of the body in water keeps water physics, so breaking the
+    // surface for a frame cannot hand back land speed and a land jump
+    this.inWater = B.byId[feetBlock].liquid || B.byId[bodyBlock].liquid;
     this.headInWater = B.byId[eyeBlock].liquid;
 
     const mag = Math.hypot(input.move.x, input.move.y);
@@ -141,9 +154,12 @@
       this._moveAxis(world, 'y', vy * dt);
     } else {
       if (this.inWater) {
-        this.vel.y -= GRAVITY * 0.22 * dt;
-        if (this.vel.y < -3) this.vel.y = -3;
-        if (input.jump) this.vel.y = 3.6;
+        if (input.jump) {
+          this.vel.y = Math.min(WATER_RISE_MAX, this.vel.y + WATER_RISE_ACCEL * dt);
+        } else {
+          this.vel.y = Math.max(WATER_SINK_MAX, this.vel.y - WATER_GRAVITY * dt);
+        }
+        this.fallStartY = this.pos.y;
       } else {
         this.vel.y -= GRAVITY * dt;
         if (this.vel.y < -MAX_FALL) this.vel.y = -MAX_FALL;
@@ -170,8 +186,13 @@
         this.fallStartY = this.pos.y;
       }
 
-      if (this.blocked && this.onGround && mlen > 0.1 && this.canStepUp(world, mx, mz)) {
-        this.vel.y = JUMP_V;
+      if (this.blocked && mlen > 0.1) {
+        if (this.inWater) {
+          // pressing into the bank lifts you, so you can climb out of water
+          this.vel.y = Math.max(this.vel.y, WATER_CLIMB_V);
+        } else if (this.onGround && this.canStepUp(world, mx, mz)) {
+          this.vel.y = JUMP_V;
+        }
       }
     }
 

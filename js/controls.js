@@ -5,6 +5,7 @@
   const DRAG_THRESHOLD = 9;
   const HOLD_MS = 180;
   const JOY_RADIUS = 46;
+  const JOY_DEADZONE = 7;
 
   const state = {
     move: { x: 0, y: 0 },
@@ -39,12 +40,38 @@
 
   function init(opts) {
     const joyZone = opts.joystick;
+    const joyVisual = opts.joyVisual;
     const knob = opts.knob;
     const worldZone = opts.worldZone;
     onTap = opts.onTap;
 
+    let joyOrigin = { x: 0, y: 0 };
+
+    function restPosition() {
+      return { x: 104, y: window.innerHeight - 150 };
+    }
+
+    function placeVisual(x, y) {
+      joyVisual.style.left = x + 'px';
+      joyVisual.style.top = y + 'px';
+    }
+
+    function goHome() {
+      const p = restPosition();
+      placeVisual(p.x, p.y);
+    }
+    goHome();
+    window.addEventListener('resize', () => { if (joyTouch === null) goHome(); });
+
     function setKnob(dx, dy) {
-      const dist = Math.min(JOY_RADIUS, Math.hypot(dx, dy));
+      const raw = Math.hypot(dx, dy);
+      if (raw < JOY_DEADZONE) {
+        knob.style.transform = 'translate(0px,0px)';
+        state.move.x = 0;
+        state.move.y = 0;
+        return;
+      }
+      const dist = Math.min(JOY_RADIUS, raw);
       const ang = Math.atan2(dy, dx);
       const kx = Math.cos(ang) * dist, ky = Math.sin(ang) * dist;
       knob.style.transform = 'translate(' + kx + 'px,' + ky + 'px)';
@@ -58,31 +85,56 @@
       state.move.y = 0;
     }
 
+    function startJoy(x, y, id) {
+      joyTouch = id;
+      joyOrigin.x = x;
+      joyOrigin.y = y;
+      placeVisual(x, y);
+      joyVisual.classList.add('active');
+      resetKnob();
+    }
+
+    function endJoy() {
+      joyTouch = null;
+      resetKnob();
+      joyVisual.classList.remove('active');
+      goHome();
+    }
+
     joyZone.addEventListener('touchstart', (e) => {
       e.preventDefault();
       if (joyTouch !== null) return;
       const t = e.changedTouches[0];
-      joyTouch = t.identifier;
-      const r = joyZone.getBoundingClientRect();
-      setKnob(t.clientX - (r.left + r.width / 2), t.clientY - (r.top + r.height / 2));
+      startJoy(t.clientX, t.clientY, t.identifier);
     }, { passive: false });
 
     joyZone.addEventListener('touchmove', (e) => {
       e.preventDefault();
       for (const t of e.changedTouches) {
         if (t.identifier !== joyTouch) continue;
-        const r = joyZone.getBoundingClientRect();
-        setKnob(t.clientX - (r.left + r.width / 2), t.clientY - (r.top + r.height / 2));
+        setKnob(t.clientX - joyOrigin.x, t.clientY - joyOrigin.y);
       }
     }, { passive: false });
 
-    const endJoy = (e) => {
+    const onJoyEnd = (e) => {
       for (const t of e.changedTouches) {
-        if (t.identifier === joyTouch) { joyTouch = null; resetKnob(); }
+        if (t.identifier === joyTouch) endJoy();
       }
     };
-    joyZone.addEventListener('touchend', endJoy, { passive: true });
-    joyZone.addEventListener('touchcancel', endJoy, { passive: true });
+    joyZone.addEventListener('touchend', onJoyEnd, { passive: true });
+    joyZone.addEventListener('touchcancel', onJoyEnd, { passive: true });
+
+    joyZone.addEventListener('mousedown', (e) => {
+      if (joyTouch !== null) return;
+      startJoy(e.clientX, e.clientY, 'mouse');
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (joyTouch !== 'mouse') return;
+      setKnob(e.clientX - joyOrigin.x, e.clientY - joyOrigin.y);
+    });
+    window.addEventListener('mouseup', () => {
+      if (joyTouch === 'mouse') endJoy();
+    });
 
     worldZone.addEventListener('touchstart', (e) => {
       if (lookTouch !== null) return;

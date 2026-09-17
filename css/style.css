@@ -72,9 +72,16 @@ img { image-rendering: pixelated; -ms-interpolation-mode: nearest-neighbor; }
 }
 
 /* ---------------------------------------------------------------- controls */
+/* touch anywhere in this area to summon the stick, Minecraft-style */
 #joystickZone {
-  position: absolute; left: 24px; bottom: 96px; width: 132px; height: 132px; z-index: 12;
+  position: absolute; left: 0; top: 60px; width: 46%; bottom: 84px; z-index: 12;
 }
+#joyVisual {
+  position: fixed; width: 132px; height: 132px; margin: -66px 0 0 -66px;
+  z-index: 13; pointer-events: none; opacity: 0.4;
+  transition: opacity 0.14s linear;
+}
+#joyVisual.active { opacity: 0.92; }
 #joystickBase {
   position: absolute; inset: 0; border-radius: 50%;
   background: rgba(255,255,255,0.13); border: 2px solid rgba(255,255,255,0.35);
