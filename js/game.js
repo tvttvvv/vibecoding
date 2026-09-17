@@ -63,10 +63,13 @@
   Game.blockGeometry = function (id, size) {
     const key = id + ':' + size;
     if (this._geoCache[key]) return this._geoCache[key];
-    const geo = new THREE.BoxGeometry(size, size, size);
+    const isBlock = Items.isBlock(id);
+    const geo = isBlock
+      ? new THREE.BoxGeometry(size, size, size)
+      : new THREE.BoxGeometry(size, size, size * 0.14);
     const uv = geo.attributes.uv;
     for (let f = 0; f < 6; f++) {
-      const t = Textures.tileUV(B.tileFor(id, f));
+      const t = Textures.tileUV(isBlock ? B.tileFor(id, f) : Items.byId[id].tile);
       const o = f * 4;
       uv.setXY(o + 0, t.u0, t.v1);
       uv.setXY(o + 1, t.u1, t.v1);
@@ -100,6 +103,7 @@
       }
     }
     this.clearDrops();
+    this.blockEntities = new Map();
 
     this.world = new World(seed);
     this.scene.add(this.world.group);
@@ -108,11 +112,14 @@
     this.inventory.onChange = () => UI.renderHotbar();
 
     this.player = new Player(mode);
-    this.itemMaterial = this.itemMaterial || new THREE.MeshBasicMaterial({ map: Textures.texture });
+    this.player.armorProvider = this.inventory;
+    this.blockEntities = new Map();
+    this.itemMaterial = this.itemMaterial ||
+      new THREE.MeshBasicMaterial({ map: Textures.texture, alphaTest: 0.5 });
 
     if (mode === 'creative') {
       const list = B.creativeList;
-      for (let i = 0; i < 9 && i < list.length; i++) this.inventory.slots[i] = { id: list[i], count: 1 };
+      for (let i = 0; i < 9 && i < list.length; i++) this.inventory.slots[i] = { id: list[i], count: 64 };
     }
 
     this.spawnPlayer();
@@ -173,8 +180,20 @@
     if (this.paused || !this.started || this.player.dead) return;
     const hit = this.currentTarget();
     if (!hit) return;
+
+    const targetDef = B.byId[hit.id];
+    if (targetDef.interactive === 'craft') {
+      UI.openScreen('crafting');
+      return;
+    }
+    if (targetDef.interactive === 'furnace') {
+      UI.openScreen('furnace', this.furnaceAt(hit.x, hit.y, hit.z));
+      return;
+    }
+
     const stack = this.inventory.selectedStack();
     if (!stack) { UI.toast('손에 든 블록이 없어요', 1200); return; }
+    if (!Items.isBlock(stack.id)) { UI.toast(Items.name(stack.id) + '은(는) 설치할 수 없어요', 1400); return; }
 
     const x = hit.x + hit.nx, y = hit.y + hit.ny, z = hit.z + hit.nz;
     const existing = this.world.getBlock(x, y, z);
@@ -182,9 +201,91 @@
     if (this.intersectsPlayer(x, y, z)) return;
 
     if (this.world.setBlock(x, y, z, stack.id)) {
+      if (stack.id === B.FURNACE) this.furnaceAt(x, y, z);
       if (this.mode === 'survival') this.inventory.consumeSelected();
       else UI.renderHotbar();
     }
+  };
+
+  Game.entityKey = function (x, y, z) { return x + ',' + y + ',' + z; };
+
+  Game.furnaceAt = function (x, y, z) {
+    const k = this.entityKey(x, y, z);
+    let f = this.blockEntities.get(k);
+    if (!f) {
+      f = {
+        type: 'furnace', x, y, z,
+        input: [null], fuel: [null], output: [null],
+        burn: 0, burnMax: 0, cook: 0, cookMax: 10
+      };
+      this.blockEntities.set(k, f);
+    }
+    return f;
+  };
+
+  Game.updateFurnaces = function (dt) {
+    if (this.blockEntities.size === 0) return;
+    const open = UI.screen && UI.screen.kind === 'furnace' ? UI.screen.entity : null;
+    let openChanged = false;
+
+    for (const f of this.blockEntities.values()) {
+      if (f.type !== 'furnace') continue;
+      const input = f.input[0];
+      const result = input ? Recipes.smelting[input.id] : undefined;
+      const out = f.output[0];
+      const canCook = result !== undefined &&
+        (!out || (out.id === result && out.count < Items.stackMax(result)));
+
+      let active = false;
+      if (f.burn > 0) { f.burn -= dt; active = true; }
+
+      if (f.burn <= 0 && canCook && f.fuel[0]) {
+        const secs = Items.fuelSeconds(f.fuel[0].id);
+        if (secs > 0) {
+          f.burn = secs;
+          f.burnMax = secs;
+          f.fuel[0].count -= 1;
+          if (f.fuel[0].count <= 0) f.fuel[0] = null;
+          active = true;
+        }
+      }
+
+      if (f.burn > 0 && canCook) {
+        f.cook += dt;
+        if (f.cook >= f.cookMax) {
+          f.cook = 0;
+          input.count -= 1;
+          if (input.count <= 0) f.input[0] = null;
+          if (f.output[0]) f.output[0].count += 1;
+          else f.output[0] = { id: result, count: 1 };
+        }
+      } else if (f.cook > 0) {
+        f.cook = Math.max(0, f.cook - dt * 2);
+      }
+
+      const lit = f.burn > 0;
+      if (lit !== f.lit) {
+        f.lit = lit;
+        const here = this.world.getBlock(f.x, f.y, f.z);
+        if (here === B.FURNACE || here === B.FURNACE_LIT) {
+          this.world.setBlock(f.x, f.y, f.z, lit ? B.FURNACE_LIT : B.FURNACE);
+        }
+      }
+      if (f === open && (active || f.cook > 0)) openChanged = true;
+    }
+
+    if (openChanged) {
+      this._furnaceUiTimer = (this._furnaceUiTimer || 0) + dt;
+      if (this._furnaceUiTimer > 0.2) {
+        this._furnaceUiTimer = 0;
+        UI.renderScreen();
+      }
+    }
+  };
+
+  Game.spawnDropAtPlayer = function (id, count) {
+    const p = this.player;
+    this.spawnDrop(p.pos.x, p.pos.y + 0.8, p.pos.z, id, count);
   };
 
   Game.intersectsPlayer = function (x, y, z) {
@@ -211,7 +312,9 @@
       m.progress = 0;
     }
 
-    const seconds = this.mode === 'creative' ? 0.12 : B.breakSeconds(hit.id);
+    const stack = this.inventory.selectedStack();
+    const toolDef = stack ? Items.get(stack.id) : null;
+    const seconds = this.mode === 'creative' ? 0.12 : B.mineTime(hit.id, toolDef);
     if (!isFinite(seconds)) {
       this.crackMesh.visible = false;
       return;
@@ -234,10 +337,29 @@
   };
 
   Game.breakBlock = function (x, y, z, id) {
+    const stack = this.inventory.selectedStack();
+    const toolDef = stack ? Items.get(stack.id) : null;
     if (!this.world.setBlock(x, y, z, B.AIR)) return;
+
+    const entity = this.blockEntities.get(this.entityKey(x, y, z));
+    if (entity) {
+      this.blockEntities.delete(this.entityKey(x, y, z));
+      if (this.mode === 'survival') {
+        for (const arr of [entity.input, entity.fuel, entity.output]) {
+          if (arr[0]) this.spawnDrop(x + 0.5, y + 0.5, z + 0.5, arr[0].id, arr[0].count);
+        }
+      }
+      if (UI.screen && UI.screen.entity === entity) UI.closeScreen();
+    }
+
     if (this.mode === 'survival') {
-      const drop = B.byId[id].drop;
-      if (drop) this.spawnDrop(x + 0.5, y + 0.3, z + 0.5, drop, 1);
+      if (B.canHarvest(id, toolDef)) {
+        const drop = B.byId[id].drop;
+        if (drop) this.spawnDrop(x + 0.5, y + 0.3, z + 0.5, drop, 1);
+      }
+      if (toolDef && toolDef.tool && this.inventory.damageSelected(1)) {
+        UI.toast('도구가 부서졌어요', 1600);
+      }
       this.player.addExhaustion(0.005);
     }
   };
@@ -354,10 +476,13 @@
   Game.onDeath = function () {
     if (this.mode === 'survival') {
       const p = this.player;
-      for (const stack of this.inventory.slots) {
+      const all = this.inventory.slots.concat(this.inventory.armor, this.inventory.craft);
+      if (this.inventory.held) all.push(this.inventory.held);
+      for (const stack of all) {
         if (stack) this.spawnDrop(p.pos.x, p.pos.y + 0.5, p.pos.z, stack.id, stack.count);
       }
       this.inventory.clear();
+      if (UI.screen) UI.closeScreen();
     }
     UI.showDeath();
   };
@@ -415,6 +540,7 @@
       this.updateMining(dt);
       this.updateDrops(dt);
     }
+    if (this.started && !this.loading) this.updateFurnaces(dt);
 
     // checked every frame so any damage source, not just Player.update, ends the run
     if (p.dead && !this._deathHandled) {

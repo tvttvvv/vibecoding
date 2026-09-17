@@ -229,6 +229,214 @@
     api.put(11, 9, '#e8f6f9'); api.put(12, 9, '#e8f6f9');
   });
 
+  // ---------------------------------------------------------------- workstations
+  define('crafting_table_top', (api) => {
+    speckle(api, '#9c7b4a', ['#a88654', '#8f7043'], 0.3);
+    for (let x = 0; x < TILE; x++) { api.put(x, 0, '#6f5531'); api.put(x, 15, '#6f5531'); }
+    for (let y = 0; y < TILE; y++) { api.put(0, y, '#6f5531'); api.put(15, y, '#6f5531'); }
+    for (let x = 2; x < 14; x++) { api.put(x, 5, '#75592f'); api.put(x, 10, '#75592f'); }
+    for (let y = 2; y < 14; y++) { api.put(5, y, '#75592f'); api.put(10, y, '#75592f'); }
+  });
+
+  define('crafting_table_front', (api) => {
+    speckle(api, '#8f7043', ['#9c7b4a', '#7d6039'], 0.3);
+    for (let x = 0; x < TILE; x++) api.put(x, 0, '#6f5531');
+    api.put(3, 4, '#3f3020'); api.put(4, 4, '#3f3020'); api.put(3, 5, '#3f3020');
+    for (let x = 2; x < 8; x++) for (let y = 7; y < 12; y++) api.put(x, y, '#6b5330');
+    for (let x = 9; x < 14; x++) for (let y = 4; y < 9; y++) api.put(x, y, '#6b5330');
+  });
+
+  define('crafting_table_side', (api) => {
+    speckle(api, '#8f7043', ['#9c7b4a', '#7d6039'], 0.3);
+    for (let x = 0; x < TILE; x++) api.put(x, 0, '#6f5531');
+    for (let x = 1; x < 15; x++) { api.put(x, 3, '#75592f'); api.put(x, 9, '#75592f'); }
+  });
+
+  define('furnace_top', (api) => speckle(api, '#7d7d7d', ['#6f6f6f', '#8c8c8c', '#636363'], 0.5));
+
+  define('furnace_side', (api) => {
+    speckle(api, '#7d7d7d', ['#6f6f6f', '#8c8c8c'], 0.45);
+    for (let x = 0; x < TILE; x++) { api.put(x, 0, '#5c5c5c'); api.put(x, 15, '#5c5c5c'); }
+  });
+
+  define('furnace_front', (api) => {
+    speckle(api, '#7d7d7d', ['#6f6f6f', '#8c8c8c'], 0.45);
+    for (let x = 0; x < TILE; x++) { api.put(x, 0, '#5c5c5c'); api.put(x, 15, '#5c5c5c'); }
+    for (let x = 3; x < 13; x++) for (let y = 5; y < 13; y++) api.put(x, y, '#2f2f2f');
+    for (let x = 3; x < 13; x++) api.put(x, 4, '#5c5c5c');
+    for (let x = 4; x < 12; x++) { api.put(x, 6, '#4a4a4a'); api.put(x, 7, '#4a4a4a'); }
+  });
+
+  define('furnace_front_lit', (api) => {
+    speckle(api, '#7d7d7d', ['#6f6f6f', '#8c8c8c'], 0.45);
+    for (let x = 0; x < TILE; x++) { api.put(x, 0, '#5c5c5c'); api.put(x, 15, '#5c5c5c'); }
+    for (let x = 3; x < 13; x++) for (let y = 5; y < 13; y++) api.put(x, y, '#2f2f2f');
+    for (let x = 3; x < 13; x++) api.put(x, 4, '#5c5c5c');
+    for (let x = 4; x < 12; x++) {
+      for (let y = 8; y < 12; y++) {
+        api.put(x, y, pick(['#ff9a2b', '#ffd04d', '#e2631a', '#ffb43d']));
+      }
+    }
+  });
+
+  // ---------------------------------------------------------------- items
+  const MAT = {
+    wood: { a: '#9c7b4a', b: '#6f5531', c: '#b79262' },
+    stone: { a: '#8a8a8a', b: '#5c5c5c', c: '#a6a6a6' },
+    iron: { a: '#d8d8d8', b: '#9a9a9a', c: '#f2f2f2' },
+    gold: { a: '#f0c635', b: '#b8901c', c: '#ffe071' },
+    diamond: { a: '#4aedd9', b: '#2ba99a', c: '#9df9ee' }
+  };
+  const HANDLE = { a: '#8b6a3f', b: '#5e4527' };
+
+  function rectOn(api, x, y, w, h, color) {
+    for (let dx = 0; dx < w; dx++) for (let dy = 0; dy < h; dy++) api.put(x + dx, y + dy, color);
+  }
+
+  function drawHandle(api) {
+    for (let i = 0; i < 8; i++) {
+      const x = 10 - i, y = 5 + i;
+      api.put(x, y, HANDLE.b);
+      api.put(x + 1, y, HANDLE.a);
+    }
+    api.put(2, 13, HANDLE.b);
+  }
+
+  function drawTool(api, kind, m) {
+    api.clear();
+    if (kind !== 'sword') drawHandle(api);
+
+    if (kind === 'pickaxe') {
+      rectOn(api, 7, 1, 6, 1, m.c);
+      rectOn(api, 6, 2, 8, 2, m.a);
+      api.put(5, 3, m.a); api.put(14, 3, m.a);
+      api.put(4, 4, m.b); api.put(5, 4, m.a); api.put(13, 4, m.a); api.put(14, 4, m.b);
+      api.put(3, 5, m.b); api.put(15, 5, m.b);
+      for (let x = 6; x < 14; x++) api.put(x, 1, m.c);
+    } else if (kind === 'axe') {
+      rectOn(api, 8, 1, 4, 1, m.c);
+      rectOn(api, 7, 2, 6, 3, m.a);
+      rectOn(api, 8, 5, 4, 1, m.a);
+      rectOn(api, 9, 6, 2, 1, m.b);
+      for (let y = 2; y < 5; y++) api.put(7, y, m.c);
+      api.put(12, 2, m.b); api.put(12, 4, m.b);
+    } else if (kind === 'shovel') {
+      rectOn(api, 9, 1, 3, 1, m.c);
+      rectOn(api, 8, 2, 5, 3, m.a);
+      rectOn(api, 9, 5, 3, 1, m.a);
+      api.put(10, 6, m.b);
+      api.put(8, 2, m.c); api.put(12, 4, m.b);
+    } else if (kind === 'hoe') {
+      rectOn(api, 8, 1, 6, 2, m.a);
+      rectOn(api, 8, 3, 2, 2, m.a);
+      for (let x = 8; x < 14; x++) api.put(x, 1, m.c);
+      api.put(13, 2, m.b); api.put(9, 4, m.b);
+    } else if (kind === 'sword') {
+      api.put(2, 13, HANDLE.b); api.put(3, 13, HANDLE.b);
+      api.put(2, 12, HANDLE.b); api.put(3, 12, HANDLE.a);
+      api.put(4, 11, HANDLE.a); api.put(3, 11, HANDLE.b);
+      api.put(2, 10, m.b); api.put(3, 10, m.a); api.put(4, 10, m.a);
+      api.put(5, 11, m.a); api.put(5, 12, m.b); api.put(4, 12, m.a);
+      for (let i = 0; i < 8; i++) {
+        api.put(4 + i, 10 - i, m.a);
+        api.put(5 + i, 10 - i, m.c);
+      }
+      api.put(12, 2, m.a); api.put(13, 2, m.c); api.put(13, 1, m.c);
+    }
+  }
+
+  function drawArmor(api, piece, m) {
+    api.clear();
+    if (piece === 'helmet') {
+      rectOn(api, 4, 3, 8, 2, m.a);
+      rectOn(api, 3, 5, 10, 1, m.a);
+      rectOn(api, 3, 6, 2, 4, m.a);
+      rectOn(api, 11, 6, 2, 4, m.a);
+      rectOn(api, 5, 6, 6, 1, m.b);
+      for (let x = 4; x < 12; x++) api.put(x, 3, m.c);
+    } else if (piece === 'chestplate') {
+      rectOn(api, 3, 3, 3, 2, m.a);
+      rectOn(api, 10, 3, 3, 2, m.a);
+      rectOn(api, 4, 5, 8, 7, m.a);
+      rectOn(api, 3, 5, 1, 4, m.b);
+      rectOn(api, 12, 5, 1, 4, m.b);
+      for (let x = 4; x < 12; x++) api.put(x, 5, m.c);
+      rectOn(api, 7, 7, 2, 3, m.b);
+    } else if (piece === 'leggings') {
+      rectOn(api, 4, 2, 8, 3, m.a);
+      rectOn(api, 4, 5, 3, 7, m.a);
+      rectOn(api, 9, 5, 3, 7, m.a);
+      for (let x = 4; x < 12; x++) api.put(x, 2, m.c);
+      rectOn(api, 7, 5, 2, 2, m.b);
+    } else if (piece === 'boots') {
+      rectOn(api, 3, 6, 4, 4, m.a);
+      rectOn(api, 9, 6, 4, 4, m.a);
+      rectOn(api, 2, 10, 5, 2, m.b);
+      rectOn(api, 9, 10, 5, 2, m.b);
+      for (let x = 3; x < 7; x++) api.put(x, 6, m.c);
+      for (let x = 9; x < 13; x++) api.put(x, 6, m.c);
+    }
+  }
+
+  define('item_stick', (api) => {
+    api.clear();
+    for (let i = 0; i < 9; i++) {
+      api.put(10 - i, 4 + i, HANDLE.b);
+      api.put(11 - i, 4 + i, HANDLE.a);
+    }
+  });
+
+  define('item_coal', (api) => {
+    api.clear();
+    const blob = [[5, 4, 6, 2], [4, 6, 8, 4], [5, 10, 6, 2], [6, 3, 4, 1]];
+    for (const [x, y, w, h] of blob) rectOn(api, x, y, w, h, '#2b2b2b');
+    for (let i = 0; i < 14; i++) api.put(5 + Math.floor(rnd() * 6), 4 + Math.floor(rnd() * 8), pick(['#1a1a1a', '#3d3d3d', '#141414']));
+    api.put(6, 5, '#4f4f4f'); api.put(7, 5, '#4f4f4f');
+  });
+
+  function ingotTile(name, m) {
+    define(name, (api) => {
+      api.clear();
+      rectOn(api, 4, 6, 8, 4, m.a);
+      rectOn(api, 3, 7, 1, 2, m.b);
+      rectOn(api, 12, 7, 1, 2, m.b);
+      for (let x = 4; x < 12; x++) api.put(x, 6, m.c);
+      for (let x = 4; x < 12; x++) api.put(x, 9, m.b);
+      api.put(5, 7, m.c); api.put(6, 7, m.c);
+    });
+  }
+  ingotTile('item_iron_ingot', MAT.iron);
+  ingotTile('item_gold_ingot', MAT.gold);
+
+  define('item_diamond', (api) => {
+    api.clear();
+    const d = MAT.diamond;
+    rectOn(api, 6, 3, 4, 1, d.c);
+    rectOn(api, 5, 4, 6, 1, d.a);
+    rectOn(api, 4, 5, 8, 3, d.a);
+    rectOn(api, 5, 8, 6, 2, d.a);
+    rectOn(api, 6, 10, 4, 1, d.b);
+    rectOn(api, 7, 11, 2, 1, d.b);
+    api.put(6, 5, d.c); api.put(7, 4, d.c); api.put(5, 6, d.c);
+    api.put(10, 8, d.b); api.put(9, 9, d.b);
+  });
+
+  const TOOL_KINDS = ['pickaxe', 'axe', 'shovel', 'sword', 'hoe'];
+  const TOOL_TIERS = ['wood', 'stone', 'iron', 'gold', 'diamond'];
+  for (const tier of TOOL_TIERS) {
+    for (const kind of TOOL_KINDS) {
+      define('item_' + tier + '_' + kind, (api) => drawTool(api, kind, MAT[tier]));
+    }
+  }
+
+  const ARMOR_PIECES = ['helmet', 'chestplate', 'leggings', 'boots'];
+  const ARMOR_TIERS = ['iron', 'gold', 'diamond'];
+  for (const tier of ARMOR_TIERS) {
+    for (const piece of ARMOR_PIECES) {
+      define('item_' + tier + '_' + piece, (api) => drawArmor(api, piece, MAT[tier]));
+    }
+  }
+
   const texture = new THREE.CanvasTexture(atlas);
   texture.magFilter = THREE.NearestFilter;
   texture.minFilter = THREE.NearestFilter;
@@ -274,18 +482,22 @@
   }
 
   const iconCache = {};
-  function iconURL(tileIndex) {
-    if (iconCache[tileIndex]) return iconCache[tileIndex];
+  function iconURL(tileIndex, backdrop) {
+    const key = tileIndex + (backdrop ? 'b' : '');
+    if (iconCache[key]) return iconCache[key];
     const o = tileOrigin(tileIndex);
     const c = document.createElement('canvas');
     c.width = TILE; c.height = TILE;
     const ctx = c.getContext('2d');
-    // backdrop so see-through blocks (glass, leaves) stay readable as icons
-    ctx.fillStyle = '#9aa3ad';
-    ctx.fillRect(0, 0, TILE, TILE);
+    // see-through blocks (glass, leaves) need a backdrop to read as icons;
+    // items must stay transparent so their silhouette shows
+    if (backdrop) {
+      ctx.fillStyle = '#9aa3ad';
+      ctx.fillRect(0, 0, TILE, TILE);
+    }
     ctx.drawImage(atlas, o.x, o.y, TILE, TILE, 0, 0, TILE, TILE);
     const url = c.toDataURL();
-    iconCache[tileIndex] = url;
+    iconCache[key] = url;
     return url;
   }
 
@@ -333,14 +545,79 @@
     ' x     '
   ];
 
+  const ARMOR_ICON = [
+    ' xxxxx ',
+    'xaaaaax',
+    'xaaaaax',
+    'xaaaaax',
+    ' xaaax ',
+    '  xax  ',
+    '   x   '
+  ];
+  const HALF_ARMOR = [
+    ' xxxxx ',
+    'xaaxbbx',
+    'xaaxbbx',
+    'xaaxbbx',
+    ' xaxbx ',
+    '  xbx  ',
+    '   x   '
+  ];
+
+  // Steve-ish doll for the inventory preview; armour is painted over the base.
+  const SKIN = { base: '#c99b7c', dark: '#a87e61', hair: '#3b2a1c', shirt: '#2f9fa8', shirtDark: '#26838a', pants: '#3b4396', shoe: '#5a4632' };
+
+  function playerPreview(equipped) {
+    const W = 16, H = 32, S = 4;
+    const c = document.createElement('canvas');
+    c.width = W * S; c.height = H * S;
+    const ctx = c.getContext('2d');
+    const px = (x, y, color) => { ctx.fillStyle = color; ctx.fillRect(x * S, y * S, S, S); };
+    const box = (x, y, w, h, color) => { for (let i = 0; i < w; i++) for (let j = 0; j < h; j++) px(x + i, y + j, color); };
+
+    box(4, 1, 8, 7, SKIN.base);
+    box(4, 1, 8, 2, SKIN.hair);
+    px(3, 2, SKIN.hair); px(12, 2, SKIN.hair);
+    px(6, 4, '#ffffff'); px(9, 4, '#ffffff');
+    px(6, 5, '#3b5ea8'); px(9, 5, '#3b5ea8');
+    box(6, 6, 4, 1, SKIN.dark);
+
+    box(5, 8, 6, 8, SKIN.shirt);
+    box(3, 8, 2, 6, SKIN.shirt);
+    box(11, 8, 2, 6, SKIN.shirt);
+    box(3, 14, 2, 3, SKIN.base);
+    box(11, 14, 2, 3, SKIN.base);
+
+    box(5, 16, 3, 8, SKIN.pants);
+    box(8, 16, 3, 8, SKIN.pants);
+    box(5, 24, 3, 2, SKIN.shoe);
+    box(8, 24, 3, 2, SKIN.shoe);
+
+    const tint = { iron: MAT.iron, gold: MAT.gold, diamond: MAT.diamond };
+    if (equipped) {
+      const helm = tint[equipped.helmet];
+      if (helm) { box(4, 0, 8, 3, helm.a); px(3, 1, helm.b); px(12, 1, helm.b); box(4, 3, 8, 1, helm.b); }
+      const chest = tint[equipped.chestplate];
+      if (chest) { box(5, 8, 6, 7, chest.a); box(3, 8, 2, 4, chest.a); box(11, 8, 2, 4, chest.a); box(5, 8, 6, 1, chest.c); }
+      const legs = tint[equipped.leggings];
+      if (legs) { box(5, 15, 6, 4, legs.a); box(5, 19, 3, 3, legs.a); box(8, 19, 3, 3, legs.a); }
+      const boots = tint[equipped.boots];
+      if (boots) { box(5, 22, 3, 4, boots.a); box(8, 22, 3, 4, boots.a); }
+    }
+    return c.toDataURL();
+  }
+
   const icons = {
     heartFull: spriteFromMask(HEART, { x: '#3a0000', a: '#e02020' }, 3),
     heartHalf: spriteFromMask(HALF_HEART, { x: '#3a0000', a: '#e02020', b: '#4a4a4a' }, 3),
     heartEmpty: spriteFromMask(HEART, { x: '#1f1f1f', a: '#4a4a4a' }, 3),
     foodFull: spriteFromMask(FOOD, { x: '#2b1a0a', a: '#c98b3f', b: '#e8e0cf' }, 3),
     foodHalf: spriteFromMask(FOOD, { x: '#2b1a0a', a: '#8a7a5f', b: '#8a8377' }, 3),
-    foodEmpty: spriteFromMask(FOOD, { x: '#1f1f1f', a: '#4a4a4a', b: '#3a3a3a' }, 3)
+    foodEmpty: spriteFromMask(FOOD, { x: '#1f1f1f', a: '#4a4a4a', b: '#3a3a3a' }, 3),
+    armorFull: spriteFromMask(ARMOR_ICON, { x: '#1b1b1b', a: '#dfe6ef' }, 3),
+    armorHalf: spriteFromMask(HALF_ARMOR, { x: '#1b1b1b', a: '#dfe6ef', b: '#4a4a4a' }, 3),
+    armorEmpty: spriteFromMask(ARMOR_ICON, { x: '#1f1f1f', a: '#3d3d3d' }, 3)
   };
 
-  global.Textures = { texture, TILES, tileUV, crackTextures, iconURL, icons, atlasCanvas: atlas };
+  global.Textures = { texture, TILES, tileUV, crackTextures, iconURL, icons, playerPreview, atlasCanvas: atlas };
 })(window);

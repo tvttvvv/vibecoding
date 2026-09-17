@@ -180,7 +180,7 @@
       this.addExhaustion(moved * (this.sprinting ? 0.1 : 0.01));
     }
 
-    if (this.pos.y < -8) this.hurt(20);
+    if (this.pos.y < -8) this.hurt(20, true);
 
     this.updateStats(dt);
   };
@@ -220,7 +220,7 @@
       this.air -= dt;
       if (this.air <= 0) {
         this._drownTimer += dt;
-        if (this._drownTimer >= 2) { this._drownTimer = 0; this.hurt(2); }
+        if (this._drownTimer >= 2) { this._drownTimer = 0; this.hurt(2, true); }
         this.air = 0;
       }
     } else {
@@ -243,15 +243,23 @@
       this._starveTimer += dt;
       if (this._starveTimer >= 4) {
         this._starveTimer = 0;
-        if (this.health > 1) this.hurt(1);
+        if (this.health > 1) this.hurt(1, true);
       }
     } else {
       this._starveTimer = 0;
     }
   };
 
-  Player.prototype.hurt = function (amount) {
+  Player.prototype.hurt = function (amount, ignoreArmor) {
     if (this.mode !== 'survival' || this.dead) return;
+    if (!ignoreArmor && this.armorProvider) {
+      const points = this.armorProvider.armorPoints();
+      if (points > 0) {
+        amount = amount * (1 - Math.min(20, points) * 0.04);
+        this.armorProvider.damageArmor(1);
+      }
+    }
+    amount = Math.max(0, Math.round(amount * 2) / 2);
     this.health = Math.max(0, this.health - amount);
     this.hurtFlash = 0.35;
     if (this.health <= 0) this.dead = true;

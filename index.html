@@ -21,6 +21,7 @@
   <div id="hud">
     <div id="statusBars">
       <div id="airRow" class="iconRow hidden"></div>
+      <div id="armorRow" class="iconRow hidden"></div>
       <div id="foodRow" class="iconRow"></div>
       <div id="healthRow" class="iconRow"></div>
     </div>
@@ -48,10 +49,18 @@
   <div id="debugPanel" class="hidden"></div>
   <div id="hint" class="hidden"></div>
 
-  <div id="inventoryScreen" class="overlay hidden">
-    <h1 id="invTitle">인벤토리</h1>
-    <div id="invBody"></div>
-    <button id="invClose" class="bigBtn ghost">닫기</button>
+  <div id="screen" class="overlay hidden">
+    <div id="screenPanel">
+      <div id="screenHeader">
+        <span id="screenTitle">인벤토리</span>
+        <span class="headerSpacer"></span>
+        <button id="btnRecipeBook" class="panelBtn">제작법</button>
+        <button id="screenClose" class="panelBtn">닫기</button>
+      </div>
+      <div id="screenBody"></div>
+      <div id="heldFloat" class="hidden"></div>
+    </div>
+    <div id="recipeBook" class="hidden"></div>
   </div>
 
   <div id="deathScreen" class="overlay hidden">
@@ -68,11 +77,11 @@
 
   <div id="menuScreen" class="overlay">
     <h1>복셀 크래프트</h1>
-    <p>아이패드 터치로 즐기는 복셀 세계. 무한 지형, 강과 바다, 숲과 사막, 동굴과 광석이 기다립니다.</p>
+    <p>무한 지형, 강과 바다, 숲과 사막, 동굴과 광석. 캐고, 만들고, 살아남으세요.</p>
     <input id="seedInput" type="text" placeholder="시드 (비우면 랜덤)" autocomplete="off">
     <button class="bigBtn" data-start-mode="survival">서바이벌 시작</button>
     <button class="bigBtn alt" data-start-mode="creative">크리에이티브 시작</button>
-    <p>서바이벌: 체력·배고픔·산소, 중력과 낙하 피해, 블록을 캐서 모읍니다.<br>
+    <p>서바이벌: 체력·배고픔·산소, 도구와 갑옷 제작, 화로 제련.<br>
        크리에이티브: 비행, 무한 블록, 피해 없음.</p>
   </div>
 </div>
@@ -81,6 +90,8 @@
 <script src="js/noise.js"></script>
 <script src="js/textures.js"></script>
 <script src="js/blocks.js"></script>
+<script src="js/items.js"></script>
+<script src="js/recipes.js"></script>
 <script src="js/world.js"></script>
 <script src="js/player.js"></script>
 <script src="js/inventory.js"></script>
