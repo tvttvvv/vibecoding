@@ -7,12 +7,12 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>복셀 크래프트</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23795433'/><rect width='16' height='5' fill='%235d9c3c'/></svg>">
-<link rel="stylesheet" href="css/style.css?v=10">
+<link rel="stylesheet" href="css/style.css?v=11">
 <script>
 // GitHub Pages caches this page for ten minutes, so a new build can sit
 // unseen. Ask an uncached version file and reload once if we are behind.
 (function () {
-  var BUILD = 10;
+  var BUILD = 11;
   try {
     fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
       .then(function (r) { return r.json(); })
@@ -69,12 +69,29 @@
 
   <div id="topRight">
     <button id="btnRoom" class="mcbtn small hidden" aria-label="방">방</button>
+    <button id="btnChat" class="mcbtn small hidden" aria-label="채팅">💬</button>
     <button id="btnFly" class="mcbtn small hidden" aria-label="비행">✈</button>
     <button id="btnDebug" class="mcbtn small" aria-label="정보">i</button>
   </div>
 
   <div id="debugPanel" class="hidden"></div>
   <div id="hint" class="hidden"></div>
+  <div id="chatLog" class="hidden"></div>
+
+  <div id="chatScreen" class="overlay hidden">
+    <div id="chatPanel">
+      <div id="chatHeader">
+        <span>채팅</span>
+        <span class="headerSpacer"></span>
+        <button id="btnChatClose" class="panelBtn">닫기</button>
+      </div>
+      <div id="chatMessages"></div>
+      <div id="chatInputRow">
+        <input id="chatInput" type="text" maxlength="120" placeholder="메시지를 입력하세요" autocomplete="off">
+        <button id="btnChatSend" class="panelBtn">보내기</button>
+      </div>
+    </div>
+  </div>
 
   <div id="screen" class="overlay hidden">
     <div id="screenPanel">
@@ -93,8 +110,8 @@
   <div id="deathScreen" class="overlay hidden">
     <h2>당신은 죽었습니다</h2>
     <p>가지고 있던 아이템은 죽은 자리에 떨어졌습니다.</p>
-    <button class="bigBtn" data-respawn-mode="survival">서바이벌로 부활</button>
-    <button class="bigBtn alt" data-respawn-mode="creative">크리에이티브로 전환</button>
+    <button class="bigBtn" data-respawn-mode="survival">부활하기</button>
+    <button id="btnDeathCreative" class="bigBtn alt" data-respawn-mode="creative">크리에이티브로 전환</button>
   </div>
 
   <div id="loadingScreen" class="overlay hidden">
@@ -114,7 +131,7 @@
 
   <div id="menuScreen" class="overlay">
     <h1>복셀 크래프트</h1>
-    <p class="buildTag">버전 v10</p>
+    <p class="buildTag">버전 v11</p>
 
     <div id="menuMain" class="menuPage">
       <p>무한 지형, 강과 바다, 숲과 사막, 동굴과 광석. 캐고, 만들고, 살아남으세요.</p>
@@ -154,17 +171,17 @@
 
 <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/noise.js?v=10"></script>
-<script src="js/textures.js?v=10"></script>
-<script src="js/blocks.js?v=10"></script>
-<script src="js/items.js?v=10"></script>
-<script src="js/recipes.js?v=10"></script>
-<script src="js/world.js?v=10"></script>
-<script src="js/player.js?v=10"></script>
-<script src="js/inventory.js?v=10"></script>
-<script src="js/net.js?v=10"></script>
-<script src="js/controls.js?v=10"></script>
-<script src="js/ui.js?v=10"></script>
-<script src="js/game.js?v=10"></script>
+<script src="js/noise.js?v=11"></script>
+<script src="js/textures.js?v=11"></script>
+<script src="js/blocks.js?v=11"></script>
+<script src="js/items.js?v=11"></script>
+<script src="js/recipes.js?v=11"></script>
+<script src="js/world.js?v=11"></script>
+<script src="js/player.js?v=11"></script>
+<script src="js/inventory.js?v=11"></script>
+<script src="js/net.js?v=11"></script>
+<script src="js/controls.js?v=11"></script>
+<script src="js/ui.js?v=11"></script>
+<script src="js/game.js?v=11"></script>
 </body>
 </html>

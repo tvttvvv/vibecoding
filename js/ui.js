@@ -36,6 +36,87 @@
     });
 
     this.initMenu();
+    this.initChat();
+  };
+
+  // ------------------------------------------------------------------- chat
+  UI.chatHistory = [];
+
+  UI.initChat = function () {
+    Controls.bindTap(el('btnChat'), () => this.openChat());
+    Controls.bindTap(el('btnChatClose'), () => this.closeChat());
+    Controls.bindTap(el('btnChatSend'), () => this.sendChat());
+    el('chatInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); this.sendChat(); }
+    });
+  };
+
+  UI.openChat = function () {
+    if (!Net.active) return;
+    el('chatScreen').classList.remove('hidden');
+    this.renderChat();
+    setTimeout(() => el('chatInput').focus(), 50);
+  };
+
+  UI.closeChat = function () {
+    el('chatScreen').classList.add('hidden');
+    el('chatInput').blur();
+  };
+
+  UI.sendChat = function () {
+    const input = el('chatInput');
+    const text = input.value.trim();
+    input.value = '';
+    if (!text) return;
+    Net.sendChat(text.slice(0, 120));
+    input.focus();
+  };
+
+  UI.addChat = function (from, text, system) {
+    this.chatHistory.push({ from, text, system: !!system });
+    if (this.chatHistory.length > 80) this.chatHistory.shift();
+    this.renderChat();
+    this.showChatLog();
+  };
+
+  UI.chatLine = function (entry) {
+    const row = document.createElement('div');
+    row.className = 'chatLine' + (entry.system ? ' system' : '');
+    if (entry.system) {
+      row.textContent = entry.text;
+    } else {
+      const who = document.createElement('span');
+      who.className = 'chatWho';
+      who.textContent = '<' + entry.from + '> ';
+      row.appendChild(who);
+      row.appendChild(document.createTextNode(entry.text));
+    }
+    return row;
+  };
+
+  UI.renderChat = function () {
+    const box = el('chatMessages');
+    if (!el('chatScreen').classList.contains('hidden')) {
+      box.innerHTML = '';
+      for (const entry of this.chatHistory) box.appendChild(this.chatLine(entry));
+      box.scrollTop = box.scrollHeight;
+    }
+    const log = el('chatLog');
+    log.innerHTML = '';
+    for (const entry of this.chatHistory.slice(-5)) log.appendChild(this.chatLine(entry));
+  };
+
+  UI.showChatLog = function () {
+    const log = el('chatLog');
+    log.classList.remove('hidden');
+    clearTimeout(this._chatLogTimer);
+    this._chatLogTimer = setTimeout(() => log.classList.add('hidden'), 9000);
+  };
+
+  UI.resetChat = function () {
+    this.chatHistory = [];
+    el('chatLog').classList.add('hidden');
+    this.closeChat();
   };
 
   // ------------------------------------------------------------------ menus
@@ -118,8 +199,13 @@
   UI.renderRoom = function () {
     const on = Net.active;
     el('btnRoom').classList.toggle('hidden', !on);
+    el('btnChat').classList.toggle('hidden', !on);
     if (on) el('btnRoom').textContent = Net.playerCount();
-    if (!on) { el('roomScreen').classList.add('hidden'); return; }
+    if (!on) {
+      el('roomScreen').classList.add('hidden');
+      this.closeChat();
+      return;
+    }
 
     el('roomCodeBig').textContent = Net.code || '------';
     el('roomHostNote').textContent = Net.isHost
@@ -861,7 +947,11 @@
 
   UI.showMenu = function () { el('menuScreen').classList.remove('hidden'); };
   UI.hideMenu = function () { el('menuScreen').classList.add('hidden'); };
-  UI.showDeath = function () { el('deathScreen').classList.remove('hidden'); };
+  UI.showDeath = function () {
+    // the room's mode is the host's call; switching would also dodge item loss
+    el('btnDeathCreative').classList.toggle('hidden', Net.active);
+    el('deathScreen').classList.remove('hidden');
+  };
   UI.hideDeath = function () { el('deathScreen').classList.add('hidden'); };
 
   UI.setLoading = function (visible, text) {

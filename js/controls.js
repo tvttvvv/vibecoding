@@ -254,6 +254,11 @@
 
   function initKeyboardFallback() {
     const keys = {};
+    // typing in the chat box or a menu field must not drive the player
+    const typing = (e) => {
+      const t = e.target;
+      return t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+    };
     const apply = () => {
       state.move.x = (keys['d'] ? 1 : 0) - (keys['a'] ? 1 : 0);
       state.move.y = (keys['w'] ? 1 : 0) - (keys['s'] ? 1 : 0);
@@ -261,8 +266,16 @@
       state.up = !!keys[' '];
       state.down = !!keys['shift'];
     };
-    window.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; apply(); });
-    window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; apply(); });
+    window.addEventListener('keydown', (e) => {
+      if (typing(e)) return;
+      keys[e.key.toLowerCase()] = true;
+      apply();
+    });
+    window.addEventListener('keyup', (e) => {
+      if (typing(e)) { return; }
+      keys[e.key.toLowerCase()] = false;
+      apply();
+    });
   }
 
   function tickHold() {

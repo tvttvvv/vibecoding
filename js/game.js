@@ -279,8 +279,9 @@
       getSpawn: () => this.spawnPoint,
       onEdit: (msg) => this.applyRemoteEdit(msg),
       onRoster: () => UI.renderRoom(),
-      onPlayerJoin: (id, p) => { UI.toast(p.name + ' 님이 참여했어요', 2600); UI.renderRoom(); },
-      onPlayerLeave: (id, p) => { UI.toast((p ? p.name : '플레이어') + ' 님이 나갔어요', 2600); UI.renderRoom(); },
+      onChat: (from, text) => UI.addChat(from, text),
+      onPlayerJoin: (id, p) => { UI.addChat(null, p.name + ' 님이 참여했어요', true); UI.renderRoom(); },
+      onPlayerLeave: (id, p) => { UI.addChat(null, (p ? p.name : '플레이어') + ' 님이 나갔어요', true); UI.renderRoom(); },
       onDisconnect: () => { UI.toast('방 연결이 끊어졌어요', 4000); this.clearAvatars(); UI.renderRoom(); },
       onHostClosed: () => { UI.toast('방장이 방을 닫았어요', 4000); this.clearAvatars(); UI.renderRoom(); }
     };
@@ -334,6 +335,7 @@
   Game.leaveRoom = function () {
     Net.leave();
     this.clearAvatars();
+    UI.resetChat();
     UI.renderRoom();
     UI.toast('방에서 나왔어요', 2200);
   };
@@ -663,6 +665,7 @@
   };
 
   Game.respawn = function (mode) {
+    if (Net.active) mode = this.mode;
     if (mode && mode !== this.mode) {
       this.mode = mode;
       this.player.mode = mode;
