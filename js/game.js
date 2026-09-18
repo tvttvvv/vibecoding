@@ -5,6 +5,7 @@
   const el = (id) => document.getElementById(id);
   const DAY_LENGTH = 1200;
   const REACH = 5.2;
+  const ATTACK_REACH = 4.0;
 
   const SKY_DAY = new THREE.Color(0x88c6ff);
   const SKY_NIGHT = new THREE.Color(0x070b1c);
@@ -252,6 +253,7 @@
       if (!a || a.name !== p.name) {
         if (a) this.scene.remove(a.group);
         const group = this.makeAvatar(p.name);
+        group.userData.playerId = id;
         group.position.set(p.x, p.y, p.z);
         this.scene.add(group);
         a = this.avatars[id] = { group, name: p.name };
@@ -279,7 +281,8 @@
       getSpawn: () => this.spawnPoint,
       onEdit: (msg) => this.applyRemoteEdit(msg),
       onRoster: () => UI.renderRoom(),
-      onChat: (from, text) => UI.addChat(from, text),
+      onChat: (from, text, sys) => UI.addChat(from, text, sys),
+      onHit: (msg) => this.takeHit(msg),
       onPlayerJoin: (id, p) => { UI.addChat(null, p.name + ' 님이 참여했어요', true); UI.renderRoom(); },
       onPlayerLeave: (id, p) => { UI.addChat(null, (p ? p.name : '플레이어') + ' 님이 나갔어요', true); UI.renderRoom(); },
       onDisconnect: () => { UI.toast('방 연결이 끊어졌어요', 4000); this.clearAvatars(); UI.renderRoom(); },
@@ -392,6 +395,7 @@
 
   Game.tryPlace = function (screenX, screenY) {
     if (this.paused || !this.started || this.player.dead) return;
+    if (screenX !== undefined && this.tryAttack(screenX, screenY)) return;
     const hit = screenX === undefined ? this.currentTarget() : this.targetAt(screenX, screenY);
     if (!hit) return;
 
@@ -419,6 +423,71 @@
       if (this.mode === 'survival') this.inventory.consumeSelected();
       else UI.renderHotbar();
     }
+  };
+
+  // ------------------------------------------------------------------ combat
+  Game.avatarAt = function (screenX, screenY) {
+    const groups = [];
+    for (const id in this.avatars) groups.push(this.avatars[id].group);
+    if (!groups.length) return null;
+
+    this._ndc = this._ndc || new THREE.Vector2();
+    this._caster = this._caster || new THREE.Raycaster();
+    this._ndc.set(
+      (screenX / window.innerWidth) * 2 - 1,
+      -(screenY / window.innerHeight) * 2 + 1
+    );
+    this._caster.setFromCamera(this._ndc, this.camera);
+    this._caster.far = ATTACK_REACH;
+    const hits = this._caster.intersectObjects(groups, true);
+    this._caster.far = Infinity;
+    if (!hits.length) return null;
+
+    let node = hits[0].object;
+    while (node && !node.userData.playerId) node = node.parent;
+    if (!node) return null;
+    return { id: node.userData.playerId, distance: hits[0].distance };
+  };
+
+  Game.tryAttack = function (screenX, screenY) {
+    if (!Net.active) return false;
+    const now = performance.now();
+    if (now - (this._lastAttack || 0) < 450) return false;
+
+    const target = this.avatarAt(screenX, screenY);
+    if (!target) return false;
+
+    // a wall between us blocks the swing
+    const block = this.targetAt(screenX, screenY);
+    if (block && block.dist < target.distance) return false;
+
+    const victim = Net.players[target.id];
+    if (!victim) return false;
+    this._lastAttack = now;
+
+    const stack = this.inventory.selectedStack();
+    const def = stack ? Items.get(stack.id) : null;
+    const damage = def && def.damage ? def.damage : 1;
+
+    const p = this.player;
+    let kx = victim.x - p.pos.x, kz = victim.z - p.pos.z;
+    const len = Math.hypot(kx, kz) || 1;
+    kx /= len; kz /= len;
+
+    Net.sendHit(target.id, damage, kx, kz);
+    if (def && def.tool && this.mode === 'survival') this.inventory.damageSelected(1);
+    UI.toast(victim.name + ' 을(를) 공격! (' + damage + ')', 900);
+    return true;
+  };
+
+  Game.takeHit = function (msg) {
+    const p = this.player;
+    if (p.dead || this.mode !== 'survival') return;
+    p.hurt(msg.dmg || 1);
+    p.knockX = (msg.kx || 0) * 4;
+    p.knockZ = (msg.kz || 0) * 4;
+    if (p.onGround) p.vel.y = 4.6;
+    this._lastAttacker = { name: msg.from, at: performance.now() };
   };
 
   Game.entityKey = function (x, y, z) { return x + ',' + y + ',' + z; };
@@ -512,25 +581,45 @@
 
   Game.updateMining = function (dt) {
     const m = this.mining;
-    const hit = Controls.state.mining && !this.paused && !this.player.dead
-      ? this.targetAt(Controls.state.pointX, Controls.state.pointY)
-      : null;
-
-    if (!hit) {
+    if (!Controls.state.mining || this.paused || this.player.dead) {
       m.target = null;
       m.progress = 0;
       this.crackMesh.visible = false;
       return;
     }
 
-    if (!m.target || m.target.x !== hit.x || m.target.y !== hit.y || m.target.z !== hit.z) {
-      m.target = { x: hit.x, y: hit.y, z: hit.z };
+    // Bedrock keeps breaking the block you grabbed while you walk and turn, so
+    // the target is locked on the first frame instead of re-aimed every frame.
+    if (!m.target) {
+      const hit = this.targetAt(Controls.state.pointX, Controls.state.pointY);
+      if (!hit) { this.crackMesh.visible = false; return; }
+      m.target = { x: hit.x, y: hit.y, z: hit.z, id: hit.id };
       m.progress = 0;
+    }
+
+    const here = this.world.getBlock(m.target.x, m.target.y, m.target.z);
+    if (here !== m.target.id) {
+      m.target = null;
+      m.progress = 0;
+      this.crackMesh.visible = false;
+      return;
+    }
+
+    const p = this.player;
+    const dx = m.target.x + 0.5 - p.pos.x;
+    const dy = m.target.y + 0.5 - p.eyeY();
+    const dz = m.target.z + 0.5 - p.pos.z;
+    const maxDist = REACH + 1.5;
+    if (dx * dx + dy * dy + dz * dz > maxDist * maxDist) {
+      m.target = null;
+      m.progress = 0;
+      this.crackMesh.visible = false;
+      return;
     }
 
     const stack = this.inventory.selectedStack();
     const toolDef = stack ? Items.get(stack.id) : null;
-    const seconds = this.mode === 'creative' ? 0.12 : B.mineTime(hit.id, toolDef);
+    const seconds = this.mode === 'creative' ? 0.12 : B.mineTime(here, toolDef);
     if (!isFinite(seconds)) {
       this.crackMesh.visible = false;
       return;
@@ -538,7 +627,7 @@
 
     m.progress += dt / seconds;
     if (m.progress >= 1) {
-      this.breakBlock(hit.x, hit.y, hit.z, hit.id);
+      this.breakBlock(m.target.x, m.target.y, m.target.z, here);
       m.target = null;
       m.progress = 0;
       this.crackMesh.visible = false;
@@ -548,7 +637,7 @@
     const stage = Math.min(3, Math.floor(m.progress * 4));
     this.crackMaterial.map = Textures.crackTextures[stage];
     this.crackMaterial.needsUpdate = true;
-    this.crackMesh.position.set(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5);
+    this.crackMesh.position.set(m.target.x + 0.5, m.target.y + 0.5, m.target.z + 0.5);
     this.crackMesh.visible = true;
   };
 
@@ -701,6 +790,14 @@
       this.inventory.clear();
       if (UI.screen) UI.closeScreen();
     }
+    if (Net.active) {
+      const killer = this._lastAttacker;
+      const recent = killer && performance.now() - killer.at < 8000;
+      Net.sendSystem(recent
+        ? Net.name + ' 님이 ' + killer.name + ' 님에게 당했습니다'
+        : Net.name + ' 님이 사망했습니다');
+    }
+    this._lastAttacker = null;
     UI.showDeath();
   };
 

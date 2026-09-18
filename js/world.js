@@ -571,7 +571,7 @@
     while (t <= maxDist) {
       const id = this.getBlock(x, y, z);
       if (id !== B.AIR && B.byId[id].solid) {
-        return { x, y, z, id, nx, ny, nz };
+        return { x, y, z, id, nx, ny, nz, dist: t };
       }
       if (tMaxX < tMaxY && tMaxX < tMaxZ) {
         x += stepX; t = tMaxX; tMaxX += tDeltaX; nx = -stepX; ny = 0; nz = 0;

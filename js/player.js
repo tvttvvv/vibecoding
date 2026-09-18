@@ -46,6 +46,8 @@
     this.air = MAX_AIR;
     this.dead = false;
 
+    this.knockX = 0;
+    this.knockZ = 0;
     this.fallStartY = this.pos.y;
     this._regenTimer = 0;
     this._starveTimer = 0;
@@ -194,6 +196,16 @@
           this.vel.y = JUMP_V;
         }
       }
+    }
+
+    if (this.knockX || this.knockZ) {
+      this._moveAxis(world, 'x', this.knockX * dt);
+      this._moveAxis(world, 'z', this.knockZ * dt);
+      const decay = Math.max(0, 1 - dt * 6);
+      this.knockX *= decay;
+      this.knockZ *= decay;
+      if (Math.abs(this.knockX) < 0.08) this.knockX = 0;
+      if (Math.abs(this.knockZ) < 0.08) this.knockZ = 0;
     }
 
     const moved = Math.hypot(this.pos.x - prevX, this.pos.z - prevZ);

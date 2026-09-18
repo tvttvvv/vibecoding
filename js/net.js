@@ -197,6 +197,17 @@
       return;
     }
 
+    if (msg.t === 'hit') {
+      const from = this.players[conn.id] ? this.players[conn.id].name : '?';
+      const payload = { t: 'hit', dmg: msg.dmg, kx: msg.kx, kz: msg.kz, from };
+      if (msg.to === 'host') {
+        if (this.handlers.onHit) this.handlers.onHit(payload);
+      } else if (this.conns[msg.to]) {
+        this.conns[msg.to].send(payload);
+      }
+      return;
+    }
+
     if (msg.t === 'bye') {
       if (conn.onClose) conn.onClose();
       conn.close();
@@ -205,6 +216,11 @@
 
     if (msg.t === 'chat') {
       const text = String(msg.text || '').slice(0, 120);
+      if (msg.sys) {
+        this._broadcast({ t: 'chat', sys: true, text });
+        if (this.handlers.onChat) this.handlers.onChat(null, text, true);
+        return;
+      }
       const from = this.players[conn.id] ? this.players[conn.id].name : '?';
       this._broadcast({ t: 'chat', from, text });
       if (this.handlers.onChat) this.handlers.onChat(from, text);
@@ -294,7 +310,14 @@
       return;
     }
 
-    if (msg.t === 'chat' && this.handlers.onChat) this.handlers.onChat(msg.from, msg.text);
+    if (msg.t === 'hit') {
+      if (this.handlers.onHit) this.handlers.onHit(msg);
+      return;
+    }
+
+    if (msg.t === 'chat' && this.handlers.onChat) {
+      this.handlers.onChat(msg.sys ? null : msg.from, msg.text, !!msg.sys);
+    }
   };
 
   // ---------------------------------------------------------------- sending
@@ -325,6 +348,26 @@
     const msg = { t: 'edit', x, y, z, id };
     if (this.isHost) this._broadcast(msg);
     else if (this.hostConn) this.hostConn.send(msg);
+  };
+
+  Net.sendHit = function (targetId, dmg, kx, kz) {
+    if (!this.active || targetId === this.myId) return;
+    if (this.isHost) {
+      const c = this.conns[targetId];
+      if (c) c.send({ t: 'hit', dmg, kx, kz, from: this.name });
+    } else if (this.hostConn) {
+      this.hostConn.send({ t: 'hit', to: targetId, dmg, kx, kz });
+    }
+  };
+
+  Net.sendSystem = function (text) {
+    if (!this.active) return;
+    if (this.isHost) {
+      this._broadcast({ t: 'chat', sys: true, text });
+      if (this.handlers.onChat) this.handlers.onChat(null, text, true);
+    } else if (this.hostConn) {
+      this.hostConn.send({ t: 'chat', sys: true, text });
+    }
   };
 
   Net.sendChat = function (text) {

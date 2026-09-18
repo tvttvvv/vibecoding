@@ -188,7 +188,8 @@
         const total = Math.hypot(t.clientX - lookTouch.startX, t.clientY - lookTouch.startY);
         if (total > DRAG_THRESHOLD) {
           lookTouch.dragged = true;
-          state.mining = false;
+          // once a break has latched, looking around must not cancel it
+          if (!lookTouch.mining) state.mining = false;
         }
         if (lookTouch.dragged) {
           state.lookDX += dx;
@@ -239,7 +240,7 @@
       lookTouch.y = e.clientY;
       if (Math.hypot(e.clientX - lookTouch.startX, e.clientY - lookTouch.startY) > DRAG_THRESHOLD) {
         lookTouch.dragged = true;
-        state.mining = false;
+        if (!lookTouch.mining) state.mining = false;
       }
       if (lookTouch.dragged) { state.lookDX += dx; state.lookDY += dy; }
     });
@@ -279,11 +280,13 @@
   }
 
   function tickHold() {
-    if (lookTouch && !lookTouch.dragged && performance.now() - lookTouch.startTime > HOLD_MS) {
-      state.mining = true;
-      state.pointX = lookTouch.startX;
-      state.pointY = lookTouch.startY;
-    }
+    if (!lookTouch || lookTouch.mining) return;
+    if (lookTouch.dragged) return;
+    if (performance.now() - lookTouch.startTime <= HOLD_MS) return;
+    lookTouch.mining = true;
+    state.mining = true;
+    state.pointX = lookTouch.startX;
+    state.pointY = lookTouch.startY;
   }
 
   function consumeLook() {
@@ -293,5 +296,13 @@
     return d;
   }
 
-  global.Controls = { state, init, tickHold, consumeLook, bindTap, bindHold, markTouch, recentTouch, LOOK_SENS };
+  function debug() {
+    return {
+      look: lookTouch ? { dragged: !!lookTouch.dragged, mining: !!lookTouch.mining, age: Math.round(performance.now() - lookTouch.startTime) } : null,
+      joy: joyTouch !== null,
+      mining: state.mining
+    };
+  }
+
+  global.Controls = { state, init, tickHold, consumeLook, bindTap, bindHold, markTouch, recentTouch, debug, LOOK_SENS };
 })(window);
