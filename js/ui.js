@@ -143,6 +143,10 @@
     });
     Controls.bindTap(el('btnGoJoin'), () => this.showMenuPage('menuJoin'));
 
+    for (const btn of document.querySelectorAll('[data-public-mode]')) {
+      Controls.bindTap(btn, () => game.enterPublic(btn.dataset.publicMode));
+    }
+
     for (const btn of document.querySelectorAll('[data-create-mode]')) {
       Controls.bindTap(btn, () => {
         const code = Net.normalizeCode(el('roomCodeInput').value);
@@ -191,7 +195,8 @@
       'server-error': '접속 서버에 연결할 수 없어요. 인터넷 상태를 확인해 주세요.',
       'socket-error': '접속 서버와 통신이 끊겼어요. 잠시 후 다시 시도해 주세요.',
       'disconnected': '접속 서버와 연결이 끊겼어요. 다시 시도해 주세요.',
-      'webrtc': '기기 간 직접 연결에 실패했어요. 같은 와이파이에서 시도해 보세요.'
+      'webrtc': '기기 간 직접 연결에 실패했어요. 같은 와이파이에서 시도해 보세요.',
+      'room-full': '방이 가득 찼어요. 잠시 후 다시 시도해 주세요.'
     };
     return map[err] || ('연결에 실패했어요 (' + err + ')');
   };
@@ -207,10 +212,14 @@
       return;
     }
 
-    el('roomCodeBig').textContent = Net.code || '------';
-    el('roomHostNote').textContent = Net.isHost
-      ? '내가 방장입니다. 이 코드를 친구에게 알려주세요.'
-      : '방장의 세계에 참여 중입니다.';
+    const pub = this.game.publicRoom(Net.code);
+    el('roomCodeBig').textContent = pub ? '공개' : (Net.code || '------');
+    el('roomCodeBig').classList.toggle('publicTag', !!pub);
+    el('roomHostNote').textContent = pub
+      ? pub.label + ' · 코드 없이 누구나 들어올 수 있어요' + (Net.isHost ? ' (내가 방장)' : '')
+      : (Net.isHost
+        ? '내가 방장입니다. 이 코드를 친구에게 알려주세요.'
+        : '방장의 세계에 참여 중입니다.');
 
     const list = el('roomPlayers');
     list.innerHTML = '';

@@ -360,6 +360,8 @@ img { image-rendering: pixelated; -ms-interpolation-mode: nearest-neighbor; }
   background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.18);
 }
 #btnRoom { font-weight: 700; }
+.menuDivider { width: 250px; height: 2px; background: rgba(255,255,255,0.18); }
+#roomCodeBig.publicTag { letter-spacing: 4px; color: #7ee081; }
 
 /* ---------------------------------------------------------------- chat */
 #chatLog {

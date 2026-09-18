@@ -7,6 +7,15 @@
   const REACH = 5.2;
   const ATTACK_REACH = 4.0;
 
+  // Anyone can walk into these without a code. There is no directory service on
+  // static hosting, so the address is simply agreed in advance: whoever arrives
+  // first opens the room and everyone after that joins it. The seed is fixed so
+  // the world is the same world every time it is reopened.
+  const PUBLIC_ROOMS = {
+    survival: { code: 'VXOPEN1', seed: 1120480013, label: '공개 서버 · 서바이벌' },
+    creative: { code: 'VXOPEN2', seed: 1734905287, label: '공개 서버 · 크리에이티브' }
+  };
+
   const SKY_DAY = new THREE.Color(0x88c6ff);
   const SKY_NIGHT = new THREE.Color(0x070b1c);
   const SKY_DUSK = new THREE.Color(0xf2a45c);
@@ -307,25 +316,86 @@
     this.start(mode, seedText, { seed });
   };
 
+  Game.publicRoom = function (code) {
+    for (const mode in PUBLIC_ROOMS) {
+      if (PUBLIC_ROOMS[mode].code === code) return PUBLIC_ROOMS[mode];
+    }
+    return null;
+  };
+
+  Game.enterPublic = function (mode) {
+    const room = PUBLIC_ROOMS[mode];
+    if (!room) return;
+    UI.hideMenu();
+    UI.setLoading(true, '공개 서버를 찾는 중...');
+    this._publicTries = 0;
+    this._joinPublic(room, mode);
+  };
+
+  Game._joinPublic = function (room, mode) {
+    this._publicTries++;
+    const name = UI.playerName();
+    const handlers = this.netHandlers();
+    handlers.onWelcome = (msg) => this.onWelcome(msg, room.code);
+    handlers.onError = (err) => {
+      const nobodyHome = err === 'peer-unavailable' || err === 'timeout';
+      if (nobodyHome && this._publicTries <= 3) {
+        UI.setLoading(true, '아무도 없어서 내가 방을 엽니다...');
+        this._hostPublic(room, mode);
+        return;
+      }
+      this._publicFailed(err);
+    };
+    Net.joinRoom(room.code, name, handlers);
+  };
+
+  Game._hostPublic = function (room, mode) {
+    this._publicTries++;
+    const name = UI.playerName();
+    const handlers = this.netHandlers();
+    handlers.onReady = () => {
+      UI.setNetStatus('');
+      this.start(mode, '', { seed: room.seed });
+      UI.toast('공개 서버를 열었습니다. 누구나 들어올 수 있어요.', 4000);
+      UI.renderRoom();
+    };
+    handlers.onError = (err) => {
+      // someone opened it a moment before us, so join theirs instead
+      if (err === 'unavailable-id' && this._publicTries <= 3) {
+        UI.setLoading(true, '공개 서버에 접속하는 중...');
+        this._joinPublic(room, mode);
+        return;
+      }
+      this._publicFailed(err);
+    };
+    Net.createRoom(room.code, name, { seed: room.seed, mode }, handlers);
+  };
+
+  Game._publicFailed = function (err) {
+    Net.reset();
+    UI.setLoading(false);
+    UI.showMenu();
+    UI.setNetStatus(UI.netErrorText(err));
+  };
+
+  Game.onWelcome = function (msg, code) {
+    this.start(msg.mode, '', { seed: msg.seed, edits: msg.edits, dayTime: msg.dayTime });
+    if (msg.spawn) {
+      this.spawnPoint = msg.spawn;
+      this.player.pos.x = msg.spawn.x;
+      this.player.pos.y = msg.spawn.y + 1;
+      this.player.pos.z = msg.spawn.z;
+    }
+    const room = this.publicRoom(code);
+    UI.toast(room ? room.label + ' 에 접속했어요' : '방 ' + code + ' 에 참여했어요', 3000);
+    UI.renderRoom();
+  };
+
   Game.joinRoom = function (code, name) {
     UI.hideMenu();
     UI.setLoading(true, '방에 접속하는 중...');
     const handlers = this.netHandlers();
-    handlers.onWelcome = (msg) => {
-      this.start(msg.mode, '', {
-        seed: msg.seed,
-        edits: msg.edits,
-        dayTime: msg.dayTime
-      });
-      if (msg.spawn) {
-        this.spawnPoint = msg.spawn;
-        this.player.pos.x = msg.spawn.x;
-        this.player.pos.y = msg.spawn.y + 1;
-        this.player.pos.z = msg.spawn.z;
-      }
-      UI.toast('방 ' + code + ' 에 참여했어요', 3000);
-      UI.renderRoom();
-    };
+    handlers.onWelcome = (msg) => this.onWelcome(msg, code);
     handlers.onError = (err) => {
       Net.reset();
       UI.setLoading(false);
@@ -923,6 +993,8 @@
     UI.showMenu();
     this.loop();
   };
+
+  Game.PUBLIC_ROOMS = PUBLIC_ROOMS;
 
   global.Game = Game;
   window.addEventListener('load', () => Game.boot());

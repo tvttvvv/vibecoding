@@ -7,12 +7,12 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>복셀 크래프트</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23795433'/><rect width='16' height='5' fill='%235d9c3c'/></svg>">
-<link rel="stylesheet" href="css/style.css?v=12">
+<link rel="stylesheet" href="css/style.css?v=13">
 <script>
 // GitHub Pages caches this page for ten minutes, so a new build can sit
 // unseen. Ask an uncached version file and reload once if we are behind.
 (function () {
-  var BUILD = 12;
+  var BUILD = 13;
   try {
     fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
       .then(function (r) { return r.json(); })
@@ -131,7 +131,7 @@
 
   <div id="menuScreen" class="overlay">
     <h1>복셀 크래프트</h1>
-    <p class="buildTag">버전 v12</p>
+    <p class="buildTag">버전 v13</p>
 
     <div id="menuMain" class="menuPage">
       <p>무한 지형, 강과 바다, 숲과 사막, 동굴과 광석. 캐고, 만들고, 살아남으세요.</p>
@@ -142,10 +142,13 @@
     </div>
 
     <div id="menuMulti" class="menuPage hidden">
-      <p>친구와 같은 세계에서 함께 플레이합니다. 방장이 만든 코드를 친구에게 알려주세요.</p>
       <input id="nameInput" type="text" placeholder="닉네임" maxlength="12" autocomplete="off">
-      <button id="btnGoCreate" class="bigBtn">방 만들기</button>
-      <button id="btnGoJoin" class="bigBtn alt">코드로 참여하기</button>
+      <button class="bigBtn" data-public-mode="survival">공개 서버 입장 · 서바이벌</button>
+      <button class="bigBtn alt" data-public-mode="creative">공개 서버 입장 · 크리에이티브</button>
+      <p>공개 서버는 코드 없이 누구나 들어올 수 있습니다. 아무도 없으면 내가 방장이 됩니다.</p>
+      <div class="menuDivider"></div>
+      <button id="btnGoCreate" class="bigBtn ghost">비공개 방 만들기</button>
+      <button id="btnGoJoin" class="bigBtn ghost">코드로 참여하기</button>
       <button class="bigBtn ghost" data-menu-back="menuMain">뒤로</button>
     </div>
 
@@ -171,17 +174,17 @@
 
 <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/noise.js?v=12"></script>
-<script src="js/textures.js?v=12"></script>
-<script src="js/blocks.js?v=12"></script>
-<script src="js/items.js?v=12"></script>
-<script src="js/recipes.js?v=12"></script>
-<script src="js/world.js?v=12"></script>
-<script src="js/player.js?v=12"></script>
-<script src="js/inventory.js?v=12"></script>
-<script src="js/net.js?v=12"></script>
-<script src="js/controls.js?v=12"></script>
-<script src="js/ui.js?v=12"></script>
-<script src="js/game.js?v=12"></script>
+<script src="js/noise.js?v=13"></script>
+<script src="js/textures.js?v=13"></script>
+<script src="js/blocks.js?v=13"></script>
+<script src="js/items.js?v=13"></script>
+<script src="js/recipes.js?v=13"></script>
+<script src="js/world.js?v=13"></script>
+<script src="js/player.js?v=13"></script>
+<script src="js/inventory.js?v=13"></script>
+<script src="js/net.js?v=13"></script>
+<script src="js/controls.js?v=13"></script>
+<script src="js/ui.js?v=13"></script>
+<script src="js/game.js?v=13"></script>
 </body>
 </html>

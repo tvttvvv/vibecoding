@@ -7,6 +7,7 @@
   const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const ID_PREFIX = 'vxlcraft-';
   const POS_INTERVAL = 80;
+  const MAX_GUESTS = 7;
 
   function randomCode(len) {
     let out = '';
@@ -160,6 +161,12 @@
   Net._hostMessage = function (conn, msg) {
     if (!msg || !msg.t) return;
     if (msg.t === 'hello') {
+      // the host relays for everyone, so keep a public room to a sane size
+      if (Object.keys(this.players).length >= MAX_GUESTS) {
+        conn.send({ t: 'full' });
+        setTimeout(() => conn.close(), 200);
+        return;
+      }
       this.players[conn.id] = {
         name: String(msg.name || '플레이어').slice(0, 12),
         x: 0, y: 0, z: 0, yaw: 0, pitch: 0
@@ -304,6 +311,12 @@
       return;
     }
 
+    if (msg.t === 'full') {
+      this.active = false;
+      if (this.handlers.onError) this.handlers.onError('room-full');
+      return;
+    }
+
     if (msg.t === 'closed') {
       this.active = false;
       if (this.handlers.onHostClosed) this.handlers.onHostClosed();
@@ -385,6 +398,8 @@
     else if (this.hostConn) this.hostConn.send({ t: 'bye' });
     this.reset();
   };
+
+  Net.MAX_GUESTS = MAX_GUESTS;
 
   global.Net = Net;
 })(window);
