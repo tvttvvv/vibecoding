@@ -7,7 +7,25 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>복셀 크래프트</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23795433'/><rect width='16' height='5' fill='%235d9c3c'/></svg>">
-<link rel="stylesheet" href="css/style.css?v=9">
+<link rel="stylesheet" href="css/style.css?v=10">
+<script>
+// GitHub Pages caches this page for ten minutes, so a new build can sit
+// unseen. Ask an uncached version file and reload once if we are behind.
+(function () {
+  var BUILD = 10;
+  try {
+    fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || d.v === BUILD) return;
+        if (sessionStorage.getItem('vxlBuild') === String(d.v)) return;
+        sessionStorage.setItem('vxlBuild', String(d.v));
+        location.replace(location.pathname + '?b=' + d.v);
+      })
+      .catch(function () { /* offline: keep playing what we have */ });
+  } catch (e) { /* no fetch or storage: ignore */ }
+})();
+</script>
 </head>
 <body>
 
@@ -96,7 +114,7 @@
 
   <div id="menuScreen" class="overlay">
     <h1>복셀 크래프트</h1>
-    <p class="buildTag">버전 v9</p>
+    <p class="buildTag">버전 v10</p>
 
     <div id="menuMain" class="menuPage">
       <p>무한 지형, 강과 바다, 숲과 사막, 동굴과 광석. 캐고, 만들고, 살아남으세요.</p>
@@ -136,17 +154,17 @@
 
 <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/noise.js?v=9"></script>
-<script src="js/textures.js?v=9"></script>
-<script src="js/blocks.js?v=9"></script>
-<script src="js/items.js?v=9"></script>
-<script src="js/recipes.js?v=9"></script>
-<script src="js/world.js?v=9"></script>
-<script src="js/player.js?v=9"></script>
-<script src="js/inventory.js?v=9"></script>
-<script src="js/net.js?v=9"></script>
-<script src="js/controls.js?v=9"></script>
-<script src="js/ui.js?v=9"></script>
-<script src="js/game.js?v=9"></script>
+<script src="js/noise.js?v=10"></script>
+<script src="js/textures.js?v=10"></script>
+<script src="js/blocks.js?v=10"></script>
+<script src="js/items.js?v=10"></script>
+<script src="js/recipes.js?v=10"></script>
+<script src="js/world.js?v=10"></script>
+<script src="js/player.js?v=10"></script>
+<script src="js/inventory.js?v=10"></script>
+<script src="js/net.js?v=10"></script>
+<script src="js/controls.js?v=10"></script>
+<script src="js/ui.js?v=10"></script>
+<script src="js/game.js?v=10"></script>
 </body>
 </html>
