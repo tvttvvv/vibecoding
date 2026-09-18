@@ -279,6 +279,7 @@
       depthWrite: false,
       side: THREE.DoubleSide
     });
+    this.onChunkReady = null;
     this._pad = new Uint8Array((CHUNK_SIZE + 2) * (WORLD_HEIGHT + 4) * (CHUNK_SIZE + 2));
   }
 
@@ -301,7 +302,11 @@
       this.chunks.set(k, c);
       this._lastKey = '';
     }
-    if (!c.generated) generateChunk(c, this.seed);
+    if (!c.generated) {
+      generateChunk(c, this.seed);
+      // edits made by anyone outlive chunk unload, so replay them on rebuild
+      if (this.onChunkReady) this.onChunkReady(c);
+    }
     return c;
   };
 

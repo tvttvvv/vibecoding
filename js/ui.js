@@ -34,6 +34,110 @@
       this.recipeBookOpen = !this.recipeBookOpen;
       this.renderScreen();
     });
+
+    this.initMenu();
+  };
+
+  // ------------------------------------------------------------------ menus
+  UI.showMenuPage = function (id) {
+    for (const page of document.querySelectorAll('.menuPage')) {
+      page.classList.toggle('hidden', page.id !== id);
+    }
+    this.setNetStatus('');
+  };
+
+  UI.initMenu = function () {
+    const game = this.game;
+
+    Controls.bindTap(el('btnMulti'), () => {
+      if (!el('nameInput').value) el('nameInput').value = '플레이어' + (100 + Math.floor(Math.random() * 900));
+      this.showMenuPage('menuMulti');
+    });
+    for (const btn of document.querySelectorAll('[data-menu-back]')) {
+      Controls.bindTap(btn, () => this.showMenuPage(btn.dataset.menuBack));
+    }
+    Controls.bindTap(el('btnGoCreate'), () => {
+      el('roomCodeInput').value = Net.randomCode(6);
+      this.showMenuPage('menuCreate');
+    });
+    Controls.bindTap(el('btnGoJoin'), () => this.showMenuPage('menuJoin'));
+
+    for (const btn of document.querySelectorAll('[data-create-mode]')) {
+      Controls.bindTap(btn, () => {
+        const code = Net.normalizeCode(el('roomCodeInput').value);
+        if (code.length < 4) { this.setNetStatus('방 코드는 4자 이상이어야 해요'); return; }
+        this.setNetStatus('방을 여는 중...');
+        game.hostRoom(btn.dataset.createMode, el('mpSeedInput').value, code, this.playerName());
+      });
+    }
+    Controls.bindTap(el('btnDoJoin'), () => {
+      const code = Net.normalizeCode(el('joinCodeInput').value);
+      if (code.length < 4) { this.setNetStatus('코드를 확인해 주세요'); return; }
+      this.setNetStatus('');
+      game.joinRoom(code, this.playerName());
+    });
+
+    Controls.bindTap(el('btnRoom'), () => {
+      this.renderRoom();
+      el('roomScreen').classList.remove('hidden');
+    });
+    Controls.bindTap(el('btnRoomClose'), () => el('roomScreen').classList.add('hidden'));
+    Controls.bindTap(el('btnLeaveRoom'), () => {
+      el('roomScreen').classList.add('hidden');
+      game.leaveRoom();
+    });
+  };
+
+  UI.playerName = function () {
+    const v = (el('nameInput').value || '').trim();
+    return v ? v.slice(0, 12) : '플레이어';
+  };
+
+  UI.setNetStatus = function (text) {
+    const node = el('netStatus');
+    node.textContent = text || '';
+    node.classList.toggle('hidden', !text);
+  };
+
+  UI.netErrorText = function (err) {
+    const map = {
+      'unavailable-id': '그 방 코드는 이미 사용 중이에요. 다른 코드로 만들어 보세요.',
+      'peer-unavailable': '그 코드의 방을 찾을 수 없어요. 코드를 다시 확인해 주세요.',
+      'timeout': '연결 시간이 초과됐어요. 방장이 게임을 켜 두었는지 확인해 주세요.',
+      'no-peerjs': '멀티플레이 모듈을 불러오지 못했어요. 새로고침 해 주세요.',
+      'network': '네트워크에 연결할 수 없어요.',
+      'browser-incompatible': '이 브라우저는 멀티플레이를 지원하지 않아요.',
+      'server-error': '접속 서버에 연결할 수 없어요. 인터넷 상태를 확인해 주세요.',
+      'socket-error': '접속 서버와 통신이 끊겼어요. 잠시 후 다시 시도해 주세요.',
+      'disconnected': '접속 서버와 연결이 끊겼어요. 다시 시도해 주세요.',
+      'webrtc': '기기 간 직접 연결에 실패했어요. 같은 와이파이에서 시도해 보세요.'
+    };
+    return map[err] || ('연결에 실패했어요 (' + err + ')');
+  };
+
+  UI.renderRoom = function () {
+    const on = Net.active;
+    el('btnRoom').classList.toggle('hidden', !on);
+    if (on) el('btnRoom').textContent = Net.playerCount();
+    if (!on) { el('roomScreen').classList.add('hidden'); return; }
+
+    el('roomCodeBig').textContent = Net.code || '------';
+    el('roomHostNote').textContent = Net.isHost
+      ? '내가 방장입니다. 이 코드를 친구에게 알려주세요.'
+      : '방장의 세계에 참여 중입니다.';
+
+    const list = el('roomPlayers');
+    list.innerHTML = '';
+    const add = (name, tag) => {
+      const row = document.createElement('div');
+      row.className = 'roomRow';
+      row.textContent = name + (tag ? ' · ' + tag : '');
+      list.appendChild(row);
+    };
+    add(Net.name, Net.isHost ? '방장 (나)' : '나');
+    for (const id in Net.players) {
+      add(Net.players[id].name, id === 'host' ? '방장' : '');
+    }
   };
 
   UI.buildHotbar = function () {

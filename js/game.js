@@ -81,18 +81,13 @@
     return geo;
   };
 
-  Game.start = function (mode, seedText) {
+  Game.start = function (mode, seedText, opts) {
     this.mode = mode;
     UI.hideMenu();
     UI.hideDeath();
     UI.setLoading(true, '세계를 만드는 중...');
 
-    let seed = 0;
-    if (seedText && seedText.trim()) {
-      for (let i = 0; i < seedText.length; i++) seed = (Math.imul(seed, 31) + seedText.charCodeAt(i)) | 0;
-    } else {
-      seed = (Math.random() * 2147483647) | 0;
-    }
+    const seed = (opts && opts.seed !== undefined) ? opts.seed : this.hashSeed(seedText);
     this.seed = seed;
 
     if (this.world) {
@@ -104,8 +99,11 @@
     }
     this.clearDrops();
     this.blockEntities = new Map();
+    this.editsByChunk = {};
+    if (opts && opts.edits) for (const e of opts.edits) this.registerEdit(e[0], e[1], e[2], e[3]);
 
     this.world = new World(seed);
+    this.world.onChunkReady = (chunk) => this.applyChunkEdits(chunk);
     this.scene.add(this.world.group);
 
     this.inventory = new Inventory();
@@ -130,9 +128,214 @@
     this.loading = true;
     this.started = true;
     this.paused = false;
-    this.dayTime = 0.42;
+    this.dayTime = (opts && opts.dayTime !== undefined) ? opts.dayTime : 0.42;
     this.mining = { target: null, progress: 0 };
     this._deathHandled = false;
+    this.avatars = this.avatars || {};
+    this.clearAvatars();
+  };
+
+  Game.hashSeed = function (text) {
+    if (!text || !String(text).trim()) return (Math.random() * 2147483647) | 0;
+    let seed = 0;
+    const str = String(text);
+    for (let i = 0; i < str.length; i++) seed = (Math.imul(seed, 31) + str.charCodeAt(i)) | 0;
+    return seed;
+  };
+
+  // ------------------------------------------------------------ world edits
+  Game.registerEdit = function (x, y, z, id) {
+    const key = Math.floor(x / WorldConst.CHUNK_SIZE) + ',' + Math.floor(z / WorldConst.CHUNK_SIZE);
+    const list = this.editsByChunk[key] || (this.editsByChunk[key] = []);
+    list.push([x, y, z, id]);
+  };
+
+  Game.applyChunkEdits = function (chunk) {
+    const list = this.editsByChunk[chunk.cx + ',' + chunk.cz];
+    if (!list) return;
+    const CS = WorldConst.CHUNK_SIZE;
+    for (const e of list) {
+      const y = e[1];
+      if (y < 0 || y >= WorldConst.WORLD_HEIGHT) continue;
+      const lx = e[0] - chunk.cx * CS, lz = e[2] - chunk.cz * CS;
+      chunk.data[(y * CS + lz) * CS + lx] = e[3];
+      if (e[3] !== B.AIR && y > chunk.maxY) chunk.maxY = y;
+    }
+  };
+
+  // every local change is recorded and, in a room, sent to the other players
+  Game.changeBlock = function (x, y, z, id) {
+    if (!this.world.setBlock(x, y, z, id)) return false;
+    this.registerEdit(x, y, z, id);
+    Net.sendEdit(x, y, z, id);
+    return true;
+  };
+
+  Game.applyRemoteEdit = function (msg) {
+    this.registerEdit(msg.x, msg.y, msg.z, msg.id);
+    this.world.setBlock(msg.x, msg.y, msg.z, msg.id);
+    const key = this.entityKey(msg.x, msg.y, msg.z);
+    if (msg.id === B.AIR && this.blockEntities.has(key)) this.blockEntities.delete(key);
+    if (msg.id === B.FURNACE) this.furnaceAt(msg.x, msg.y, msg.z);
+  };
+
+
+  // ------------------------------------------------------------ other players
+  Game.nameTag = function (text) {
+    const pad = 8;
+    const c = document.createElement('canvas');
+    const ctx = c.getContext('2d');
+    ctx.font = 'bold 28px sans-serif';
+    const w = Math.ceil(ctx.measureText(text).width) + pad * 2;
+    c.width = Math.max(48, w);
+    c.height = 44;
+    const g = c.getContext('2d');
+    g.font = 'bold 28px sans-serif';
+    g.fillStyle = 'rgba(0,0,0,0.55)';
+    g.fillRect(0, 0, c.width, c.height);
+    g.fillStyle = '#ffffff';
+    g.textBaseline = 'middle';
+    g.fillText(text, pad, c.height / 2 + 1);
+    const tex = new THREE.CanvasTexture(c);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+    sprite.scale.set(c.width / 44 * 0.45, 0.45, 1);
+    sprite.position.y = 2.15;
+    sprite.renderOrder = 10;
+    return sprite;
+  };
+
+  Game.makeAvatar = function (name) {
+    const group = new THREE.Group();
+    const box = (w, h, d, color, x, y, z, parent) => {
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(w, h, d),
+        new THREE.MeshBasicMaterial({ color })
+      );
+      mesh.position.set(x, y, z);
+      (parent || group).add(mesh);
+      return mesh;
+    };
+
+    box(0.22, 0.7, 0.22, 0x3b4396, -0.12, 0.35, 0);
+    box(0.22, 0.7, 0.22, 0x3b4396, 0.12, 0.35, 0);
+    box(0.5, 0.7, 0.26, 0x2f9fa8, 0, 1.05, 0);
+    box(0.18, 0.66, 0.2, 0x2f9fa8, -0.34, 1.05, 0);
+    box(0.18, 0.66, 0.2, 0x2f9fa8, 0.34, 1.05, 0);
+
+    const head = new THREE.Group();
+    head.position.y = 1.62;
+    group.add(head);
+    box(0.46, 0.46, 0.46, 0xc99b7c, 0, 0, 0, head);
+    box(0.47, 0.16, 0.47, 0x3b2a1c, 0, 0.17, 0, head);
+    box(0.08, 0.08, 0.02, 0xffffff, -0.11, 0.02, -0.24, head);
+    box(0.08, 0.08, 0.02, 0xffffff, 0.11, 0.02, -0.24, head);
+
+    group.add(this.nameTag(name));
+    group.userData.head = head;
+    return group;
+  };
+
+  Game.clearAvatars = function () {
+    for (const id in this.avatars) this.scene.remove(this.avatars[id].group);
+    this.avatars = {};
+  };
+
+  Game.updateAvatars = function (dt) {
+    if (!Net.active) {
+      if (Object.keys(this.avatars).length) this.clearAvatars();
+      return;
+    }
+
+    for (const id in Net.players) {
+      const p = Net.players[id];
+      let a = this.avatars[id];
+      if (!a || a.name !== p.name) {
+        if (a) this.scene.remove(a.group);
+        const group = this.makeAvatar(p.name);
+        group.position.set(p.x, p.y, p.z);
+        this.scene.add(group);
+        a = this.avatars[id] = { group, name: p.name };
+      }
+      // smooth over the ~12 updates a second that arrive from the network
+      const k = Math.min(1, dt * 12);
+      a.group.position.x += (p.x - a.group.position.x) * k;
+      a.group.position.y += (p.y - a.group.position.y) * k;
+      a.group.position.z += (p.z - a.group.position.z) * k;
+      a.group.rotation.y = p.yaw;
+      a.group.userData.head.rotation.x = Math.max(-1.2, Math.min(1.2, -p.pitch));
+    }
+
+    for (const id in this.avatars) {
+      if (Net.players[id]) continue;
+      this.scene.remove(this.avatars[id].group);
+      delete this.avatars[id];
+    }
+  };
+
+  // ------------------------------------------------------------ multiplayer
+  Game.netHandlers = function () {
+    return {
+      getDayTime: () => this.dayTime,
+      getSpawn: () => this.spawnPoint,
+      onEdit: (msg) => this.applyRemoteEdit(msg),
+      onRoster: () => UI.renderRoom(),
+      onPlayerJoin: (id, p) => { UI.toast(p.name + ' 님이 참여했어요', 2600); UI.renderRoom(); },
+      onPlayerLeave: (id, p) => { UI.toast((p ? p.name : '플레이어') + ' 님이 나갔어요', 2600); UI.renderRoom(); },
+      onDisconnect: () => { UI.toast('방 연결이 끊어졌어요', 4000); this.clearAvatars(); UI.renderRoom(); },
+      onHostClosed: () => { UI.toast('방장이 방을 닫았어요', 4000); this.clearAvatars(); UI.renderRoom(); }
+    };
+  };
+
+  Game.hostRoom = function (mode, seedText, code, name) {
+    const seed = this.hashSeed(seedText);
+    const handlers = this.netHandlers();
+    handlers.onReady = () => {
+      UI.setNetStatus('');
+      UI.toast('방이 열렸어요. 코드: ' + code, 5000);
+      UI.renderRoom();
+    };
+    handlers.onError = (err) => {
+      Net.reset();
+      UI.setNetStatus(UI.netErrorText(err));
+      UI.renderRoom();
+    };
+    Net.createRoom(code, name, { seed, mode }, handlers);
+    this.start(mode, seedText, { seed });
+  };
+
+  Game.joinRoom = function (code, name) {
+    UI.hideMenu();
+    UI.setLoading(true, '방에 접속하는 중...');
+    const handlers = this.netHandlers();
+    handlers.onWelcome = (msg) => {
+      this.start(msg.mode, '', {
+        seed: msg.seed,
+        edits: msg.edits,
+        dayTime: msg.dayTime
+      });
+      if (msg.spawn) {
+        this.spawnPoint = msg.spawn;
+        this.player.pos.x = msg.spawn.x;
+        this.player.pos.y = msg.spawn.y + 1;
+        this.player.pos.z = msg.spawn.z;
+      }
+      UI.toast('방 ' + code + ' 에 참여했어요', 3000);
+      UI.renderRoom();
+    };
+    handlers.onError = (err) => {
+      Net.reset();
+      UI.setLoading(false);
+      UI.showMenu();
+      UI.setNetStatus(UI.netErrorText(err));
+    };
+    Net.joinRoom(code, name, handlers);
+  };
+
+  Game.leaveRoom = function () {
+    Net.leave();
+    this.clearAvatars();
+    UI.renderRoom();
+    UI.toast('방에서 나왔어요', 2200);
   };
 
   Game.spawnPlayer = function () {
@@ -209,7 +412,7 @@
     if (existing !== B.AIR && !B.byId[existing].liquid) return;
     if (this.intersectsPlayer(x, y, z)) return;
 
-    if (this.world.setBlock(x, y, z, stack.id)) {
+    if (this.changeBlock(x, y, z, stack.id)) {
       if (stack.id === B.FURNACE) this.furnaceAt(x, y, z);
       if (this.mode === 'survival') this.inventory.consumeSelected();
       else UI.renderHotbar();
@@ -350,7 +553,7 @@
   Game.breakBlock = function (x, y, z, id) {
     const stack = this.inventory.selectedStack();
     const toolDef = stack ? Items.get(stack.id) : null;
-    if (!this.world.setBlock(x, y, z, B.AIR)) return;
+    if (!this.changeBlock(x, y, z, B.AIR)) return;
 
     const entity = this.blockEntities.get(this.entityKey(x, y, z));
     if (entity) {
@@ -561,6 +764,8 @@
 
     this.world.update(p.pos.x, p.pos.z, 6);
     this.updateSky(dt);
+    if (Net.active) Net.sendPos(p);
+    this.updateAvatars(dt);
 
     const aim = this.mining.target;
     if (aim && !this.paused && !p.dead) {
