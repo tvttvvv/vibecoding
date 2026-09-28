@@ -79,11 +79,17 @@ img { image-rendering: pixelated; -ms-interpolation-mode: nearest-neighbor; }
 /* touch anywhere in this area to summon the stick, Minecraft-style */
 /* only the lower-left corner drives the stick, so blocks anywhere else on
    screen stay tappable */
+/* the joystick's travel, its touch area and the button scale are all tunable */
+:root { --joy-radius: 46px; --joy-zone: 42%; --btn-scale: 1; }
+
 #joystickZone {
-  position: absolute; left: 0; width: 44%; height: 46%; bottom: 92px; z-index: 12;
+  position: absolute; left: 0; width: var(--joy-zone); height: var(--joy-zone);
+  bottom: 92px; z-index: 12;
 }
 #joyVisual {
-  position: fixed; width: 128px; height: 128px; margin: -64px 0 0 -64px;
+  position: fixed;
+  width: calc(var(--joy-radius) * 2.8); height: calc(var(--joy-radius) * 2.8);
+  margin: calc(var(--joy-radius) * -1.4) 0 0 calc(var(--joy-radius) * -1.4);
   z-index: 13; pointer-events: none; opacity: 0.55;
   transition: opacity 0.14s linear;
 }
@@ -94,21 +100,24 @@ img { image-rendering: pixelated; -ms-interpolation-mode: nearest-neighbor; }
   border: 3px solid rgba(255,255,255,0.5);
 }
 #joystickKnob {
-  position: absolute; left: 41px; top: 41px; width: 46px; height: 46px;
+  position: absolute;
+  left: calc(var(--joy-radius) * 0.9); top: calc(var(--joy-radius) * 0.9);
+  width: calc(var(--joy-radius) * 1); height: calc(var(--joy-radius) * 1);
   border-radius: 50%;
   background: rgba(230,230,230,0.85);
   border: 2px solid rgba(255,255,255,0.9);
 }
 
 .mcbtn {
-  width: 68px; height: 68px; border-radius: 10px;
+  width: calc(68px * var(--btn-scale)); height: calc(68px * var(--btn-scale));
+  border-radius: 10px;
   background: rgba(0,0,0,0.42); border: 2px solid rgba(255,255,255,0.4);
   color: #fff; font-size: 20px; line-height: 1; padding: 0;
   display: flex; align-items: center; justify-content: center;
 }
 .mcbtn:active, .mcbtn.active { background: rgba(255,255,255,0.3); }
 .mcbtn.small { width: 44px; height: 44px; border-radius: 8px; font-size: 16px; }
-.mcbtn.jump { width: 78px; height: 78px; }
+.mcbtn.jump { width: calc(78px * var(--btn-scale)); height: calc(78px * var(--btn-scale)); }
 
 .chev {
   display: block; width: 20px; height: 20px;
@@ -407,3 +416,48 @@ img { image-rendering: pixelated; -ms-interpolation-mode: nearest-neighbor; }
   color: rgba(255, 255, 255, 0.62);
   text-align: center;
 }
+
+/* ------------------------------------------------------------- settings */
+#settingsBody {
+  width: min(420px, 88vw);
+  max-height: 52vh;
+  overflow-y: auto;
+  margin: 4px 0 12px;
+  display: flex; flex-direction: column; gap: 10px;
+  padding-right: 4px;
+}
+.setRow {
+  background: rgba(0,0,0,0.35);
+  border: 2px solid rgba(255,255,255,0.18);
+  border-radius: 6px;
+  padding: 8px 10px;
+  text-align: left;
+}
+.setRow label {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 12px; color: rgba(255,255,255,0.86); margin-bottom: 6px;
+}
+.setValue { font-size: 12px; color: #a9e08a; }
+.setRow input[type="range"] { width: 100%; accent-color: #7fbf4d; }
+.panelBtn.wide { width: 100%; padding: 8px 0; }
+.panelBtn.on { background: #4f7a2f; border-color: #7fbf4d; }
+
+/* keyboard players aim with a crosshair and do not need the touch controls */
+body.keyboardMode #joystickZone,
+body.keyboardMode #joyVisual,
+body.keyboardMode #rightControls { display: none; }
+body.keyboardMode #crosshair { display: block; }
+#crosshair {
+  display: none; position: absolute; left: 50%; top: 50%;
+  width: 22px; height: 22px; margin: -11px 0 0 -11px;
+  z-index: 11; pointer-events: none; opacity: 0.8;
+}
+#crosshair::before, #crosshair::after {
+  content: ''; position: absolute; background: #fff;
+  box-shadow: 0 0 2px rgba(0,0,0,0.9);
+}
+#crosshair::before { left: 10px; top: 0; width: 2px; height: 22px; }
+#crosshair::after { top: 10px; left: 0; height: 2px; width: 22px; }
+
+/* settings sit above the main menu, which stays open behind them */
+#settingsScreen { z-index: 130; background: rgba(8, 11, 17, 0.96); }

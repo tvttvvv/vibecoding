@@ -51,9 +51,11 @@
     ok,
     MAX_EDITS,
 
-    saveWorld(worldKey, seed, flatEdits) {
+    saveWorld(worldKey, seed, flatEdits, entities) {
       if (flatEdits.length > MAX_EDITS * 4) flatEdits = flatEdits.slice(-MAX_EDITS * 4);
-      return write(worldKey + ':world', { seed, edits: flatEdits, savedAt: Date.now() });
+      return write(worldKey + ':world', {
+        seed, edits: flatEdits, entities: entities || [], savedAt: Date.now()
+      });
     },
 
     loadWorld(worldKey) {
@@ -116,6 +118,10 @@
       } catch (e) { /* ignore */ }
       return out;
     },
+
+    saveSettings(values) { return write('settings', values); },
+
+    loadSettings() { return read('settings'); },
 
     name(name) {
       if (name !== undefined) write('name', name);

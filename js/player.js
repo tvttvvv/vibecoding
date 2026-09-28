@@ -25,6 +25,14 @@
   const WATER_RISE_MAX = 2.2;
   const WATER_CLIMB_V = 3.4;
 
+  // Horizontal speed carries between frames. On the ground you reach the speed
+  // you asked for almost at once; in mid-air you only nudge it, so a jump keeps
+  // the direction it started with instead of turning on a coin.
+  const ACCEL_GROUND = 18;
+  const ACCEL_AIR = 3.2;
+  const ACCEL_WATER = 9;
+  const ACCEL_FLY = 24;
+
   function Player(mode) {
     this.pos = { x: 0.5, y: 40, z: 0.5 };
     this.vel = { x: 0, y: 0, z: 0 };
@@ -111,6 +119,7 @@
       this.vel.y = 0;
     } else {
       this.blocked = true;
+      this.vel[axis] = 0;
     }
   };
 
@@ -127,7 +136,9 @@
     this.headInWater = B.byId[eyeBlock].liquid;
 
     const mag = Math.hypot(input.move.x, input.move.y);
-    this.sprinting = !this.flying && mag > 0.92 && this.food > 6 && !this.inWater;
+    // a keyboard says so explicitly; a joystick means it by pushing to the rim
+    const wantRun = input.run !== undefined ? !!input.run : mag > 0.92;
+    this.sprinting = !this.flying && wantRun && mag > 0.2 && this.food > 6 && !this.inWater;
 
     let speed;
     if (this.flying) speed = FLY_SPEED;
@@ -143,16 +154,26 @@
     if (mlen > 1) { mx /= mlen; mz /= mlen; }
 
     const prevX = this.pos.x, prevZ = this.pos.z;
+    const grounded = this.onGround;
     this.blocked = false;
     this.onGround = false;
+
+    const accel = this.flying ? ACCEL_FLY
+      : this.inWater ? ACCEL_WATER
+        : grounded ? ACCEL_GROUND : ACCEL_AIR;
+    const k = 1 - Math.exp(-accel * dt);
+    this.vel.x += (mx * speed - this.vel.x) * k;
+    this.vel.z += (mz * speed - this.vel.z) * k;
+    if (Math.abs(this.vel.x) < 0.01) this.vel.x = 0;
+    if (Math.abs(this.vel.z) < 0.01) this.vel.z = 0;
 
     if (this.flying) {
       this.vel.y = 0;
       let vy = 0;
       if (input.up) vy += FLY_SPEED;
       if (input.down) vy -= FLY_SPEED;
-      this._moveAxis(world, 'x', mx * speed * dt);
-      this._moveAxis(world, 'z', mz * speed * dt);
+      this._moveAxis(world, 'x', this.vel.x * dt);
+      this._moveAxis(world, 'z', this.vel.z * dt);
       this._moveAxis(world, 'y', vy * dt);
     } else {
       if (this.inWater) {
@@ -167,8 +188,8 @@
         if (this.vel.y < -MAX_FALL) this.vel.y = -MAX_FALL;
       }
 
-      this._moveAxis(world, 'x', mx * speed * dt);
-      this._moveAxis(world, 'z', mz * speed * dt);
+      this._moveAxis(world, 'x', this.vel.x * dt);
+      this._moveAxis(world, 'z', this.vel.z * dt);
 
       const wasAirborne = this.vel.y < -0.1;
       this._moveAxis(world, 'y', this.vel.y * dt);

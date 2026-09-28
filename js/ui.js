@@ -35,8 +35,101 @@
       this.renderScreen();
     });
 
+    Controls.bindTap(el('btnSettings'), () => this.openSettings());
+    Controls.bindTap(el('btnSettingsClose'), () => this.closeSettings());
+    Controls.bindTap(el('btnSettingsReset'), () => {
+      Settings.reset();
+      this.renderSettings();
+      this.toast('조작 설정을 기본값으로 되돌렸어요', 2000);
+    });
+    for (const btn of document.querySelectorAll('[data-open-settings]')) {
+      Controls.bindTap(btn, () => this.openSettings());
+    }
+
     this.initMenu();
     this.initChat();
+  };
+
+  // ------------------------------------------------------------- settings
+  UI.openSettings = function () {
+    this.renderSettings();
+    el('settingsScreen').classList.remove('hidden');
+    if (this.game.started) this.game.paused = true;
+    Controls.releaseLock();
+  };
+
+  UI.closeSettings = function () {
+    el('settingsScreen').classList.add('hidden');
+    if (this.game.started && !this.screen) this.game.paused = false;
+  };
+
+  UI.renderSettings = function () {
+    const box = el('settingsBody');
+    box.innerHTML = '';
+    for (const d of Settings.DEFS) {
+      const row = document.createElement('div');
+      row.className = 'setRow';
+
+      const label = document.createElement('label');
+      label.textContent = d.label;
+      const value = document.createElement('span');
+      value.className = 'setValue';
+      label.appendChild(value);
+      row.appendChild(label);
+
+      if (d.type === 'bool') {
+        const btn = document.createElement('button');
+        btn.className = 'panelBtn wide';
+        const paint = () => {
+          const on = Settings.bool(d.key);
+          btn.textContent = on ? '켜짐' : '꺼짐';
+          btn.classList.toggle('on', on);
+          value.textContent = '';
+        };
+        Controls.bindTap(btn, () => { Settings.set(d.key, Settings.bool(d.key) ? 0 : 1); paint(); });
+        paint();
+        row.appendChild(btn);
+      } else {
+        const input = document.createElement('input');
+        input.type = 'range';
+        input.min = d.min; input.max = d.max; input.step = d.step;
+        input.value = Settings.get(d.key);
+        value.textContent = Settings.get(d.key) + (d.unit || '');
+        input.addEventListener('input', () => {
+          Settings.set(d.key, +input.value);
+          value.textContent = Settings.get(d.key) + (d.unit || '');
+        });
+        row.appendChild(input);
+      }
+      box.appendChild(row);
+    }
+  };
+
+  UI.showKeyboardHint = function () {
+    if (this._kbHinted) return;
+    this._kbHinted = true;
+    this.toast('키보드 모드: WASD 이동 · Space 점프 · 화면 클릭 후 마우스로 조준 · 좌클릭 캐기 · 우클릭 놓기 · 1~9 단축칸 · E 인벤토리 · Q 버리기 · T 채팅 · Esc 해제', 7000);
+  };
+
+  UI.onEscape = function () {
+    if (!el('settingsScreen').classList.contains('hidden')) { this.closeSettings(); return; }
+    if (!el('chatScreen').classList.contains('hidden')) { this.closeChat(); return; }
+    if (this.screen) { this.closeScreen(); return; }
+    Controls.releaseLock();
+  };
+
+  // Only the parts that move: a full re-render would drop a drag in progress.
+  UI.refreshFurnace = function () {
+    if (!this.screen || this.screen.kind !== 'furnace') return;
+    if (this._dragging) return;
+    const f = this.screen.entity;
+    const flame = document.querySelector('#screenPanel .flame span');
+    if (flame) flame.style.height = Math.round((f.burnMax > 0 ? Math.max(0, f.burn / f.burnMax) : 0) * 100) + '%';
+    const cook = document.querySelector('#screenPanel .cookBar span');
+    if (cook) cook.style.width = Math.round((f.cook / f.cookMax) * 100) + '%';
+    this.refreshSlotNode('fin', 0);
+    this.refreshSlotNode('ffuel', 0);
+    this.refreshSlotNode('fout', 0);
   };
 
   // ------------------------------------------------------------------- chat

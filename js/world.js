@@ -37,15 +37,20 @@
   }
 
   let OPAQUE = null, LIQUID = null, FACE_TILE_OF = null, TILE_UV = null;
+  let CROSS = null, BHEIGHT = null;
   function buildLookups() {
     const n = B.byId.length;
     OPAQUE = new Uint8Array(n);
     LIQUID = new Uint8Array(n);
+    CROSS = new Uint8Array(n);
+    BHEIGHT = new Float32Array(n);
     FACE_TILE_OF = new Uint16Array(n * 6);
     for (let i = 0; i < n; i++) {
       if (!B.byId[i]) continue;
       OPAQUE[i] = B.byId[i].opaque ? 1 : 0;
       LIQUID[i] = B.byId[i].liquid ? 1 : 0;
+      CROSS[i] = B.byId[i].render === 'cross' ? 1 : 0;
+      BHEIGHT[i] = B.byId[i].height;
       for (let f = 0; f < 6; f++) FACE_TILE_OF[i * 6 + f] = B.tileFor(i, f);
     }
     TILE_UV = new Float32Array(256 * 4);
@@ -411,12 +416,48 @@
           const pHere = padBase + y * PWY + z * PW + x;
           const waterTopDrop = isLiquid && pad[pHere + PWY] !== id ? 0.125 : 0;
 
+          // torches and the like: two crossed quads, drawn from both sides and
+          // at full brightness so they read as a light in a dark room
+          if (CROSS[id]) {
+            const t4 = FACE_TILE_OF[id * 6 + 2] * 4;
+            const cu0 = TILE_UV[t4], cu1 = TILE_UV[t4 + 1];
+            const cv0 = TILE_UV[t4 + 2], cv1 = TILE_UV[t4 + 3];
+            const r = 0.36, cx = x + 0.5, cz = z + 0.5;
+            const quads = [[-r, -r, r, r], [-r, r, r, -r]];
+            for (const q of quads) {
+              for (let side = 0; side < 2; side++) {
+                const vS = sVert;
+                let vp = vS * 3, vu = vS * 2;
+                const ax = q[side ? 2 : 0], az = q[side ? 3 : 1];
+                const bx2 = q[side ? 0 : 2], bz2 = q[side ? 1 : 3];
+                const px = [ax, bx2, ax, bx2], pz = [az, bz2, az, bz2];
+                for (let ci = 0; ci < 4; ci++) {
+                  pos[vp] = cx + px[ci];
+                  pos[vp + 1] = y + (ci >= 2 ? 1 : 0);
+                  pos[vp + 2] = cz + pz[ci];
+                  uvs[vu] = (ci === 1 || ci === 3) ? cu1 : cu0;
+                  uvs[vu + 1] = ci >= 2 ? cv0 : cv1;
+                  cols[vp] = 1; cols[vp + 1] = 1; cols[vp + 2] = 1;
+                  vp += 3; vu += 2;
+                }
+                const ti = sTri * 3;
+                idx[ti] = vS; idx[ti + 1] = vS + 1; idx[ti + 2] = vS + 2;
+                idx[ti + 3] = vS + 2; idx[ti + 4] = vS + 1; idx[ti + 5] = vS + 3;
+                sVert += 4; sTri += 2;
+              }
+            }
+            continue;
+          }
+
+          const bh = BHEIGHT[id];
+
           for (let f = 0; f < 6; f++) {
             const f3 = f * 3;
             const nx = FACE_N[f3], ny = FACE_N[f3 + 1], nz = FACE_N[f3 + 2];
             const pNb = pHere + ny * PWY + nz * PW + nx;
             const nb = pad[pNb];
-            if (OPAQUE[nb]) continue;
+            // a shortened block only hides its underside behind a neighbour
+            if (OPAQUE[nb] && (bh >= 1 || f === 3)) continue;
             if (isLiquid) { if (LIQUID[nb]) continue; }
             else if (nb === id && !OPAQUE[id] && id !== B.LEAVES) continue;
 
@@ -451,7 +492,7 @@
               const c3 = f * 12 + ci * 3;
               const cy = FACE_CORNER[c3 + 1];
               P[vp] = x + FACE_CORNER[c3];
-              P[vp + 1] = y + cy - (waterTopDrop && cy === 1 ? waterTopDrop : 0);
+              P[vp + 1] = y + cy * bh - (waterTopDrop && cy === 1 ? waterTopDrop : 0);
               P[vp + 2] = z + FACE_CORNER[c3 + 2];
 
               U[vu] = (ci === 1 || ci === 3) ? u1 : u0;

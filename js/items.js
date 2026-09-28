@@ -72,6 +72,22 @@
     }
   }
 
+  // ---- food and mob drops ---------------------------------------------------
+  // food restores hunger, saturation decides how long it holds
+  const APPLE = def(160, '사과', T.item_apple, { food: 4, saturation: 2.4 });
+  const RAW_BEEF = def(161, '생 소고기', T.item_raw_beef, { food: 3, saturation: 1.8 });
+  const COOKED_BEEF = def(162, '스테이크', T.item_cooked_beef, { food: 8, saturation: 12.8 });
+  const RAW_PORK = def(163, '생 돼지고기', T.item_raw_pork, { food: 3, saturation: 1.8 });
+  const COOKED_PORK = def(164, '익힌 돼지고기', T.item_cooked_pork, { food: 8, saturation: 12.8 });
+  const RAW_CHICKEN = def(165, '생 닭고기', T.item_raw_chicken, { food: 2, saturation: 1.2 });
+  const COOKED_CHICKEN = def(166, '익힌 닭고기', T.item_cooked_chicken, { food: 6, saturation: 7.2 });
+  const RAW_MUTTON = def(167, '생 양고기', T.item_raw_mutton, { food: 2, saturation: 1.2 });
+  const COOKED_MUTTON = def(168, '익힌 양고기', T.item_cooked_mutton, { food: 6, saturation: 9.6 });
+  const ROTTEN_FLESH = def(169, '썩은 살점', T.item_rotten_flesh, { food: 4, saturation: 0.8 });
+  const BONE = def(170, '뼈', T.item_bone);
+  const STRING = def(171, '실', T.item_string);
+  const GUNPOWDER = def(172, '화약', T.item_gunpowder);
+
   // ---- unified block/item access -------------------------------------------
   function isBlock(id) { return id < ITEM_BASE; }
 
@@ -113,6 +129,7 @@
 
   const creativeItems = [
     STICK, COAL, IRON_INGOT, GOLD_INGOT, DIAMOND,
+    APPLE, COOKED_BEEF, COOKED_PORK, COOKED_CHICKEN, COOKED_MUTTON, BONE, STRING, GUNPOWDER,
     tools.wood_pickaxe, tools.wood_axe, tools.wood_shovel, tools.wood_sword, tools.wood_hoe,
     tools.stone_pickaxe, tools.stone_axe, tools.stone_shovel, tools.stone_sword, tools.stone_hoe,
     tools.iron_pickaxe, tools.iron_axe, tools.iron_shovel, tools.iron_sword, tools.iron_hoe,
@@ -123,10 +140,18 @@
     armor.diamond_helmet, armor.diamond_chestplate, armor.diamond_leggings, armor.diamond_boots
   ];
 
+  function foodOf(id) {
+    const d = get(id);
+    return d && d.food ? d : null;
+  }
+
   global.Items = {
     ITEM_BASE, byId, tools, armor,
     STICK, COAL, IRON_INGOT, GOLD_INGOT, DIAMOND,
+    APPLE, RAW_BEEF, COOKED_BEEF, RAW_PORK, COOKED_PORK,
+    RAW_CHICKEN, COOKED_CHICKEN, RAW_MUTTON, COOKED_MUTTON,
+    ROTTEN_FLESH, BONE, STRING, GUNPOWDER,
     PIECE_ORDER, creativeItems,
-    isBlock, get, name, tileOf, icon, stackMax, maxDurability, fuelSeconds
+    isBlock, get, name, tileOf, icon, stackMax, maxDurability, fuelSeconds, foodOf
   };
 })(window);

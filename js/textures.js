@@ -279,6 +279,43 @@
     }
   });
 
+  define('wool', (api) => {
+    speckle(api, '#e9ecec', ['#dcdfdf', '#f4f6f6', '#d3d6d6'], 0.5);
+    for (let i = 0; i < 26; i++) {
+      const x = Math.floor(rnd() * TILE), y = Math.floor(rnd() * TILE);
+      api.put(x, y, '#c9cccc');
+    }
+  });
+
+  // a torch is drawn on a transparent tile: the mesher hangs it on crossed quads
+  define('torch', (api) => {
+    api.clear();
+    for (let y = 8; y < 16; y++) {
+      api.put(7, y, '#6b4a2a');
+      api.put(8, y, '#8b6a3f');
+    }
+    api.put(7, 13, '#5c3f24');
+    api.put(8, 11, '#9c7b4a');
+    for (let y = 5; y < 8; y++) { api.put(7, y, '#ffd04d'); api.put(8, y, '#ffb43d'); }
+    api.put(7, 4, '#fff1a8'); api.put(8, 4, '#ffd97a');
+    api.put(6, 6, '#e2631a'); api.put(9, 6, '#e2631a');
+    api.put(6, 5, '#ff9a2b'); api.put(9, 5, '#ff9a2b');
+  });
+
+  define('bed_top', (api) => {
+    speckle(api, '#a02020', ['#8d1b1b', '#b52a2a'], 0.4);
+    for (let x = 2; x < 14; x++) { api.put(x, 1, '#e9ecec'); api.put(x, 2, '#f4f6f6'); api.put(x, 3, '#dcdfdf'); }
+    for (let y = 0; y < TILE; y++) { api.put(0, y, '#7d1717'); api.put(15, y, '#7d1717'); }
+    for (let x = 0; x < TILE; x++) api.put(x, 15, '#7d1717');
+  });
+
+  define('bed_side', (api) => {
+    speckle(api, '#a02020', ['#8d1b1b', '#b52a2a'], 0.35);
+    for (let x = 0; x < TILE; x++) { api.put(x, 0, '#c23434'); api.put(x, 9, '#6b4a2a'); }
+    for (let x = 0; x < TILE; x++) for (let y = 10; y < TILE; y++) api.put(x, y, pick(['#9c7b4a', '#8b6a3f', '#6f5531']));
+    for (let x = 1; x < 5; x++) for (let y = 1; y < 8; y++) api.put(x, y, '#e9ecec');
+  });
+
   // ---------------------------------------------------------------- items
   const MAT = {
     wood: { a: '#9c7b4a', b: '#6f5531', c: '#b79262' },
@@ -419,6 +456,62 @@
     rectOn(api, 7, 11, 2, 1, d.b);
     api.put(6, 5, d.c); api.put(7, 4, d.c); api.put(5, 6, d.c);
     api.put(10, 8, d.b); api.put(9, 9, d.b);
+  });
+
+  // ---- food, mob drops --------------------------------------------------
+  function lump(api, body, shade, light) {
+    api.clear();
+    const rows = [[5, 4, 6, 1], [4, 5, 8, 6], [5, 11, 6, 1]];
+    for (const [x, y, w, h] of rows) rectOn(api, x, y, w, h, body);
+    for (let i = 0; i < 16; i++) {
+      api.put(4 + Math.floor(rnd() * 8), 5 + Math.floor(rnd() * 6), pick([shade, body, light]));
+    }
+    for (let x = 5; x < 9; x++) api.put(x, 5, light);
+    for (let x = 6; x < 11; x++) api.put(x, 10, shade);
+  }
+
+  define('item_apple', (api) => {
+    api.clear();
+    rectOn(api, 4, 5, 8, 7, '#d5322b');
+    rectOn(api, 5, 4, 6, 1, '#d5322b');
+    rectOn(api, 5, 12, 6, 1, '#a9231e');
+    for (let y = 5; y < 11; y++) api.put(11, y, '#a9231e');
+    api.put(5, 6, '#f16a5f'); api.put(6, 5, '#f16a5f'); api.put(6, 6, '#ff9a90');
+    rectOn(api, 8, 2, 1, 3, '#6b4a2a');
+    rectOn(api, 9, 2, 3, 1, '#4f8a33');
+    api.put(10, 3, '#5d9c3c');
+  });
+
+  define('item_rotten_flesh', (api) => lump(api, '#7a5a3c', '#5b4229', '#9a7a56'));
+  define('item_raw_beef', (api) => lump(api, '#c2585a', '#9c3f45', '#e08a86'));
+  define('item_cooked_beef', (api) => lump(api, '#8a5230', '#6a3c22', '#b57a4c'));
+  define('item_raw_pork', (api) => lump(api, '#e0918f', '#bd6a6c', '#f5b8b2'));
+  define('item_cooked_pork', (api) => lump(api, '#c07a44', '#96592e', '#e0a468'));
+  define('item_raw_chicken', (api) => lump(api, '#e3b7a0', '#c08d79', '#f6d8c6'));
+  define('item_cooked_chicken', (api) => lump(api, '#cf9558', '#a56f3a', '#eabb85'));
+  define('item_raw_mutton', (api) => lump(api, '#d05a52', '#a83f3f', '#eb9089'));
+  define('item_cooked_mutton', (api) => lump(api, '#b06a3c', '#8a4c26', '#d59462'));
+
+  define('item_bone', (api) => {
+    api.clear();
+    for (let i = 0; i < 9; i++) rectOn(api, 4 + i * 0.7 | 0, 10 - i, 2, 2, '#e8e6d8');
+    rectOn(api, 3, 11, 3, 2, '#e8e6d8'); rectOn(api, 4, 13, 2, 2, '#d5d2c2');
+    rectOn(api, 10, 1, 3, 2, '#f4f2e6'); rectOn(api, 11, 3, 2, 2, '#e8e6d8');
+    api.put(3, 12, '#f4f2e6'); api.put(12, 2, '#f4f2e6');
+  });
+
+  define('item_string', (api) => {
+    api.clear();
+    const pts = [[3, 2], [5, 3], [7, 5], [8, 7], [7, 9], [5, 10], [4, 12], [6, 13], [9, 13], [11, 11], [12, 9]];
+    for (const [x, y] of pts) { api.put(x, y, '#e8e8e8'); api.put(x, y + 1, '#c4c4c4'); }
+  });
+
+  define('item_gunpowder', (api) => {
+    api.clear();
+    for (let i = 0; i < 46; i++) {
+      const x = 3 + Math.floor(rnd() * 10), y = 3 + Math.floor(rnd() * 10);
+      api.put(x, y, pick(['#4a4a4a', '#2f2f2f', '#6a6a6a', '#3d3d3d']));
+    }
   });
 
   const TOOL_KINDS = ['pickaxe', 'axe', 'shovel', 'sword', 'hoe'];

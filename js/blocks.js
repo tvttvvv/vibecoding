@@ -18,7 +18,12 @@
       drop: id,
       tool: null,
       tier: 0,
-      interactive: null
+      interactive: null,
+      // 'cross' hangs the tile on two crossed quads (torches); height shortens
+      // the block (beds), and light keeps monsters from spawning nearby
+      render: 'cube',
+      height: 1,
+      light: 0
     }, opts);
     return id;
   }
@@ -63,9 +68,21 @@
     hardness: 3.5, tool: 'pickaxe', tier: 1, interactive: 'furnace', drop: FURNACE
   });
 
+  const TORCH = simple(24, '횃불', T.torch, {
+    opaque: false, solid: false, hardness: 0, render: 'cross', light: 14
+  });
+  const WOOL = simple(25, '양털', T.wool, { hardness: 0.8 });
+  const BED = def(26, '침대', {
+    top: T.bed_top, side: T.bed_side, bottom: T.planks,
+    opaque: false, hardness: 0.2, height: 0.5625, interactive: 'bed'
+  });
+
   byId[STONE].drop = COBBLESTONE;
   byId[GRASS].drop = DIRT;
   byId[LEAVES].drop = 0;
+  // ores you mine straight into the item, like Minecraft
+  byId[COAL_ORE].drop = 101;
+  byId[DIAMOND_ORE].drop = 104;
 
   const FACE_TILE = ['side', 'side', 'top', 'bottom', 'side', 'side'];
 
@@ -104,14 +121,14 @@
     GRASS, DIRT, STONE, COBBLESTONE, SAND, SANDSTONE, GRAVEL,
     LOG, LEAVES, PLANKS, GLASS, SNOW, SNOW_GRASS, CACTUS,
     COAL_ORE, IRON_ORE, GOLD_ORE, DIAMOND_ORE,
-    CRAFTING_TABLE, FURNACE, BEDROCK
+    CRAFTING_TABLE, FURNACE, TORCH, WOOL, BED, BEDROCK
   ];
 
   global.Blocks = {
     AIR, STONE, GRASS, DIRT, COBBLESTONE, SAND, SANDSTONE, GRAVEL,
     LOG, LEAVES, PLANKS, BEDROCK, COAL_ORE, IRON_ORE, GOLD_ORE,
     DIAMOND_ORE, WATER, SNOW, SNOW_GRASS, CACTUS, GLASS,
-    CRAFTING_TABLE, FURNACE, FURNACE_LIT,
+    CRAFTING_TABLE, FURNACE, FURNACE_LIT, TORCH, WOOL, BED,
     byId, tileFor, isOpaque, isSolid, isLiquid, mineTime, canHarvest, iconFor, creativeList
   };
 })(window);

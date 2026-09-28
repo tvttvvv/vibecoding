@@ -7,6 +7,7 @@
   const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const ID_PREFIX = 'vxlcraft-';
   const POS_INTERVAL = 80;
+  const MOB_INTERVAL = 140;
   const MAX_GUESTS = 7;
 
   function randomCode(len) {
@@ -216,6 +217,17 @@
       return;
     }
 
+    // monsters live on the host; guests report their swings and get the result
+    if (msg.t === 'mobhit') {
+      if (this.handlers.onMobHit) this.handlers.onMobHit(msg);
+      return;
+    }
+
+    if (msg.t === 'sleep') {
+      if (this.handlers.onSleep) this.handlers.onSleep(conn.id);
+      return;
+    }
+
     if (msg.t === 'restore') {
       if (this.handlers.onRestore) this.handlers.onRestore(conn.id, msg);
       return;
@@ -317,6 +329,16 @@
       return;
     }
 
+    if (msg.t === 'mobs') {
+      if (this.handlers.onMobs) this.handlers.onMobs(msg.m);
+      return;
+    }
+
+    if (msg.t === 'time') {
+      if (this.handlers.onTime) this.handlers.onTime(msg.dayTime);
+      return;
+    }
+
     if (msg.t === 'bulk') {
       if (this.handlers.onBulk) this.handlers.onBulk(msg.edits, msg.by);
       return;
@@ -386,14 +408,37 @@
     this._broadcast({ t: 'bulk', edits, by });
   };
 
-  Net.sendHit = function (targetId, dmg, kx, kz) {
+  Net.sendHit = function (targetId, dmg, kx, kz, from) {
     if (!this.active || targetId === this.myId) return;
     if (this.isHost) {
       const c = this.conns[targetId];
-      if (c) c.send({ t: 'hit', dmg, kx, kz, from: this.name });
+      if (c) c.send({ t: 'hit', dmg, kx, kz, from: from || this.name });
     } else if (this.hostConn) {
       this.hostConn.send({ t: 'hit', to: targetId, dmg, kx, kz });
     }
+  };
+
+  Net.sendMobs = function (rows) {
+    if (!this.active || !this.isHost) return;
+    const now = performance.now();
+    if (now - (this._lastMobs || 0) < MOB_INTERVAL) return;
+    this._lastMobs = now;
+    this._broadcast({ t: 'mobs', m: rows });
+  };
+
+  Net.sendMobHit = function (mobId, dmg, kx, kz) {
+    if (!this.active || this.isHost || !this.hostConn) return;
+    this.hostConn.send({ t: 'mobhit', mobId, dmg, kx, kz });
+  };
+
+  Net.sendSleep = function () {
+    if (!this.active || this.isHost || !this.hostConn) return;
+    this.hostConn.send({ t: 'sleep' });
+  };
+
+  Net.sendTime = function (dayTime) {
+    if (!this.active || !this.isHost) return;
+    this._broadcast({ t: 'time', dayTime });
   };
 
   Net.sendSystem = function (text) {

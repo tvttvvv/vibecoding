@@ -6,6 +6,8 @@
   const DAY_LENGTH = 1200;
   const REACH = 5.2;
   const ATTACK_REACH = 4.0;
+  const PICKUP_PULL = 1.8;
+  const PICKUP_RANGE = 1.0;
 
   // Anyone can walk into these without a code. There is no directory service on
   // static hosting, so the address is simply agreed in advance: whoever arrives
@@ -111,6 +113,7 @@
     this.blockEntities = new Map();
     this.editsByChunk = {};
     this.editMap = new Map();
+    this.lightSources = new Set();
     // one save slot per world: a room is shared by code, a solo world by seed
     this.roomCode = (opts && opts.room) || null;
     this.worldKey = this.roomCode ? 'r:' + this.roomCode : 's:' + seed;
@@ -119,17 +122,18 @@
     this._saveTimer = 0;
     this._worldTimer = 0;
     if (opts && opts.edits) this.loadEdits(opts.edits);
+    this._pendingEntities = (opts && opts.entities) || null;
 
     this.world = new World(seed);
     this.world.onChunkReady = (chunk) => this.applyChunkEdits(chunk);
     this.scene.add(this.world.group);
+    Mobs.attach(this.scene);
 
     this.inventory = new Inventory();
     this.inventory.onChange = () => UI.renderHotbar();
 
     this.player = new Player(mode);
     this.player.armorProvider = this.inventory;
-    this.blockEntities = new Map();
     this.itemMaterial = this.itemMaterial ||
       new THREE.MeshBasicMaterial({ map: Textures.texture, alphaTest: 0.5 });
 
@@ -138,6 +142,10 @@
       for (let i = 0; i < 9 && i < list.length; i++) this.inventory.slots[i] = { id: list[i], count: 64 };
     }
 
+    if (this._pendingEntities) {
+      this.loadEntities(this._pendingEntities);
+      this._pendingEntities = null;
+    }
     this.spawnPlayer();
     this.restoreMe();
     UI.setFlyButtons(mode, this.player.flying);
@@ -152,6 +160,8 @@
     this._deathHandled = false;
     this.avatars = this.avatars || {};
     this.clearAvatars();
+    this._eatCooldown = 0;
+    this._sleepCooldown = 0;
   };
 
   // Single player: an empty seed box means "carry on with the world I was in",
@@ -169,6 +179,7 @@
     this.start(mode, '', {
       seed,
       edits: saved ? saved.edits : null,
+      entities: saved ? saved.entities : null,
       savedAt: saved ? saved.savedAt : 0
     });
     if (saved) UI.toast('저장된 세계를 이어서 불러왔어요', 3000);
@@ -187,6 +198,10 @@
   // freshly restored one cost the same to store and to send to a joining player.
   Game.registerEdit = function (x, y, z, id) {
     const key = x + ',' + y + ',' + z;
+    // monsters keep away from torchlight, so the lit spots are worth tracking
+    if (!this.lightSources) this.lightSources = new Set();
+    if (B.byId[id] && B.byId[id].light) this.lightSources.add(key);
+    else this.lightSources.delete(key);
     if (!this.editMap.has(key)) {
       const ck = Math.floor(x / WorldConst.CHUNK_SIZE) + ',' + Math.floor(z / WorldConst.CHUNK_SIZE);
       const list = this.editsByChunk[ck] || (this.editsByChunk[ck] = []);
@@ -304,7 +319,7 @@
     if (!this.started || !Store.ok || this.loading) return;
     if (!this._worldDirty && !force) return;
     this._worldDirty = false;
-    if (Store.saveWorld(this.worldKey, this.seed, this.editList())) {
+    if (Store.saveWorld(this.worldKey, this.seed, this.editList(), this.entityList())) {
       this.worldSavedAt = Date.now();
     } else if (!this._saveWarned) {
       this._saveWarned = true;
@@ -315,6 +330,39 @@
   Game.saveNow = function (force) {
     this.saveWorld(force);
     this.saveMe();
+  };
+
+  // furnaces keep what is inside them, so leaving mid-smelt is not a loss
+  Game.entityList = function () {
+    const out = [];
+    if (!this.blockEntities) return out;
+    const pack = (s) => (s ? (s.dur ? [s.id, s.count, s.dur] : [s.id, s.count]) : 0);
+    for (const f of this.blockEntities.values()) {
+      if (f.type !== 'furnace') continue;
+      if (!f.input[0] && !f.fuel[0] && !f.output[0] && f.burn <= 0) continue;
+      out.push([f.x, f.y, f.z, pack(f.input[0]), pack(f.fuel[0]), pack(f.output[0]),
+        +f.burn.toFixed(1), +f.burnMax.toFixed(1), +f.cook.toFixed(1)]);
+    }
+    return out;
+  };
+
+  Game.loadEntities = function (rows) {
+    if (!rows || !rows.length) return;
+    const unpack = (e) => {
+      if (!Array.isArray(e) || !e[0] || !Items.get(e[0])) return null;
+      const s = { id: e[0], count: Math.max(1, e[1] | 0) };
+      if (e[2]) s.dur = e[2];
+      return s;
+    };
+    for (const r of rows) {
+      const f = this.furnaceAt(r[0], r[1], r[2]);
+      f.input[0] = unpack(r[3]);
+      f.fuel[0] = unpack(r[4]);
+      f.output[0] = unpack(r[5]);
+      f.burn = r[6] || 0;
+      f.burnMax = r[7] || 0;
+      f.cook = r[8] || 0;
+    }
   };
 
   Game.restoreMe = function () {
@@ -496,6 +544,16 @@
       onRoster: () => UI.renderRoom(),
       onChat: (from, text, sys) => UI.addChat(from, text, sys),
       onHit: (msg) => this.takeHit(msg),
+      onMobHit: (msg) => this.onMobHit(msg),
+      onMobs: (rows) => Mobs.applyRemote(rows),
+      onTime: (t) => { this.dayTime = t; },
+      onSleep: (id) => {
+        if (!Net.isHost) return;
+        if (this.dayTime > 0.22 && this.dayTime < 0.78) return;
+        this.setDayTime(0.24);
+        const who = Net.players[id] ? Net.players[id].name : '누군가';
+        Net.sendSystem(who + ' 님이 잠을 자 아침이 되었습니다');
+      },
       onPlayerJoin: (id, p) => { UI.addChat(null, p.name + ' 님이 참여했어요', true); UI.renderRoom(); },
       onPlayerLeave: (id, p) => { UI.addChat(null, (p ? p.name : '플레이어') + ' 님이 나갔어요', true); UI.renderRoom(); },
       onDisconnect: () => { UI.toast('방 연결이 끊어졌어요', 4000); this.clearAvatars(); UI.renderRoom(); },
@@ -524,6 +582,7 @@
     this.start(mode, seedText, {
       seed, room: code,
       edits: saved ? saved.edits : null,
+      entities: saved ? saved.entities : null,
       savedAt: saved ? saved.savedAt : 0
     });
     if (saved) UI.toast('저장해 둔 이 방의 세계를 불러왔어요', 3000);
@@ -572,6 +631,7 @@
       this.start(mode, '', {
         seed: room.seed, room: room.code,
         edits: saved ? saved.edits : null,
+        entities: saved ? saved.entities : null,
         savedAt: saved ? saved.savedAt : 0
       });
       UI.toast(saved
@@ -645,10 +705,14 @@
     const w = this.world;
     let sx = 0, sz = 0, sy = WorldConst.SEA_LEVEL + 1;
     let found = false;
-    for (let r = 0; r < 14 && !found; r++) {
-      for (let a = 0; a < 14 && !found; a++) {
-        const x = Math.round(Math.cos(a * 0.9) * r * 7);
-        const z = Math.round(Math.sin(a * 0.9) * r * 7);
+    // spiral outwards until dry land turns up: a wide ocean around the origin
+    // used to drop the player on the sea floor
+    for (let r = 0; r < 26 && !found; r++) {
+      const steps = r === 0 ? 1 : Math.min(24, 4 + r * 2);
+      for (let a = 0; a < steps && !found; a++) {
+        const ang = (a / steps) * Math.PI * 2 + r * 0.7;
+        const x = Math.round(Math.cos(ang) * r * 8);
+        const z = Math.round(Math.sin(ang) * r * 8);
         const y = w.groundY(x, z);
         if (y > WorldConst.SEA_LEVEL &&
             w.getBlock(x, y + 1, z) === B.AIR &&
@@ -706,9 +770,14 @@
       UI.openScreen('furnace', this.furnaceAt(hit.x, hit.y, hit.z));
       return;
     }
+    if (targetDef.interactive === 'bed') {
+      this.useBed(hit.x, hit.y, hit.z);
+      return;
+    }
 
     const stack = this.inventory.selectedStack();
     if (!stack) { UI.toast('손에 든 블록이 없어요', 1200); return; }
+    if (this.tryEat(stack)) return;
     if (!Items.isBlock(stack.id)) { UI.toast(Items.name(stack.id) + '은(는) 설치할 수 없어요', 1400); return; }
 
     const x = hit.x + hit.nx, y = hit.y + hit.ny, z = hit.z + hit.nz;
@@ -724,6 +793,28 @@
   };
 
   // ------------------------------------------------------------------ combat
+  // the same ray answers "did I hit a monster" and "did I hit another player"
+  Game.mobAt = function (screenX, screenY) {
+    const groups = [];
+    for (const m of Mobs.list) if (m.group) groups.push(m.group);
+    if (!groups.length) return null;
+    this._ndc = this._ndc || new THREE.Vector2();
+    this._caster = this._caster || new THREE.Raycaster();
+    this._ndc.set(
+      (screenX / window.innerWidth) * 2 - 1,
+      -(screenY / window.innerHeight) * 2 + 1
+    );
+    this._caster.setFromCamera(this._ndc, this.camera);
+    this._caster.far = ATTACK_REACH;
+    const hits = this._caster.intersectObjects(groups, true);
+    this._caster.far = Infinity;
+    if (!hits.length) return null;
+    let node = hits[0].object;
+    while (node && !node.userData.mobId) node = node.parent;
+    if (!node) return null;
+    return { mob: Mobs.byId(node.userData.mobId), distance: hits[0].distance };
+  };
+
   Game.avatarAt = function (screenX, screenY) {
     const groups = [];
     for (const id in this.avatars) groups.push(this.avatars[id].group);
@@ -748,9 +839,10 @@
   };
 
   Game.tryAttack = function (screenX, screenY) {
-    if (!Net.active) return false;
     const now = performance.now();
     if (now - (this._lastAttack || 0) < 450) return false;
+    if (this.attackMob(screenX, screenY, now)) return true;
+    if (!Net.active) return false;
 
     const target = this.avatarAt(screenX, screenY);
     if (!target) return false;
@@ -778,6 +870,73 @@
     return true;
   };
 
+  Game.attackMob = function (screenX, screenY, now) {
+    const target = this.mobAt(screenX, screenY);
+    if (!target || !target.mob) return false;
+
+    // a wall between us blocks the swing
+    const block = this.targetAt(screenX, screenY);
+    if (block && block.dist < target.distance) return false;
+
+    this._lastAttack = now;
+    const mob = target.mob;
+    const stack = this.inventory.selectedStack();
+    const def = stack ? Items.get(stack.id) : null;
+    const damage = def && def.damage ? def.damage : 1;
+
+    const kx = mob.x - this.player.pos.x, kz = mob.z - this.player.pos.z;
+    const len = Math.hypot(kx, kz) || 1;
+
+    if (Net.active && !Net.isHost) {
+      Net.sendMobHit(mob.id, damage, kx / len, kz / len);
+      mob.hurtFlash = 0.3;
+    } else {
+      this.damageMob(mob, damage, kx / len, kz / len);
+    }
+    if (def && def.tool && this.mode === 'survival') this.inventory.damageSelected(1);
+    return true;
+  };
+
+  Game.damageMob = function (mob, damage, kx, kz) {
+    if (!mob || mob.dead) return;
+    mob.hurt(damage);
+    mob.x += kx * 0.45;
+    mob.z += kz * 0.45;
+    if (mob.onGround) mob.vy = 5.2;
+    if (mob.dead) {
+      Mobs.dropLoot(mob, this);
+      Mobs.remove(mob);
+    }
+  };
+
+  Game.onMobHit = function (msg) {
+    if (!Net.isHost) return;
+    this.damageMob(Mobs.byId(msg.mobId), msg.dmg || 1, msg.kx || 0, msg.kz || 0);
+  };
+
+  // a monster reaching a player: the host resolves it and tells the victim
+  Game.mobAttack = function (mob, damage, kx, kz) {
+    if (this.mode !== 'survival') return;
+    const p = this.player;
+    const near = Math.hypot(p.pos.x - mob.x, p.pos.z - mob.z) < (mob.def.reach || 3) + 1.4 ||
+      mob.def.explodes;
+    if (!near) return;
+    p.hurt(damage);
+    p.knockX = kx * 4;
+    p.knockZ = kz * 4;
+    if (p.onGround) p.vel.y = 4.6;
+    this._lastAttacker = { name: mob.def.name, at: performance.now() };
+  };
+
+  Game.mobArrowHit = function (damage, kx, kz) {
+    if (this.mode !== 'survival') return;
+    const p = this.player;
+    p.hurt(damage);
+    p.knockX = kx * 2.4;
+    p.knockZ = kz * 2.4;
+    this._lastAttacker = { name: '스켈레톤', at: performance.now() };
+  };
+
   Game.takeHit = function (msg) {
     const p = this.player;
     if (p.dead || this.mode !== 'survival') return;
@@ -786,6 +945,52 @@
     p.knockZ = (msg.kz || 0) * 4;
     if (p.onGround) p.vel.y = 4.6;
     this._lastAttacker = { name: msg.from, at: performance.now() };
+  };
+
+  Game.tryEat = function (stack) {
+    const food = Items.foodOf(stack.id);
+    if (!food) return false;
+    if (performance.now() - (this._eatCooldown || 0) < 700) return true;
+    if (this.mode === 'survival' && this.player.food >= 20) {
+      UI.toast('배가 부릅니다', 1200);
+      return true;
+    }
+    this._eatCooldown = performance.now();
+    this.player.eat(food.food, food.saturation || 0);
+    if (this.mode === 'survival') this.inventory.consumeSelected();
+    UI.renderStats(this.player);
+    UI.toast(Items.name(stack.id) + '을(를) 먹었습니다', 1200);
+    return true;
+  };
+
+  // Sleeping runs the clock to dawn. In a room the host owns the time, so a
+  // guest asks and everybody's sky moves together.
+  Game.useBed = function (x, y, z) {
+    const p = this.player;
+    if (Math.hypot(p.pos.x - (x + 0.5), p.pos.z - (z + 0.5)) > 4) return;
+    this.spawnPoint = { x: x + 0.5, y: y + 1.2, z: z + 0.5 };
+    if (this.dayTime > 0.22 && this.dayTime < 0.78) {
+      UI.toast('낮에는 잘 수 없어요. 부활 지점만 여기로 정했습니다.', 2600);
+      return;
+    }
+    const monster = Mobs.list.some((m) => m.def.hostile &&
+      Math.hypot(m.x - p.pos.x, m.z - p.pos.z) < 10);
+    if (monster) { UI.toast('근처에 몬스터가 있어 잘 수 없어요', 2200); return; }
+
+    if (Net.active && !Net.isHost) {
+      Net.sendSleep();
+      UI.toast('방장에게 아침을 요청했어요', 2000);
+    } else {
+      this.setDayTime(0.24);
+      if (Net.active) Net.sendSystem(Net.name + ' 님이 잠을 자 아침이 되었습니다');
+    }
+    p.health = Math.min(p.maxHealth, p.health + 2);
+    UI.renderStats(p);
+  };
+
+  Game.setDayTime = function (t) {
+    this.dayTime = t;
+    if (Net.active && Net.isHost) Net.sendTime(t);
   };
 
   Game.entityKey = function (x, y, z) { return x + ',' + y + ',' + z; };
@@ -849,7 +1054,8 @@
         f.lit = lit;
         const here = this.world.getBlock(f.x, f.y, f.z);
         if (here === B.FURNACE || here === B.FURNACE_LIT) {
-          this.world.setBlock(f.x, f.y, f.z, lit ? B.FURNACE_LIT : B.FURNACE);
+          // through changeBlock so the glow is saved and the room sees it too
+          this.changeBlock(f.x, f.y, f.z, lit ? B.FURNACE_LIT : B.FURNACE);
         }
       }
       if (f === open && (active || f.cook > 0)) openChanged = true;
@@ -859,7 +1065,8 @@
       this._furnaceUiTimer = (this._furnaceUiTimer || 0) + dt;
       if (this._furnaceUiTimer > 0.2) {
         this._furnaceUiTimer = 0;
-        UI.renderScreen();
+        // a full re-render would swap out the node a drag is holding on to
+        UI.refreshFurnace();
       }
     }
   };
@@ -915,6 +1122,20 @@
       return;
     }
 
+    // walking and small turns keep the break going, but looking away drops it
+    if (Controls.cancelMineOnLook()) {
+      const len = Math.hypot(dx, dy, dz) || 1;
+      this._look = this._look || { x: 0, y: 0, z: 0 };
+      p.lookDir(this._look);
+      const facing = (dx * this._look.x + dy * this._look.y + dz * this._look.z) / len;
+      if (facing < 0.55) {
+        m.target = null;
+        m.progress = 0;
+        this.crackMesh.visible = false;
+        return;
+      }
+    }
+
     const stack = this.inventory.selectedStack();
     const toolDef = stack ? Items.get(stack.id) : null;
     const seconds = this.mode === 'creative' ? 0.12 : B.mineTime(here, toolDef);
@@ -959,6 +1180,10 @@
       if (B.canHarvest(id, toolDef)) {
         const drop = B.byId[id].drop;
         if (drop) this.spawnDrop(x + 0.5, y + 0.3, z + 0.5, drop, 1);
+        // oak leaves occasionally give an apple, the first food you can find
+        if (id === B.LEAVES && Math.random() < 0.06) {
+          this.spawnDrop(x + 0.5, y + 0.3, z + 0.5, Items.APPLE, 1);
+        }
       }
       if (toolDef && toolDef.tool && this.inventory.damageSelected(1)) {
         UI.toast('도구가 부서졌어요', 1600);
@@ -995,13 +1220,14 @@
       d.y = ny;
 
       const dist = Math.hypot(d.x - p.pos.x, d.y - (p.pos.y + 0.9), d.z - p.pos.z);
-      if (d.age > 0.4 && dist < 3.2) {
-        const pull = Math.min(1, (3.2 - dist) / 3.2 + 0.25) * 7 * dt;
+      // Minecraft only reaches about a block: anything further stays put
+      if (d.age > 0.4 && dist < PICKUP_PULL) {
+        const pull = Math.min(1, (PICKUP_PULL - dist) / PICKUP_PULL + 0.25) * 9 * dt;
         d.x += (p.pos.x - d.x) * pull;
         d.z += (p.pos.z - d.z) * pull;
         d.y += (p.pos.y + 0.6 - d.y) * pull;
       }
-      if (d.age > 0.4 && dist < 1.1) {
+      if (d.age > 0.4 && dist < PICKUP_RANGE) {
         const pulled = this.inventory.add(d.id, d.count);
         if (pulled > 0) {
           this.scene.remove(d.mesh);
@@ -1136,7 +1362,8 @@
         // a restored position is kept unless the world moved under it
         if (!this._restoredPos || this.blockedAt(p.pos)) {
           const g = this.world.groundY(Math.floor(p.pos.x), Math.floor(p.pos.z));
-          if (g >= 0) {
+          // never settle onto a sea floor: that spot is water, not standing room
+          if (g >= 0 && this.world.getBlock(Math.floor(p.pos.x), g + 1, Math.floor(p.pos.z)) === B.AIR) {
             p.pos.y = g + 1.2;
             p.vel.y = 0;
             p.fallStartY = p.pos.y;
@@ -1154,8 +1381,9 @@
 
     Controls.tickHold();
     const look = Controls.consumeLook();
-    p.yaw -= look.x * Controls.LOOK_SENS;
-    p.pitch -= look.y * Controls.LOOK_SENS;
+    const sens = Controls.lookSens();
+    p.yaw -= look.x * sens;
+    p.pitch -= look.y * sens;
     p.pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, p.pitch));
 
     if (!this.paused && !p.dead) {
@@ -1174,7 +1402,11 @@
     this.world.update(p.pos.x, p.pos.z, 6);
     this.saveTick(dt);
     this.updateSky(dt);
-    if (Net.active) Net.sendPos(p);
+    if (!this.paused) Mobs.update(dt, this.world, p, this);
+    if (Net.active) {
+      Net.sendPos(p);
+      if (Net.isHost) Net.sendMobs(Mobs.snapshot());
+    }
     this.updateAvatars(dt);
 
     const aim = this.mining.target;
@@ -1191,7 +1423,7 @@
     UI.setDebug([
       'FPS ' + (this._fps || 0),
       'XYZ ' + p.pos.x.toFixed(1) + ' / ' + p.pos.y.toFixed(1) + ' / ' + p.pos.z.toFixed(1),
-      '청크 ' + this.world.chunks.size + '   드롭 ' + this.drops.length,
+      '청크 ' + this.world.chunks.size + '   드롭 ' + this.drops.length + '   몹 ' + Mobs.list.length,
       '시드 ' + this.seed,
       '시간 ' + Math.floor(this.dayTime * 24) + '시',
       '모드 ' + (this.mode === 'survival' ? '서바이벌' : '크리에이티브')
@@ -1209,6 +1441,7 @@
 
   // ------------------------------------------------------------ bootstrap
   Game.boot = function () {
+    Settings.load();
     this.initRenderer();
     UI.init(this);
 
@@ -1220,7 +1453,22 @@
       jumpBtn: el('btnJump'),
       upBtn: el('btnFlyUp'),
       downBtn: el('btnFlyDown'),
-      onTap: (x, y) => this.tryPlace(x, y)
+      onTap: (x, y) => this.tryPlace(x, y),
+      hooks: {
+        onHotbar: (i) => { if (this.started) { this.inventory.selected = i; UI.renderHotbar(); } },
+        onInventory: () => { if (this.started) UI.toggleInventory(); },
+        onDrop: () => this.dropSelected(),
+        onChat: () => { if (Net.active) UI.openChat(); },
+        onFly: () => this.toggleFly(),
+        onEscape: () => UI.onEscape(),
+        onScroll: (dir) => {
+          if (!this.started) return;
+          const n = InventoryConst.HOTBAR_SIZE;
+          this.inventory.selected = (this.inventory.selected + dir + n) % n;
+          UI.renderHotbar();
+        },
+        onKeyboardMode: () => UI.showKeyboardHint()
+      }
     });
 
     document.querySelectorAll('[data-start-mode]').forEach((btn) => {
@@ -1240,6 +1488,21 @@
 
     UI.showMenu();
     this.loop();
+  };
+
+  Game.dropSelected = function () {
+    if (!this.started || this.paused) return;
+    const inv = this.inventory;
+    const stack = inv.selectedStack();
+    if (!stack) return;
+    const p = this.player;
+    this._fwd = this._fwd || { x: 0, y: 0, z: 0 };
+    p.forward(this._fwd);
+    this.spawnDrop(
+      p.pos.x + this._fwd.x * 1.2, p.pos.y + 1.1, p.pos.z + this._fwd.z * 1.2,
+      stack.id, 1
+    );
+    inv.consumeSelected();
   };
 
   Game.PUBLIC_ROOMS = PUBLIC_ROOMS;

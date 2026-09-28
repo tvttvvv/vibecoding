@@ -1,0 +1,643 @@
+(function (global) {
+  'use strict';
+
+  const B = Blocks;
+  const I = Items;
+
+  const GRAVITY = 26;
+  const MAX_FALL = 50;
+  const DESPAWN_DIST = 52;
+  const SPAWN_MIN = 22;
+  const SPAWN_MAX = 40;
+  const HOSTILE_CAP = 8;
+  const PASSIVE_CAP = 8;
+  const TORCH_RADIUS = 8;
+
+  // Every mob is a handful of boxes, the same way the other players are drawn:
+  // [width, height, depth, colour, x, y, z, 'head' when it should follow the gaze]
+  const TYPES = {
+    pig: {
+      name: '돼지', hp: 10, hw: 0.45, h: 0.9, speed: 1.5, hostile: false,
+      drops: [[I.RAW_PORK, 1, 3]],
+      parts: [
+        [0.9, 0.6, 1.3, 0xf0a8a0, 0, 0.5, 0],
+        [0.2, 0.4, 0.2, 0xe08e86, -0.28, 0.2, -0.45],
+        [0.2, 0.4, 0.2, 0xe08e86, 0.28, 0.2, -0.45],
+        [0.2, 0.4, 0.2, 0xe08e86, -0.28, 0.2, 0.45],
+        [0.2, 0.4, 0.2, 0xe08e86, 0.28, 0.2, 0.45],
+        [0.6, 0.6, 0.5, 0xf0a8a0, 0, 0.62, -0.85, 'head'],
+        [0.25, 0.2, 0.1, 0xd98d84, 0, 0.56, -1.12, 'head']
+      ]
+    },
+    cow: {
+      name: '소', hp: 10, hw: 0.45, h: 1.3, speed: 1.4, hostile: false,
+      drops: [[I.RAW_BEEF, 1, 3]],
+      parts: [
+        [0.9, 0.8, 1.4, 0x4a3322, 0, 0.85, 0],
+        [0.24, 0.5, 0.24, 0x3b2a1c, -0.28, 0.25, -0.45],
+        [0.24, 0.5, 0.24, 0x3b2a1c, 0.28, 0.25, -0.45],
+        [0.24, 0.5, 0.24, 0x3b2a1c, -0.28, 0.25, 0.45],
+        [0.24, 0.5, 0.24, 0x3b2a1c, 0.28, 0.25, 0.45],
+        [0.55, 0.55, 0.55, 0xe8e2d8, 0, 1.05, -0.92, 'head'],
+        [0.12, 0.12, 0.12, 0xdad4c8, -0.34, 1.28, -0.92, 'head'],
+        [0.12, 0.12, 0.12, 0xdad4c8, 0.34, 1.28, -0.92, 'head']
+      ]
+    },
+    chicken: {
+      name: '닭', hp: 4, hw: 0.22, h: 0.7, speed: 1.4, hostile: false,
+      drops: [[I.RAW_CHICKEN, 1, 1]],
+      parts: [
+        [0.4, 0.45, 0.5, 0xf2f2f2, 0, 0.4, 0],
+        [0.1, 0.25, 0.1, 0xf0c635, -0.1, 0.13, 0],
+        [0.1, 0.25, 0.1, 0xf0c635, 0.1, 0.13, 0],
+        [0.3, 0.3, 0.3, 0xf2f2f2, 0, 0.72, -0.2, 'head'],
+        [0.12, 0.1, 0.16, 0xf0c635, 0, 0.7, -0.4, 'head'],
+        [0.1, 0.14, 0.06, 0xd5322b, 0, 0.86, -0.28, 'head']
+      ]
+    },
+    sheep: {
+      name: '양', hp: 8, hw: 0.45, h: 1.2, speed: 1.4, hostile: false,
+      drops: [[B.WOOL, 1, 1], [I.RAW_MUTTON, 1, 2]],
+      parts: [
+        [1.0, 0.85, 1.3, 0xe9ecec, 0, 0.8, 0],
+        [0.2, 0.45, 0.2, 0xd8d2c8, -0.3, 0.22, -0.4],
+        [0.2, 0.45, 0.2, 0xd8d2c8, 0.3, 0.22, -0.4],
+        [0.2, 0.45, 0.2, 0xd8d2c8, -0.3, 0.22, 0.4],
+        [0.2, 0.45, 0.2, 0xd8d2c8, 0.3, 0.22, 0.4],
+        [0.45, 0.45, 0.5, 0xe0dcd4, 0, 0.95, -0.8, 'head']
+      ]
+    },
+    zombie: {
+      name: '좀비', hp: 20, hw: 0.3, h: 1.9, speed: 2.1, hostile: true,
+      damage: 3, reach: 1.7, burns: true, drops: [[I.ROTTEN_FLESH, 0, 2]],
+      parts: [
+        [0.5, 0.75, 0.28, 0x2f6b3f, 0, 1.05, 0],
+        [0.22, 0.72, 0.22, 0x33437a, -0.13, 0.36, 0],
+        [0.22, 0.72, 0.22, 0x33437a, 0.13, 0.36, 0],
+        [0.18, 0.6, 0.18, 0x4a8c5a, -0.34, 1.2, -0.2],
+        [0.18, 0.6, 0.18, 0x4a8c5a, 0.34, 1.2, -0.2],
+        [0.46, 0.46, 0.46, 0x4a8c5a, 0, 1.66, 0, 'head'],
+        [0.09, 0.07, 0.03, 0x14301c, -0.11, 1.7, -0.24, 'head'],
+        [0.09, 0.07, 0.03, 0x14301c, 0.11, 1.7, -0.24, 'head']
+      ]
+    },
+    skeleton: {
+      name: '스켈레톤', hp: 20, hw: 0.3, h: 1.9, speed: 2.0, hostile: true,
+      damage: 2, reach: 1.7, ranged: true, burns: true, drops: [[I.BONE, 0, 2]],
+      parts: [
+        [0.4, 0.75, 0.22, 0xd8d6cc, 0, 1.05, 0],
+        [0.16, 0.72, 0.16, 0xc8c6bc, -0.11, 0.36, 0],
+        [0.16, 0.72, 0.16, 0xc8c6bc, 0.11, 0.36, 0],
+        [0.14, 0.6, 0.14, 0xd8d6cc, -0.3, 1.2, -0.1],
+        [0.14, 0.6, 0.14, 0xd8d6cc, 0.3, 1.2, -0.1],
+        [0.44, 0.44, 0.44, 0xe4e2d8, 0, 1.66, 0, 'head'],
+        [0.09, 0.08, 0.03, 0x1a1a1a, -0.1, 1.7, -0.23, 'head'],
+        [0.09, 0.08, 0.03, 0x1a1a1a, 0.1, 1.7, -0.23, 'head']
+      ]
+    },
+    creeper: {
+      name: '크리퍼', hp: 20, hw: 0.3, h: 1.7, speed: 2.0, hostile: true,
+      explodes: true, drops: [[I.GUNPOWDER, 0, 2]],
+      parts: [
+        [0.5, 0.85, 0.3, 0x5cab4a, 0, 0.92, 0],
+        [0.22, 0.4, 0.3, 0x4f9440, -0.13, 0.2, -0.2],
+        [0.22, 0.4, 0.3, 0x4f9440, 0.13, 0.2, -0.2],
+        [0.22, 0.4, 0.3, 0x4f9440, -0.13, 0.2, 0.2],
+        [0.22, 0.4, 0.3, 0x4f9440, 0.13, 0.2, 0.2],
+        [0.46, 0.46, 0.46, 0x66b854, 0, 1.55, 0, 'head'],
+        [0.12, 0.12, 0.03, 0x14260f, -0.11, 1.6, -0.24, 'head'],
+        [0.12, 0.12, 0.03, 0x14260f, 0.11, 1.6, -0.24, 'head'],
+        [0.16, 0.2, 0.03, 0x14260f, 0, 1.44, -0.24, 'head']
+      ]
+    },
+    spider: {
+      name: '거미', hp: 16, hw: 0.6, h: 0.85, speed: 2.7, hostile: true,
+      damage: 2, reach: 1.9, drops: [[I.STRING, 0, 2]],
+      parts: [
+        [0.8, 0.5, 0.8, 0x2b2b2b, 0, 0.5, 0.2],
+        [0.5, 0.4, 0.5, 0x333333, 0, 0.5, -0.4, 'head'],
+        [0.1, 0.1, 0.04, 0xd5322b, -0.14, 0.6, -0.62, 'head'],
+        [0.1, 0.1, 0.04, 0xd5322b, 0.14, 0.6, -0.62, 'head'],
+        [1.5, 0.1, 0.1, 0x1f1f1f, 0, 0.42, -0.1],
+        [1.5, 0.1, 0.1, 0x1f1f1f, 0, 0.42, 0.25],
+        [1.5, 0.1, 0.1, 0x1f1f1f, 0, 0.42, 0.6]
+      ]
+    }
+  };
+
+  const TYPE_NAMES = Object.keys(TYPES);
+  const PASSIVE = TYPE_NAMES.filter((t) => !TYPES[t].hostile);
+  const HOSTILE = TYPE_NAMES.filter((t) => TYPES[t].hostile);
+
+  let nextId = 1;
+
+  function solidAt(world, x, y, z) {
+    const id = world.getBlock(Math.floor(x), Math.floor(y), Math.floor(z));
+    return id !== B.AIR && B.byId[id].solid;
+  }
+
+  // ------------------------------------------------------------------- mob
+  function Mob(type, x, y, z) {
+    const def = TYPES[type];
+    this.id = nextId++;
+    this.type = type;
+    this.def = def;
+    this.x = x; this.y = y; this.z = z;
+    this.vy = 0;
+    this.yaw = Math.random() * Math.PI * 2;
+    this.hp = def.hp;
+    this.onGround = false;
+    this.wander = 0;
+    this.wanderYaw = this.yaw;
+    this.attackCooldown = 0;
+    this.fuse = 0;
+    this.hurtFlash = 0;
+    this.age = 0;
+    this.dead = false;
+    this.group = null;
+  }
+
+  Mob.prototype.moveAxis = function (world, axis, amount) {
+    if (!amount) return false;
+    const hw = this.def.hw, h = this.def.h;
+    if (axis === 'x') this.x += amount; else if (axis === 'z') this.z += amount; else this.y += amount;
+
+    const x0 = Math.floor(this.x - hw), x1 = Math.floor(this.x + hw);
+    const y0 = Math.floor(this.y + 0.001), y1 = Math.floor(this.y + h - 0.001);
+    const z0 = Math.floor(this.z - hw), z1 = Math.floor(this.z + hw);
+
+    let hit = false, limit = 0;
+    for (let bx = x0; bx <= x1; bx++) {
+      for (let by = y0; by <= y1; by++) {
+        for (let bz = z0; bz <= z1; bz++) {
+          if (!solidAt(world, bx, by, bz)) continue;
+          const cell = axis === 'x' ? bx : axis === 'y' ? by : bz;
+          let bound;
+          if (amount > 0) bound = cell - (axis === 'y' ? h : hw) - 0.001;
+          else bound = cell + 1 + (axis === 'y' ? 0 : hw) + 0.001;
+          if (!hit) limit = bound;
+          else if (amount > 0 ? bound < limit : bound > limit) limit = bound;
+          hit = true;
+        }
+      }
+    }
+    if (!hit) return false;
+    if (axis === 'x') this.x = limit; else if (axis === 'z') this.z = limit; else this.y = limit;
+    if (axis === 'y') {
+      if (amount < 0) this.onGround = true;
+      this.vy = 0;
+    }
+    return true;
+  };
+
+  Mob.prototype.hurt = function (amount, quiet) {
+    this.hp -= amount;
+    // burning in daylight ticks every frame, so it must not pin the red flash on
+    if (!quiet) this.hurtFlash = 0.3;
+    if (this.hp <= 0) this.dead = true;
+  };
+
+  // ------------------------------------------------------------------ store
+  const Mobs = {
+    list: [],
+    arrows: [],
+    enabled: true,
+    _spawnTimer: 0,
+    _scene: null,
+    _group: null,
+    TYPES,
+    TYPE_NAMES
+  };
+
+  Mobs.attach = function (scene) {
+    if (this._group) scene.remove(this._group);
+    this._scene = scene;
+    this._group = new THREE.Group();
+    scene.add(this._group);
+    this.list.length = 0;
+    this.arrows.length = 0;
+  };
+
+  Mobs.clear = function () {
+    for (const m of this.list) if (m.group) this._group.remove(m.group);
+    for (const a of this.arrows) this._group.remove(a.mesh);
+    this.list.length = 0;
+    this.arrows.length = 0;
+  };
+
+  Mobs.count = function (hostile) {
+    let n = 0;
+    for (const m of this.list) if (TYPES[m.type].hostile === hostile) n++;
+    return n;
+  };
+
+  // Every mob would otherwise cost one draw call per box. The boxes of a type
+  // are merged once into a body and a head, and every mob of that type shares
+  // the two geometries; only the material is its own, for the hurt flash.
+  const geoCache = {};
+
+  function mergeParts(parts) {
+    if (!parts.length) return null;
+    const positions = [], colors = [], indices = [];
+    let base = 0;
+    for (const p of parts) {
+      const g = new THREE.BoxGeometry(p[0], p[1], p[2]);
+      g.translate(p[4], p[5], p[6]);
+      const pos = g.attributes.position.array;
+      const idx = g.index.array;
+      const c = new THREE.Color(p[3]);
+      for (let i = 0; i < pos.length; i += 3) {
+        positions.push(pos[i], pos[i + 1], pos[i + 2]);
+        colors.push(c.r, c.g, c.b);
+      }
+      for (let i = 0; i < idx.length; i++) indices.push(idx[i] + base);
+      base += pos.length / 3;
+      g.dispose();
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geo.setIndex(indices);
+    geo.computeBoundingSphere();
+    return geo;
+  }
+
+  function geometryFor(type) {
+    if (geoCache[type]) return geoCache[type];
+    const parts = TYPES[type].parts;
+    geoCache[type] = {
+      body: mergeParts(parts.filter((p) => p[7] !== 'head')),
+      head: mergeParts(parts.filter((p) => p[7] === 'head'))
+    };
+    return geoCache[type];
+  }
+
+  Mobs.buildModel = function (mob) {
+    const geo = geometryFor(mob.type);
+    const g = new THREE.Group();
+    const material = new THREE.MeshBasicMaterial({ vertexColors: true });
+    if (geo.body) g.add(new THREE.Mesh(geo.body, material));
+    let head = null;
+    if (geo.head) {
+      head = new THREE.Group();
+      head.add(new THREE.Mesh(geo.head, material));
+      g.add(head);
+    }
+    g.userData.head = head;
+    g.userData.mobId = mob.id;
+    g.userData.material = material;
+    return g;
+  };
+
+  Mobs.spawn = function (type, x, y, z) {
+    const mob = new Mob(type, x, y, z);
+    mob.group = this.buildModel(mob);
+    mob.group.position.set(x, y, z);
+    this._group.add(mob.group);
+    this.list.push(mob);
+    return mob;
+  };
+
+  Mobs.remove = function (mob) {
+    const i = this.list.indexOf(mob);
+    if (i >= 0) this.list.splice(i, 1);
+    if (mob.group) this._group.remove(mob.group);
+  };
+
+  Mobs.nearest = function (x, y, z, maxDist) {
+    let best = null, bestD = maxDist * maxDist;
+    for (const m of this.list) {
+      const d = (m.x - x) * (m.x - x) + (m.y - y) * (m.y - y) + (m.z - z) * (m.z - z);
+      if (d < bestD) { bestD = d; best = m; }
+    }
+    return best;
+  };
+
+  Mobs.byId = function (id) {
+    for (const m of this.list) if (m.id === id) return m;
+    return null;
+  };
+
+  // --------------------------------------------------------------- spawning
+  function skyOpen(world, x, y, z) {
+    for (let yy = y + 1; yy < WorldConst.WORLD_HEIGHT; yy++) {
+      const id = world.getBlock(x, yy, z);
+      if (id !== B.AIR && B.byId[id].opaque) return false;
+    }
+    return true;
+  }
+
+  function isNight(dayTime) {
+    return dayTime < 0.23 || dayTime > 0.77;
+  }
+
+  Mobs.litNearby = function (game, x, y, z) {
+    if (!game.lightSources) return false;
+    for (const key of game.lightSources) {
+      const p = key.split(',');
+      const dx = +p[0] + 0.5 - x, dy = +p[1] + 0.5 - y, dz = +p[2] + 0.5 - z;
+      if (dx * dx + dy * dy + dz * dz < TORCH_RADIUS * TORCH_RADIUS) return true;
+    }
+    return false;
+  };
+
+  Mobs.trySpawn = function (world, player, game) {
+    const night = isNight(game.dayTime);
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const hostile = attempt < 3;
+      if (hostile && this.count(true) >= HOSTILE_CAP) continue;
+      if (!hostile && this.count(false) >= PASSIVE_CAP) continue;
+
+      const ang = Math.random() * Math.PI * 2;
+      const dist = SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
+      const x = Math.floor(player.pos.x + Math.cos(ang) * dist);
+      const z = Math.floor(player.pos.z + Math.sin(ang) * dist);
+      const y = world.groundY(x, z);
+      if (y <= 0 || y >= WorldConst.WORLD_HEIGHT - 4) continue;
+      if (world.getBlock(x, y + 1, z) !== B.AIR) continue;
+      if (world.getBlock(x, y + 2, z) !== B.AIR) continue;
+
+      const surface = world.getBlock(x, y, z);
+      const open = skyOpen(world, x, y, z);
+
+      if (hostile) {
+        // monsters need darkness: night out in the open, or a roof over them
+        if (open && !night) continue;
+        if (this.litNearby(game, x + 0.5, y + 1, z + 0.5)) continue;
+        const type = HOSTILE[Math.floor(Math.random() * HOSTILE.length)];
+        this.spawn(type, x + 0.5, y + 1, z + 0.5);
+      } else {
+        if (!open) continue;
+        if (surface !== B.GRASS && surface !== B.SNOW_GRASS) continue;
+        const type = PASSIVE[Math.floor(Math.random() * PASSIVE.length)];
+        const herd = 1 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < herd; i++) {
+          this.spawn(type, x + 0.5 + (Math.random() - 0.5) * 3, y + 1, z + 0.5 + (Math.random() - 0.5) * 3);
+        }
+      }
+    }
+  };
+
+  // -------------------------------------------------------------- simulation
+  Mobs.update = function (dt, world, player, game) {
+    if (!this.enabled || !this._group) return;
+
+    // in a room only the host runs the monsters; everyone else is shown the result
+    if (Net.active && !Net.isHost) { this.renderOnly(dt); return; }
+
+    this._spawnTimer += dt;
+    if (this._spawnTimer >= 2) {
+      this._spawnTimer = 0;
+      if (game.mode === 'survival') this.trySpawn(world, player, game);
+    }
+
+    const day = !isNight(game.dayTime);
+
+    for (let i = this.list.length - 1; i >= 0; i--) {
+      const m = this.list[i];
+      m.age += dt;
+      if (m.hurtFlash > 0) m.hurtFlash = Math.max(0, m.hurtFlash - dt);
+
+      const dx = player.pos.x - m.x, dy = player.pos.y - m.y, dz = player.pos.z - m.z;
+      const distSq = dx * dx + dy * dy + dz * dz;
+
+      if (distSq > DESPAWN_DIST * DESPAWN_DIST || m.y < -6) {
+        this.remove(m);
+        continue;
+      }
+
+      // daylight is fatal to the undead unless they found shade
+      if (m.def.burns && day && skyOpen(world, Math.floor(m.x), Math.floor(m.y), Math.floor(m.z))) {
+        m.hurt(dt * 3, true);
+        m.burning = true;
+      }
+
+      if (m.dead) {
+        this.dropLoot(m, game);
+        this.remove(m);
+        continue;
+      }
+
+      this.think(m, dt, world, player, game, distSq);
+      this.physics(m, dt, world);
+      this.sync(m);
+    }
+
+    this.updateArrows(dt, world, player, game);
+  };
+
+  Mobs.think = function (m, dt, world, player, game, distSq) {
+    const def = m.def;
+    const canSee = game.mode === 'survival' && !player.dead;
+    let wantX = 0, wantZ = 0;
+
+    if (def.hostile && canSee && distSq < 18 * 18 && Math.abs(player.pos.y - m.y) < 8) {
+      const dx = player.pos.x - m.x, dz = player.pos.z - m.z;
+      const len = Math.hypot(dx, dz) || 1;
+      const dist = Math.sqrt(distSq);
+
+      if (def.ranged) {
+        // skeletons keep their distance and shoot
+        if (dist < 5) { wantX = -dx / len; wantZ = -dz / len; }
+        else if (dist > 8) { wantX = dx / len; wantZ = dz / len; }
+        m.attackCooldown -= dt;
+        if (m.attackCooldown <= 0 && dist < 14) {
+          m.attackCooldown = 2.2;
+          this.shoot(m, player);
+        }
+      } else if (def.explodes) {
+        if (dist > 1.9) { wantX = dx / len; wantZ = dz / len; }
+        if (dist < 3.2) {
+          m.fuse += dt;
+          if (m.fuse > 1.5) { this.explode(m, world, player, game); return; }
+        } else {
+          m.fuse = Math.max(0, m.fuse - dt);
+        }
+      } else {
+        wantX = dx / len; wantZ = dz / len;
+        m.attackCooldown -= dt;
+        if (dist < (def.reach || 1.7) && m.attackCooldown <= 0) {
+          m.attackCooldown = 1.0;
+          game.mobAttack(m, def.damage || 2, dx / len, dz / len);
+        }
+      }
+      m.yaw = Math.atan2(dx, dz);
+    } else {
+      // idle drifting: pick a direction, hold it for a few seconds, then stop
+      m.wander -= dt;
+      if (m.wander <= 0) {
+        m.wander = 2 + Math.random() * 4;
+        m.moving = Math.random() < 0.6;
+        m.wanderYaw = Math.random() * Math.PI * 2;
+      }
+      if (m.moving) {
+        wantX = Math.sin(m.wanderYaw);
+        wantZ = Math.cos(m.wanderYaw);
+        m.yaw = m.wanderYaw;
+      }
+    }
+
+    m.wantX = wantX;
+    m.wantZ = wantZ;
+  };
+
+  Mobs.physics = function (m, dt, world) {
+    const speed = m.def.speed;
+    m.onGround = false;
+    m.vy -= GRAVITY * dt;
+    if (m.vy < -MAX_FALL) m.vy = -MAX_FALL;
+
+    const blockedX = m.wantX ? m.moveAxis(world, 'x', m.wantX * speed * dt) : false;
+    const blockedZ = m.wantZ ? m.moveAxis(world, 'z', m.wantZ * speed * dt) : false;
+    m.moveAxis(world, 'y', m.vy * dt);
+
+    // a wall in the way is a step to hop over
+    if ((blockedX || blockedZ) && m.onGround) m.vy = 7.6;
+  };
+
+  Mobs.sync = function (m) {
+    if (!m.group) return;
+    m.group.position.set(m.x, m.y, m.z);
+    m.group.rotation.y = m.yaw;
+    const flash = m.hurtFlash > 0;
+    if (flash !== m._flashed) {
+      m._flashed = flash;
+      const mat = m.group.userData.material;
+      if (mat) mat.color.setRGB(1, flash ? 0.35 : 1, flash ? 0.35 : 1);
+    }
+    if (m.def.explodes && m.group.scale) {
+      const s = m.fuse > 0 ? 1 + Math.sin(m.fuse * 30) * 0.08 * Math.min(1, m.fuse) : 1;
+      m.group.scale.set(s, s, s);
+    }
+  };
+
+  Mobs.renderOnly = function (dt) {
+    for (const m of this.list) {
+      if (m.hurtFlash > 0) m.hurtFlash = Math.max(0, m.hurtFlash - dt);
+      if (m.group) {
+        const k = Math.min(1, dt * 12);
+        m.group.position.x += (m.x - m.group.position.x) * k;
+        m.group.position.y += (m.y - m.group.position.y) * k;
+        m.group.position.z += (m.z - m.group.position.z) * k;
+        m.group.rotation.y = m.yaw;
+      }
+    }
+    this.updateArrowMeshes();
+  };
+
+  // --------------------------------------------------------------- weapons
+  Mobs.shoot = function (m, player) {
+    const ex = player.pos.x, ey = player.pos.y + 1.2, ez = player.pos.z;
+    const sx = m.x, sy = m.y + m.def.h * 0.85, sz = m.z;
+    const dx = ex - sx, dy = ey - sy, dz = ez - sz;
+    const len = Math.hypot(dx, dy, dz) || 1;
+    const speed = 22;
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.08, 0.08, 0.7),
+      new THREE.MeshBasicMaterial({ color: 0xbfae8e })
+    );
+    mesh.position.set(sx, sy, sz);
+    this._group.add(mesh);
+    this.arrows.push({
+      mesh, x: sx, y: sy, z: sz,
+      vx: dx / len * speed, vy: dy / len * speed + 1.6, vz: dz / len * speed,
+      age: 0
+    });
+  };
+
+  Mobs.updateArrows = function (dt, world, player, game) {
+    for (let i = this.arrows.length - 1; i >= 0; i--) {
+      const a = this.arrows[i];
+      a.age += dt;
+      a.vy -= 9 * dt;
+      a.x += a.vx * dt; a.y += a.vy * dt; a.z += a.vz * dt;
+
+      const hitBlock = solidAt(world, a.x, a.y, a.z);
+      const dx = a.x - player.pos.x, dy = a.y - (player.pos.y + 0.9), dz = a.z - player.pos.z;
+      const hitPlayer = dx * dx + dy * dy + dz * dz < 0.7 * 0.7;
+
+      if (hitPlayer) {
+        const len = Math.hypot(a.vx, a.vz) || 1;
+        game.mobArrowHit(2, a.vx / len, a.vz / len);
+      }
+      if (hitBlock || hitPlayer || a.age > 5) {
+        this._group.remove(a.mesh);
+        this.arrows.splice(i, 1);
+        continue;
+      }
+      a.mesh.position.set(a.x, a.y, a.z);
+      a.mesh.lookAt(a.x + a.vx, a.y + a.vy, a.z + a.vz);
+    }
+  };
+
+  Mobs.updateArrowMeshes = function () {
+    for (const a of this.arrows) a.mesh.position.set(a.x, a.y, a.z);
+  };
+
+  Mobs.explode = function (m, world, player, game) {
+    const R = 3;
+    const cx = Math.floor(m.x), cy = Math.floor(m.y + 0.5), cz = Math.floor(m.z);
+    for (let x = -R; x <= R; x++) {
+      for (let y = -R; y <= R; y++) {
+        for (let z = -R; z <= R; z++) {
+          if (x * x + y * y + z * z > R * R) continue;
+          const id = world.getBlock(cx + x, cy + y, cz + z);
+          if (id === B.AIR || !isFinite(B.byId[id].hardness)) continue;
+          game.changeBlock(cx + x, cy + y, cz + z, B.AIR);
+        }
+      }
+    }
+    const dx = player.pos.x - m.x, dy = player.pos.y - m.y, dz = player.pos.z - m.z;
+    const dist = Math.hypot(dx, dy, dz);
+    if (dist < 7) {
+      const dmg = Math.max(1, Math.round((1 - dist / 7) * 22));
+      const len = Math.hypot(dx, dz) || 1;
+      game.mobAttack(m, dmg, dx / len, dz / len);
+    }
+    this.dropLoot(m, game);
+    this.remove(m);
+  };
+
+  Mobs.dropLoot = function (m, game) {
+    if (game.mode !== 'survival') return;
+    for (const [id, min, max] of m.def.drops) {
+      const n = min + Math.floor(Math.random() * (max - min + 1));
+      if (n > 0) game.spawnDrop(m.x, m.y + 0.4, m.z, id, n);
+    }
+  };
+
+  // ---------------------------------------------------------- network state
+  Mobs.snapshot = function () {
+    const out = [];
+    for (const m of this.list) {
+      out.push([m.id, TYPE_NAMES.indexOf(m.type),
+        +m.x.toFixed(2), +m.y.toFixed(2), +m.z.toFixed(2), +m.yaw.toFixed(2)]);
+    }
+    return out;
+  };
+
+  Mobs.applyRemote = function (rows) {
+    const seen = {};
+    for (const r of rows) {
+      const id = r[0];
+      seen[id] = true;
+      let m = this.byId(id);
+      if (!m) {
+        const type = TYPE_NAMES[r[1]];
+        if (!type) continue;
+        m = new Mob(type, r[2], r[3], r[4]);
+        m.id = id;
+        m.group = this.buildModel(m);
+        m.group.position.set(r[2], r[3], r[4]);
+        this._group.add(m.group);
+        this.list.push(m);
+      }
+      m.x = r[2]; m.y = r[3]; m.z = r[4]; m.yaw = r[5];
+    }
+    for (let i = this.list.length - 1; i >= 0; i--) {
+      if (!seen[this.list[i].id]) this.remove(this.list[i]);
+    }
+  };
+
+  global.Mobs = Mobs;
+})(window);
