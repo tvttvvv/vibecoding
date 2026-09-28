@@ -125,6 +125,13 @@
       page.classList.toggle('hidden', page.id !== id);
     }
     this.setNetStatus('');
+    this.refreshSaveButtons();
+  };
+
+  // wiping is only offered when there is something to wipe
+  UI.refreshSaveButtons = function () {
+    el('btnWipeSolo').classList.toggle('hidden', !Store.ok || !Store.hasKind('s:'));
+    el('btnWipeRooms').classList.toggle('hidden', !Store.ok || !Store.hasKind('r:'));
   };
 
   UI.initMenu = function () {
@@ -142,6 +149,19 @@
       this.showMenuPage('menuCreate');
     });
     Controls.bindTap(el('btnGoJoin'), () => this.showMenuPage('menuJoin'));
+
+    Controls.bindTap(el('btnWipeSolo'), () => {
+      if (!confirm('저장된 싱글플레이 세계를 모두 지울까요? 되돌릴 수 없어요.')) return;
+      const n = Store.clearKind('s:');
+      this.refreshSaveButtons();
+      this.toast(n + '개의 세계 기록을 지웠어요', 2600);
+    });
+    Controls.bindTap(el('btnWipeRooms'), () => {
+      if (!confirm('저장된 방 기록(세계와 인벤토리)을 모두 지울까요? 되돌릴 수 없어요.')) return;
+      const n = Store.clearKind('r:');
+      this.refreshSaveButtons();
+      this.toast(n + '개의 방 기록을 지웠어요', 2600);
+    });
 
     for (const btn of document.querySelectorAll('[data-public-mode]')) {
       Controls.bindTap(btn, () => game.enterPublic(btn.dataset.publicMode));
@@ -220,6 +240,12 @@
       : (Net.isHost
         ? '내가 방장입니다. 이 코드를 친구에게 알려주세요.'
         : '방장의 세계에 참여 중입니다.');
+
+    el('roomSaveNote').textContent = Store.ok
+      ? (Net.isHost
+        ? '이 방의 세계와 내 인벤토리는 내 기기에 저장됩니다. 다음에 내가 방을 열면 그대로 이어집니다.'
+        : '내 인벤토리와 지금 보는 세계는 내 기기에 저장됩니다. 방장이 빈 방을 열면 내 기록으로 복원해 줍니다.')
+      : '이 브라우저에서는 저장이 꺼져 있어요 (시크릿 모드일 수 있어요).';
 
     const list = el('roomPlayers');
     list.innerHTML = '';
@@ -954,7 +980,10 @@
     setTimeout(() => node.classList.remove('flash'), 180);
   };
 
-  UI.showMenu = function () { el('menuScreen').classList.remove('hidden'); };
+  UI.showMenu = function () {
+    el('menuScreen').classList.remove('hidden');
+    this.refreshSaveButtons();
+  };
   UI.hideMenu = function () { el('menuScreen').classList.add('hidden'); };
   UI.showDeath = function () {
     // the room's mode is the host's call; switching would also dodge item loss

@@ -110,7 +110,15 @@
     this.clearDrops();
     this.blockEntities = new Map();
     this.editsByChunk = {};
-    if (opts && opts.edits) for (const e of opts.edits) this.registerEdit(e[0], e[1], e[2], e[3]);
+    this.editMap = new Map();
+    // one save slot per world: a room is shared by code, a solo world by seed
+    this.roomCode = (opts && opts.room) || null;
+    this.worldKey = this.roomCode ? 'r:' + this.roomCode : 's:' + seed;
+    this.worldSavedAt = (opts && opts.savedAt) || 0;
+    this._worldDirty = false;
+    this._saveTimer = 0;
+    this._worldTimer = 0;
+    if (opts && opts.edits) this.loadEdits(opts.edits);
 
     this.world = new World(seed);
     this.world.onChunkReady = (chunk) => this.applyChunkEdits(chunk);
@@ -131,6 +139,7 @@
     }
 
     this.spawnPlayer();
+    this.restoreMe();
     UI.setFlyButtons(mode, this.player.flying);
     UI.renderHotbar();
     UI.renderStats(this.player);
@@ -145,6 +154,26 @@
     this.clearAvatars();
   };
 
+  // Single player: an empty seed box means "carry on with the world I was in",
+  // and typing a seed always opens that seed's world (saved or brand new).
+  Game.startSolo = function (mode, seedText) {
+    const typed = seedText && String(seedText).trim();
+    let seed, saved;
+    if (typed) {
+      seed = this.hashSeed(typed);
+      saved = this.savedWorldFor('s:' + seed, seed);
+    } else {
+      saved = Store.ok ? Store.lastSolo() : null;
+      seed = saved ? saved.seed : this.hashSeed('');
+    }
+    this.start(mode, '', {
+      seed,
+      edits: saved ? saved.edits : null,
+      savedAt: saved ? saved.savedAt : 0
+    });
+    if (saved) UI.toast('저장된 세계를 이어서 불러왔어요', 3000);
+  };
+
   Game.hashSeed = function (text) {
     if (!text || !String(text).trim()) return (Math.random() * 2147483647) | 0;
     let seed = 0;
@@ -154,22 +183,61 @@
   };
 
   // ------------------------------------------------------------ world edits
+  // One entry per coordinate rather than one per swing, so a long session and a
+  // freshly restored one cost the same to store and to send to a joining player.
   Game.registerEdit = function (x, y, z, id) {
-    const key = Math.floor(x / WorldConst.CHUNK_SIZE) + ',' + Math.floor(z / WorldConst.CHUNK_SIZE);
-    const list = this.editsByChunk[key] || (this.editsByChunk[key] = []);
-    list.push([x, y, z, id]);
+    const key = x + ',' + y + ',' + z;
+    if (!this.editMap.has(key)) {
+      const ck = Math.floor(x / WorldConst.CHUNK_SIZE) + ',' + Math.floor(z / WorldConst.CHUNK_SIZE);
+      const list = this.editsByChunk[ck] || (this.editsByChunk[ck] = []);
+      list.push(key);
+    }
+    this.editMap.set(key, id);
+    this._worldDirty = true;
   };
 
   Game.applyChunkEdits = function (chunk) {
     const list = this.editsByChunk[chunk.cx + ',' + chunk.cz];
     if (!list) return;
     const CS = WorldConst.CHUNK_SIZE;
-    for (const e of list) {
-      const y = e[1];
+    for (const key of list) {
+      const parts = key.split(',');
+      const y = +parts[1];
       if (y < 0 || y >= WorldConst.WORLD_HEIGHT) continue;
-      const lx = e[0] - chunk.cx * CS, lz = e[2] - chunk.cz * CS;
-      chunk.data[(y * CS + lz) * CS + lx] = e[3];
-      if (e[3] !== B.AIR && y > chunk.maxY) chunk.maxY = y;
+      const id = this.editMap.get(key);
+      const lx = +parts[0] - chunk.cx * CS, lz = +parts[2] - chunk.cz * CS;
+      chunk.data[(y * CS + lz) * CS + lx] = id;
+      if (id !== B.AIR && y > chunk.maxY) chunk.maxY = y;
+    }
+  };
+
+  // flat [x, y, z, id, ...] — compact enough for both localStorage and the wire
+  Game.editList = function () {
+    const out = [];
+    this.editMap.forEach((id, key) => {
+      const p = key.split(',');
+      out.push(+p[0], +p[1], +p[2], id);
+    });
+    return out;
+  };
+
+  Game.loadEdits = function (flat) {
+    if (!flat || !flat.length) return;
+    for (let i = 0; i + 3 < flat.length; i += 4) {
+      this.registerEdit(flat[i], flat[i + 1], flat[i + 2], flat[i + 3]);
+    }
+    this._worldDirty = false;
+  };
+
+  // a whole world arriving while we are already playing: chunks not loaded yet
+  // pick their edits up from editsByChunk when they generate
+  Game.applyEditBatch = function (flat) {
+    if (!flat || !flat.length) return;
+    for (let i = 0; i + 3 < flat.length; i += 4) {
+      const x = flat[i], y = flat[i + 1], z = flat[i + 2], id = flat[i + 3];
+      this.registerEdit(x, y, z, id);
+      this.world.setBlock(x, y, z, id);
+      if (id === B.FURNACE) this.furnaceAt(x, y, z);
     }
   };
 
@@ -189,6 +257,138 @@
     if (msg.id === B.FURNACE) this.furnaceAt(msg.x, msg.y, msg.z);
   };
 
+
+  // ------------------------------------------------------------------ saving
+  // There is no always-on server, so every player keeps the world and their own
+  // inventory in their own browser. Rejoining restores your items; hosting a
+  // room again restores the buildings you last saw in it.
+  const ME_INTERVAL = 6;
+  // the whole edit list is rewritten each time, so it goes out less often
+  const WORLD_INTERVAL = 15;
+
+  Game.saveTick = function (dt) {
+    this._saveTimer = (this._saveTimer || 0) + dt;
+    this._worldTimer = (this._worldTimer || 0) + dt;
+    if (this._saveTimer >= ME_INTERVAL) {
+      this._saveTimer = 0;
+      this.saveMe();
+    }
+    if (this._worldTimer >= WORLD_INTERVAL) {
+      this._worldTimer = 0;
+      this.saveWorld();
+    }
+  };
+
+  Game.meState = function () {
+    const p = this.player;
+    const inv = this.inventory;
+    return {
+      mode: this.mode,
+      slots: inv.serialize(inv.slots),
+      armor: inv.serialize(inv.armor),
+      selected: inv.selected,
+      health: p.health,
+      food: p.food,
+      air: p.air,
+      x: +p.pos.x.toFixed(2), y: +p.pos.y.toFixed(2), z: +p.pos.z.toFixed(2),
+      yaw: +p.yaw.toFixed(2), pitch: +p.pitch.toFixed(2)
+    };
+  };
+
+  Game.saveMe = function () {
+    if (!this.started || !Store.ok || this.loading) return;
+    Store.savePlayer(this.worldKey, this.meState());
+  };
+
+  Game.saveWorld = function (force) {
+    if (!this.started || !Store.ok || this.loading) return;
+    if (!this._worldDirty && !force) return;
+    this._worldDirty = false;
+    if (Store.saveWorld(this.worldKey, this.seed, this.editList())) {
+      this.worldSavedAt = Date.now();
+    } else if (!this._saveWarned) {
+      this._saveWarned = true;
+      UI.toast('저장 공간이 부족해서 세계를 저장하지 못했어요', 4200);
+    }
+  };
+
+  Game.saveNow = function (force) {
+    this.saveWorld(force);
+    this.saveMe();
+  };
+
+  Game.restoreMe = function () {
+    this._restoredPos = false;
+    const saved = Store.ok ? Store.loadPlayer(this.worldKey) : null;
+    if (!saved) return;
+
+    const inv = this.inventory;
+    inv.deserialize(inv.slots, saved.slots);
+    inv.deserialize(inv.armor, saved.armor);
+    inv.selected = Math.max(0, Math.min(InventoryConst.HOTBAR_SIZE - 1, saved.selected | 0));
+
+    const p = this.player;
+    if (saved.health > 0) p.health = Math.min(p.maxHealth, saved.health);
+    if (typeof saved.food === 'number') p.food = saved.food;
+    if (typeof saved.air === 'number') p.air = saved.air;
+    if (typeof saved.x === 'number' && typeof saved.y === 'number') {
+      p.pos.x = saved.x;
+      p.pos.y = saved.y;
+      p.pos.z = saved.z;
+      p.yaw = saved.yaw || 0;
+      p.pitch = saved.pitch || 0;
+      p.fallStartY = p.pos.y;
+      this._restoredPos = true;
+    }
+    inv.changed();
+    this._restored = true;
+  };
+
+  Game.savedWorldFor = function (key, seed) {
+    if (!Store.ok) return null;
+    const saved = Store.loadWorld(key);
+    if (!saved || !saved.edits.length) return null;
+    if (seed !== undefined && saved.seed !== seed) return null;
+    return saved;
+  };
+
+  Game.blockedAt = function (pos) {
+    const x = Math.floor(pos.x), z = Math.floor(pos.z), y = Math.floor(pos.y);
+    if (y < 0 || y >= WorldConst.WORLD_HEIGHT - 2) return true;
+    for (let i = 0; i < 2; i++) {
+      const id = this.world.getBlock(x, y + i, z);
+      if (id !== B.AIR && B.byId[id].solid) return true;
+    }
+    return false;
+  };
+
+  // I remember this room's world and the host opened it empty, so offer mine
+  Game.offerRestore = function (hostEdits, hostSavedAt) {
+    const saved = this.savedWorldFor(this.worldKey, this.seed);
+    if (!saved) return;
+    if (hostEdits > 0) return;
+    if ((saved.savedAt || 0) <= (hostSavedAt || 0)) return;
+    Net.sendRestore(saved.savedAt, saved.edits);
+  };
+
+  Game.onRestore = function (fromId, msg) {
+    if (!Net.isHost || this.editMap.size > 0) return;
+    if (!msg.edits || !msg.edits.length) return;
+    if ((msg.savedAt || 0) <= (this.worldSavedAt || 0)) return;
+    const who = Net.players[fromId] ? Net.players[fromId].name : '누군가';
+    this.worldSavedAt = msg.savedAt;
+    this.applyEditBatch(msg.edits);
+    this._worldDirty = true;
+    Net.broadcastBulk(msg.edits, who);
+    Net.sendSystem(who + ' 님의 기록으로 이전 세계를 복원했어요');
+  };
+
+  Game.onBulk = function (edits, by) {
+    if (!edits || !edits.length) return;
+    this.applyEditBatch(edits);
+    this._worldDirty = true;
+    if (by) UI.toast(by + ' 님의 기록으로 세계가 복원됐어요', 3200);
+  };
 
   // ------------------------------------------------------------ other players
   Game.nameTag = function (text) {
@@ -288,6 +488,10 @@
     return {
       getDayTime: () => this.dayTime,
       getSpawn: () => this.spawnPoint,
+      getEdits: () => this.editList(),
+      getSavedAt: () => this.worldSavedAt || 0,
+      onRestore: (id, msg) => this.onRestore(id, msg),
+      onBulk: (edits, by) => this.onBulk(edits, by),
       onEdit: (msg) => this.applyRemoteEdit(msg),
       onRoster: () => UI.renderRoom(),
       onChat: (from, text, sys) => UI.addChat(from, text, sys),
@@ -300,7 +504,11 @@
   };
 
   Game.hostRoom = function (mode, seedText, code, name) {
-    const seed = this.hashSeed(seedText);
+    const typed = seedText && String(seedText).trim();
+    const key = 'r:' + code;
+    // no seed typed means "open the room I had before", if this browser kept it
+    const saved = typed ? this.savedWorldFor(key, this.hashSeed(typed)) : this.savedWorldFor(key);
+    const seed = saved ? saved.seed : this.hashSeed(seedText);
     const handlers = this.netHandlers();
     handlers.onReady = () => {
       UI.setNetStatus('');
@@ -313,7 +521,12 @@
       UI.renderRoom();
     };
     Net.createRoom(code, name, { seed, mode }, handlers);
-    this.start(mode, seedText, { seed });
+    this.start(mode, seedText, {
+      seed, room: code,
+      edits: saved ? saved.edits : null,
+      savedAt: saved ? saved.savedAt : 0
+    });
+    if (saved) UI.toast('저장해 둔 이 방의 세계를 불러왔어요', 3000);
   };
 
   Game.publicRoom = function (code) {
@@ -355,8 +568,15 @@
     const handlers = this.netHandlers();
     handlers.onReady = () => {
       UI.setNetStatus('');
-      this.start(mode, '', { seed: room.seed });
-      UI.toast('공개 서버를 열었습니다. 누구나 들어올 수 있어요.', 4000);
+      const saved = this.savedWorldFor('r:' + room.code, room.seed);
+      this.start(mode, '', {
+        seed: room.seed, room: room.code,
+        edits: saved ? saved.edits : null,
+        savedAt: saved ? saved.savedAt : 0
+      });
+      UI.toast(saved
+        ? '공개 서버를 열었습니다. 저장해 둔 세계를 불러왔어요.'
+        : '공개 서버를 열었습니다. 누구나 들어올 수 있어요.', 4000);
       UI.renderRoom();
     };
     handlers.onError = (err) => {
@@ -379,13 +599,20 @@
   };
 
   Game.onWelcome = function (msg, code) {
-    this.start(msg.mode, '', { seed: msg.seed, edits: msg.edits, dayTime: msg.dayTime });
+    this.start(msg.mode, '', {
+      seed: msg.seed, edits: msg.edits, dayTime: msg.dayTime,
+      room: code, savedAt: msg.savedAt
+    });
     if (msg.spawn) {
       this.spawnPoint = msg.spawn;
-      this.player.pos.x = msg.spawn.x;
-      this.player.pos.y = msg.spawn.y + 1;
-      this.player.pos.z = msg.spawn.z;
+      // where I logged out beats the room's spawn point
+      if (!this._restoredPos) {
+        this.player.pos.x = msg.spawn.x;
+        this.player.pos.y = msg.spawn.y + 1;
+        this.player.pos.z = msg.spawn.z;
+      }
     }
+    this.offerRestore((msg.edits ? msg.edits.length : 0) / 4, msg.savedAt || 0);
     const room = this.publicRoom(code);
     UI.toast(room ? room.label + ' 에 접속했어요' : '방 ' + code + ' 에 참여했어요', 3000);
     UI.renderRoom();
@@ -406,6 +633,7 @@
   };
 
   Game.leaveRoom = function () {
+    this.saveNow(true);
     Net.leave();
     this.clearAvatars();
     UI.resetChat();
@@ -868,6 +1096,7 @@
         : Net.name + ' 님이 사망했습니다');
     }
     this._lastAttacker = null;
+    this.saveNow(false);
     UI.showDeath();
   };
 
@@ -902,10 +1131,20 @@
         UI.toast(this.mode === 'survival'
           ? '블록을 꾹 누르면 그 블록을 캐고, 톡 누르면 그 자리에 블록을 놓습니다'
           : '크리에이티브: 비행 버튼으로 날 수 있어요. 블록을 눌러 캐고 놓으세요', 4600);
-        const g = this.world.groundY(Math.floor(p.pos.x), Math.floor(p.pos.z));
-        if (g >= 0) {
-          p.pos.y = g + 1.2;
-          this.spawnPoint.y = p.pos.y;
+        const sg = this.world.groundY(Math.floor(this.spawnPoint.x), Math.floor(this.spawnPoint.z));
+        if (sg >= 0) this.spawnPoint.y = sg + 1.2;
+        // a restored position is kept unless the world moved under it
+        if (!this._restoredPos || this.blockedAt(p.pos)) {
+          const g = this.world.groundY(Math.floor(p.pos.x), Math.floor(p.pos.z));
+          if (g >= 0) {
+            p.pos.y = g + 1.2;
+            p.vel.y = 0;
+            p.fallStartY = p.pos.y;
+          }
+        }
+        if (this._restored) {
+          UI.toast('저장된 내 인벤토리를 불러왔어요', 3000);
+          this._restored = false;
         }
       }
       this.syncCamera();
@@ -933,6 +1172,7 @@
     }
 
     this.world.update(p.pos.x, p.pos.z, 6);
+    this.saveTick(dt);
     this.updateSky(dt);
     if (Net.active) Net.sendPos(p);
     this.updateAvatars(dt);
@@ -984,7 +1224,15 @@
     });
 
     document.querySelectorAll('[data-start-mode]').forEach((btn) => {
-      Controls.bindTap(btn, () => this.start(btn.dataset.startMode, el('seedInput').value));
+      Controls.bindTap(btn, () => this.startSolo(btn.dataset.startMode, el('seedInput').value));
+    });
+
+    // the tab can vanish without warning on mobile, so write the save out then
+    const flush = () => this.saveNow(true);
+    window.addEventListener('pagehide', flush);
+    window.addEventListener('beforeunload', flush);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') flush();
     });
     document.querySelectorAll('[data-respawn-mode]').forEach((btn) => {
       Controls.bindTap(btn, () => this.respawn(btn.dataset.respawnMode));

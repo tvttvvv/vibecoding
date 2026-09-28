@@ -7,12 +7,12 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>복셀 크래프트</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23795433'/><rect width='16' height='5' fill='%235d9c3c'/></svg>">
-<link rel="stylesheet" href="css/style.css?v=13">
+<link rel="stylesheet" href="css/style.css?v=14">
 <script>
 // GitHub Pages caches this page for ten minutes, so a new build can sit
 // unseen. Ask an uncached version file and reload once if we are behind.
 (function () {
-  var BUILD = 13;
+  var BUILD = 14;
   try {
     fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
       .then(function (r) { return r.json(); })
@@ -124,6 +124,7 @@
     <p>방 코드</p>
     <div id="roomCodeBig">------</div>
     <p id="roomHostNote"></p>
+    <p id="roomSaveNote" class="menuNote"></p>
     <div id="roomPlayers"></div>
     <button id="btnLeaveRoom" class="bigBtn alt">방 나가기</button>
     <button id="btnRoomClose" class="bigBtn ghost">닫기</button>
@@ -131,24 +132,28 @@
 
   <div id="menuScreen" class="overlay">
     <h1>복셀 크래프트</h1>
-    <p class="buildTag">버전 v13</p>
+    <p class="buildTag">버전 v14</p>
 
     <div id="menuMain" class="menuPage">
       <p>무한 지형, 강과 바다, 숲과 사막, 동굴과 광석. 캐고, 만들고, 살아남으세요.</p>
-      <input id="seedInput" type="text" placeholder="시드 (비우면 랜덤)" autocomplete="off">
+      <input id="seedInput" type="text" placeholder="시드 (비우면 이어서 하기)" autocomplete="off">
       <button class="bigBtn" data-start-mode="survival">서바이벌 시작</button>
       <button class="bigBtn alt" data-start-mode="creative">크리에이티브 시작</button>
+      <p class="menuNote">시드를 비우면 마지막으로 하던 세계를 이어서 합니다. 세계와 인벤토리는 이 기기에 저장됩니다.</p>
       <button id="btnMulti" class="bigBtn ghost">멀티플레이</button>
+      <button id="btnWipeSolo" class="bigBtn ghost hidden">저장된 세계 지우기</button>
     </div>
 
     <div id="menuMulti" class="menuPage hidden">
       <input id="nameInput" type="text" placeholder="닉네임" maxlength="12" autocomplete="off">
       <button class="bigBtn" data-public-mode="survival">공개 서버 입장 · 서바이벌</button>
       <button class="bigBtn alt" data-public-mode="creative">공개 서버 입장 · 크리에이티브</button>
-      <p>공개 서버는 코드 없이 누구나 들어올 수 있습니다. 아무도 없으면 내가 방장이 됩니다.</p>
+      <p>공개 서버는 코드 없이 누구나 들어올 수 있고, 서로 PVP도 됩니다. 아무도 없으면 내가 방장이 됩니다.</p>
+      <p class="menuNote">내 인벤토리와 내가 본 세계는 이 기기에 저장돼서, 나갔다가 다시 들어오면 이어서 할 수 있습니다. 서버가 없으므로 방을 먼저 연 사람의 기록이 그 방의 세계가 됩니다.</p>
       <div class="menuDivider"></div>
       <button id="btnGoCreate" class="bigBtn ghost">비공개 방 만들기</button>
       <button id="btnGoJoin" class="bigBtn ghost">코드로 참여하기</button>
+      <button id="btnWipeRooms" class="bigBtn ghost hidden">방 저장 기록 지우기</button>
       <button class="bigBtn ghost" data-menu-back="menuMain">뒤로</button>
     </div>
 
@@ -174,17 +179,18 @@
 
 <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/noise.js?v=13"></script>
-<script src="js/textures.js?v=13"></script>
-<script src="js/blocks.js?v=13"></script>
-<script src="js/items.js?v=13"></script>
-<script src="js/recipes.js?v=13"></script>
-<script src="js/world.js?v=13"></script>
-<script src="js/player.js?v=13"></script>
-<script src="js/inventory.js?v=13"></script>
-<script src="js/net.js?v=13"></script>
-<script src="js/controls.js?v=13"></script>
-<script src="js/ui.js?v=13"></script>
-<script src="js/game.js?v=13"></script>
+<script src="js/store.js?v=14"></script>
+<script src="js/noise.js?v=14"></script>
+<script src="js/textures.js?v=14"></script>
+<script src="js/blocks.js?v=14"></script>
+<script src="js/items.js?v=14"></script>
+<script src="js/recipes.js?v=14"></script>
+<script src="js/world.js?v=14"></script>
+<script src="js/player.js?v=14"></script>
+<script src="js/inventory.js?v=14"></script>
+<script src="js/net.js?v=14"></script>
+<script src="js/controls.js?v=14"></script>
+<script src="js/ui.js?v=14"></script>
+<script src="js/game.js?v=14"></script>
 </body>
 </html>

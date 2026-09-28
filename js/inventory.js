@@ -131,6 +131,26 @@
     this.changed();
   };
 
+  // Saving happens in this browser only, so the format just has to be small:
+  // an empty slot is 0, a filled one [id, count] plus durability when it wears.
+  Inventory.prototype.serialize = function (arr) {
+    return arr.map((s) => (s ? (s.dur ? [s.id, s.count, s.dur] : [s.id, s.count]) : 0));
+  };
+
+  Inventory.prototype.deserialize = function (arr, data) {
+    arr.fill(null);
+    if (!Array.isArray(data)) return;
+    for (let i = 0; i < arr.length && i < data.length; i++) {
+      const e = data[i];
+      if (!Array.isArray(e) || !e[0] || !Items.get(e[0])) continue;
+      const count = Math.max(1, Math.min(Items.stackMax(e[0]), e[1] | 0));
+      const stack = { id: e[0], count };
+      const max = Items.maxDurability(e[0]);
+      if (max) stack.dur = Math.max(1, Math.min(max, e[2] || max));
+      arr[i] = stack;
+    }
+  };
+
   Inventory.prototype.craftCells = function () {
     const w = this.craftWidth;
     const out = [];

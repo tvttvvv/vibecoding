@@ -178,7 +178,8 @@
         mode: this.info.mode,
         dayTime: this.handlers.getDayTime ? this.handlers.getDayTime() : 0.42,
         spawn: this.handlers.getSpawn ? this.handlers.getSpawn() : null,
-        edits: this.editList(),
+        edits: this.handlers.getEdits ? this.handlers.getEdits() : this.editList(),
+        savedAt: this.handlers.getSavedAt ? this.handlers.getSavedAt() : 0,
         roster: this.roster(),
         host: this.name
       });
@@ -212,6 +213,11 @@
       } else if (this.conns[msg.to]) {
         this.conns[msg.to].send(payload);
       }
+      return;
+    }
+
+    if (msg.t === 'restore') {
+      if (this.handlers.onRestore) this.handlers.onRestore(conn.id, msg);
       return;
     }
 
@@ -311,6 +317,11 @@
       return;
     }
 
+    if (msg.t === 'bulk') {
+      if (this.handlers.onBulk) this.handlers.onBulk(msg.edits, msg.by);
+      return;
+    }
+
     if (msg.t === 'full') {
       this.active = false;
       if (this.handlers.onError) this.handlers.onError('room-full');
@@ -361,6 +372,18 @@
     const msg = { t: 'edit', x, y, z, id };
     if (this.isHost) this._broadcast(msg);
     else if (this.hostConn) this.hostConn.send(msg);
+  };
+
+  // A guest that kept a copy of this room's world offers it to a host that
+  // opened the room with nothing in it, so buildings survive everyone leaving.
+  Net.sendRestore = function (savedAt, edits) {
+    if (!this.active || this.isHost || !this.hostConn) return;
+    this.hostConn.send({ t: 'restore', savedAt, edits });
+  };
+
+  Net.broadcastBulk = function (edits, by) {
+    if (!this.active || !this.isHost) return;
+    this._broadcast({ t: 'bulk', edits, by });
   };
 
   Net.sendHit = function (targetId, dmg, kx, kz) {
