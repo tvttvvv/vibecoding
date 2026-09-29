@@ -214,14 +214,17 @@
     this.dimData.overworld.loaded = true;
     if (opts && opts.edits) this.loadEdits(opts.edits);
     this._pendingEntities = (opts && opts.entities) || null;
-    if (opts && opts.netherEdits) {
-      this.withDim('nether', () => this.loadEdits(opts.netherEdits));
-      this.dimData.nether.loaded = true;
-      this.dimData.nether.entityRows = opts.netherEntities || [];
+    for (const dim of ['nether', 'end']) {
+      const edits = opts && opts[dim + 'Edits'];
+      if (!edits) continue;
+      this.withDim(dim, () => this.loadEdits(edits));
+      this.dimData[dim].loaded = true;
+      this.dimData[dim].entityRows = opts[dim + 'Entities'] || [];
     }
     // come back in the dimension you left from
     const me = Store.ok ? Store.loadPlayer(this.worldKey) : null;
-    const startDim = me && me.dim === 'nether' ? 'nether' : 'overworld';
+    const startDim = me && (me.dim === 'nether' || me.dim === 'end') ? me.dim : 'overworld';
+    this.endState = { killed: false, hp: 200, crystals: 1023 };
 
     this.world = new World(seed, startDim);
     this.world.onChunkReady = (chunk) => this.applyChunkEdits(chunk);
@@ -254,15 +257,16 @@
       this.loadEntities(this._pendingEntities);
       this._pendingEntities = null;
     }
-    if (startDim === 'nether') {
+    if (startDim !== 'overworld') {
       this.spawnPoint = null;
-      this.loadDim('nether');
-      this.useDim('nether');
+      this.loadDim(startDim);
+      this.useDim(startDim);
       this.enterDimEntities();
     } else {
       this.spawnPlayer();
     }
     this.restoreMe();
+    if (startDim === 'end') this.setupEndFight();
     this.portalTime = 0;
     this.portalCooldown = true;
     UI.setFlyButtons(mode, this.player.flying);
@@ -315,7 +319,7 @@
   };
 
   Game.dimKey = function (dim) {
-    return dim === 'nether' ? this.worldKey + ':nether' : this.worldKey;
+    return dim === 'overworld' ? this.worldKey : this.worldKey + ':' + dim;
   };
 
   // a dimension's saved edits are read the first time it is needed
@@ -687,6 +691,11 @@
         Villages.loot(x, y, z, this.seed).forEach((s, i) => { c.slots[(i * 5) % 27] = s; });
         this._worldDirty = true;
       }
+      if (!this.lootGiven.has(k) && this.dimension === 'overworld' && Strongholds.isLootChest(x, y, z, this.seed)) {
+        this.lootGiven.add(k);
+        Strongholds.loot(x, y, z, this.seed).forEach((s, i) => { c.slots[(i * 4) % 27] = s; });
+        this._worldDirty = true;
+      }
       if (!this.lootGiven.has(k) && this.dimension === 'nether' && Fortress.isLootChest(x, y, z, this.seed)) {
         this.lootGiven.add(k);
         Fortress.loot(x, y, z, this.seed).forEach((s, i) => { c.slots[(i * 4) % 27] = s; });
@@ -857,6 +866,7 @@
       xp: p.xp || 0,
       enchSeed: p.enchSeed || 0,
       effects: this.effects || {},
+      endState: this.currentEndState(),
       dim: this.dimension,
       worldSpawn: this.worldSpawn || null,
       spawn: this.bedSpawn || null,
@@ -969,6 +979,7 @@
     if (typeof saved.xp === 'number') p.xp = saved.xp;
     if (saved.enchSeed) p.enchSeed = saved.enchSeed;
     if (saved.effects && typeof saved.effects === 'object') this.effects = saved.effects;
+    if (saved.endState && typeof saved.endState === 'object') this.endState = saved.endState;
     if (saved.worldSpawn && typeof saved.worldSpawn.x === 'number') {
       this.worldSpawn = saved.worldSpawn;
       if (!this.spawnPoint) this.spawnPoint = { x: saved.worldSpawn.x, y: saved.worldSpawn.y, z: saved.worldSpawn.z };
@@ -1285,7 +1296,9 @@
       seed: msg.seed, edits: msg.edits, dayTime: msg.dayTime,
       room: code, savedAt: msg.savedAt, entities: msg.entities,
       netherEdits: msg.nether ? msg.nether.edits : [],
-      netherEntities: msg.nether ? msg.nether.entities : []
+      netherEntities: msg.nether ? msg.nether.entities : [],
+      endEdits: msg.end ? msg.end.edits : [],
+      endEntities: msg.end ? msg.end.entities : []
     });
     if (msg.spawn) {
       this.spawnPoint = this.bedSpawn || msg.spawn;
@@ -1460,6 +1473,8 @@
     }
     if (stack.id === Items.BOAT) { this.useBoat(sx, sy); return; }
     if (stack.id === Items.GLASS_BOTTLE) { this.fillBottle(sx, sy, stack); return; }
+    if (stack.id === Items.ENDER_PEARL) { this.throwPearl(sx, sy); return; }
+    if (stack.id === Items.ENDER_EYE) { this.useEye(hit); return; }
     if (Items.get(stack.id) && Items.get(stack.id).bow) return;      // a bow is drawn by holding
     if (stack.id === Items.BUCKET || stack.id === Items.WATER_BUCKET || stack.id === Items.LAVA_BUCKET) {
       this.useBucket(sx, sy, stack);
@@ -1602,6 +1617,12 @@
     return ok(w.getBlock(x, y - 1, z)) && ok(w.getBlock(x, y + 1, z)) && ok(side[0]) && ok(side[1]);
   };
 
+  Game.inEndPortal = function () {
+    const p = this.player;
+    const d = B.byId[this.world.getBlock(Math.floor(p.pos.x), Math.floor(p.pos.y + 0.1), Math.floor(p.pos.z))];
+    return !!(d && d.endPortal);
+  };
+
   Game.inPortal = function () {
     const p = this.player;
     const x = Math.floor(p.pos.x), z = Math.floor(p.pos.z);
@@ -1614,6 +1635,13 @@
 
   // standing in a portal for a few seconds carries you through
   Game.updatePortal = function (dt) {
+    // an end portal takes you at once: into the End, or home from it
+    if (this.inEndPortal()) {
+      if (this.portalCooldown) return;
+      this.switchDimension(this.dimension === 'end' ? 'overworld' : 'end', this.dimension === 'end' ? null : { end: true });
+      Sound.portal();
+      return;
+    }
     const inside = this.inPortal();
     if (!inside) { this.portalTime = 0; this.portalCooldown = false; return; }
     if (this.portalCooldown) return;
@@ -1627,6 +1655,7 @@
 
   Game.travel = function () {
     const p = this.player;
+    if (this.dimension === 'end') return;      // a nether portal does nothing in the End
     const to = this.dimension === 'overworld' ? 'nether' : 'overworld';
     const scale = to === 'nether' ? 1 / 8 : 8;
     const tx = Math.floor(p.pos.x * scale), tz = Math.floor(p.pos.z * scale);
@@ -1638,6 +1667,7 @@
   // With a target, arrive at the nearest portal there or build one.
   Game.switchDimension = function (to, target) {
     const p = this.player;
+    if (this.dimension === 'end') this.endState = this.currentEndState();
     this.saveNow(true);
     const d = this.dimData[this.dimension];
     if (Entities.riding) Entities.dismount();
@@ -1664,12 +1694,19 @@
     this.enterDimEntities();
     Redstone.reset(this);
 
-    if (target) {
+    if (target && target.end) {
+      // the End: onto an obsidian platform off the edge of the main island
+      const spot = this.endPlatform();
+      p.pos.x = spot.x; p.pos.y = spot.y; p.pos.z = spot.z;
+    } else if (target) {
       const spot = this.findOrMakePortal(target.x, target.z);
       p.pos.x = spot.x; p.pos.y = spot.y; p.pos.z = spot.z;
     } else if (this.spawnPoint) {
       p.pos.x = this.spawnPoint.x; p.pos.y = this.spawnPoint.y; p.pos.z = this.spawnPoint.z;
+    } else if (to === 'overworld') {
+      this.spawnPlayer();
     }
+    if (to === 'end') this.setupEndFight();
     p.vel.x = p.vel.y = p.vel.z = 0;
     p.fallStartY = p.pos.y;
     this._restoredPos = true;
@@ -1678,7 +1715,7 @@
     this.loading = true;
     this._eyeSky = undefined;
     this._fogFar = undefined;
-    UI.setLoading(true, to === 'nether' ? '네더로 가는 중...' : '오버월드로 돌아가는 중...');
+    UI.setLoading(true, to === 'nether' ? '네더로 가는 중...' : to === 'end' ? '엔드로 가는 중...' : '오버월드로 돌아가는 중...');
     this._worldDirty = true;
   };
 
@@ -2031,6 +2068,151 @@
     });
   };
 
+  // ------------------------------------------------------------------ the End
+  Game.currentEndState = function () {
+    const st = Object.assign({ killed: false, hp: 200, crystals: 1023 }, this.endState || {});
+    if (this.dimension === 'end' && !(Net.active && !Net.isHost)) {
+      const dragon = Mobs.list.find((m) => m.def.dragon);
+      if (dragon) st.hp = Math.ceil(dragon.hp);
+      let mask = 0;
+      for (const m of Mobs.list) if (m.def.crystal && m.pillar !== undefined) mask |= 1 << m.pillar;
+      if (!st.killed) st.crystals = mask;
+    }
+    return st;
+  };
+
+  // the dragon and its crystals, unless the fight is already won
+  Game.setupEndFight = function () {
+    if (Net.active && !Net.isHost) return;
+    const st = this.endState || (this.endState = { killed: false, hp: 200, crystals: 1023 });
+    if (st.killed) return;
+    WorldGen.PILLARS.forEach((pl, i) => {
+      if (!(st.crystals & (1 << i))) return;
+      const c = Mobs.spawn('crystal', pl.x + 0.5, pl.top + 2, pl.z + 0.5);
+      c.pillar = i;
+    });
+    const d = Mobs.spawn('dragon', 40, 58, 0);
+    d.hp = Math.max(1, st.hp || 200);
+    Sound.mob('dragon', 'idle', 30);
+  };
+
+  Game.endPlatform = function () {
+    const x0 = 72, y = 34, z0 = 0;
+    const cells = [];
+    for (let x = x0 - 2; x <= x0 + 2; x++) {
+      for (let z = z0 - 2; z <= z0 + 2; z++) {
+        cells.push([x, y, z, B.OBSIDIAN]);
+        for (let yy = y + 1; yy <= y + 3; yy++) cells.push([x, yy, z, B.AIR]);
+      }
+    }
+    const CS = WorldConst.CHUNK_SIZE;
+    for (let cx = Math.floor((x0 - 3) / CS); cx <= Math.floor((x0 + 3) / CS); cx++) {
+      for (let cz = Math.floor((z0 - 3) / CS); cz <= Math.floor((z0 + 3) / CS); cz++) this.world.ensureChunk(cx, cz);
+    }
+    this.setBlocks(cells);
+    return { x: x0 + 0.5, y: y + 1, z: z0 + 0.5 };
+  };
+
+  Game.onDragonDeath = function (dragon, byId) {
+    Mobs.remove(dragon);
+    for (let i = 0; i < 6; i++) Entities.burst(dragon.x, dragon.y + 1.5, dragon.z, B.OBSIDIAN, 20, 3);
+    Sound.explode(Math.hypot(this.player.pos.x - dragon.x, this.player.pos.z - dragon.z));
+    this.endState = { killed: true, hp: 0, crystals: 0 };
+    for (const m of Mobs.list.slice()) if (m.def.crystal) Mobs.remove(m);
+    // the way home opens, with the egg on top
+    const Y = WorldGen.END_PORTAL_Y, cells = [];
+    for (let x = -3; x <= 3; x++) {
+      for (let z = -3; z <= 3; z++) {
+        const r = Math.hypot(x, z);
+        if (r <= 2.5 && (x || z)) cells.push([x, Y, z, B.END_PORTAL]);
+      }
+    }
+    cells.push([0, Y + 4, 0, B.DRAGON_EGG]);
+    this.setBlocks(cells);
+    const xp = 500;
+    if (byId && Net.active && Net.isHost) Net.sendFx({ kind: 'xp', to: byId, n: xp });
+    else if (this.mode === 'survival') Entities.dropXp(this.player.pos.x, this.player.pos.y + 1, this.player.pos.z, xp);
+    Net.sendSystem('엔더 드래곤을 쓰러뜨렸어요! 가운데에 집으로 가는 차원문이 열렸어요');
+    UI.toast('엔더 드래곤을 쓰러뜨렸어요!', 5000);
+    this.saveNow(true);
+  };
+
+  // is the local player looking an enderman in the eyes?
+  Game.staredAt = function (m) {
+    const p = this.player;
+    if (this.mode !== 'survival' || p.dead) return false;
+    const ex = p.pos.x, ey = p.eyeY(), ez = p.pos.z;
+    const hx = m.x - ex, hy = m.y + 2.6 - ey, hz = m.z - ez;
+    const d = Math.hypot(hx, hy, hz);
+    if (d > 48 || d < 0.5) return false;
+    this._look = this._look || { x: 0, y: 0, z: 0 };
+    p.lookDir(this._look);
+    const dot = (hx * this._look.x + hy * this._look.y + hz * this._look.z) / d;
+    return dot > 1 - 0.025 / Math.max(1, d / 8) && Mobs.canSee(this.world, m, p);
+  };
+
+  Game.throwPearl = function (sx, sy) {
+    const p = this.player;
+    this._look = this._look || { x: 0, y: 0, z: 0 };
+    p.lookDir(this._look);
+    const L = this._look;
+    Entities.throwPearl(p.pos.x + L.x * 0.5, p.eyeY() - 0.1, p.pos.z + L.z * 0.5, L.x * 24, L.y * 24 + 2, L.z * 24, (x, y, z) => {
+      if (p.dead) return;
+      Entities.burst(p.pos.x, p.pos.y + 1, p.pos.z, B.OBSIDIAN, 12, 0.5);
+      p.pos.x = x; p.pos.y = Math.floor(y) + (B.byId[this.world.getBlock(Math.floor(x), Math.floor(y), Math.floor(z))].solid ? 1 : 0); p.pos.z = z;
+      p.vel.x = p.vel.y = p.vel.z = 0;
+      p.fallStartY = p.pos.y;
+      if (this.mode === 'survival') p.hurt(5, true);
+      Sound.portal();
+    });
+    Hand.swing();
+    Sound.bow(0);
+    if (this.mode === 'survival') this.inventory.consumeSelected();
+  };
+
+  // an eye goes into an empty frame, or off toward the stronghold
+  Game.useEye = function (hit) {
+    if (hit && hit.id === B.END_FRAME) {
+      this.changeBlock(hit.x, hit.y, hit.z, B.END_FRAME_EYE);
+      Sound.place(B.GLASS);
+      Hand.swing();
+      if (this.mode === 'survival') this.inventory.consumeSelected();
+      this.checkEndPortal(hit.x, hit.y, hit.z);
+      return;
+    }
+    if (hit && hit.id === B.END_FRAME_EYE) return;
+    if (this.dimension !== 'overworld') { UI.toast('여기서는 엔더의 눈이 갈 곳이 없어요', 1600); return; }
+    const p = this.player;
+    const sh = Strongholds.nearest(p.pos.x, p.pos.z, this.seed);
+    Entities.throwEye(p.pos.x, p.eyeY(), p.pos.z, sh.cx + 0.5, sh.cz + 0.5);
+    Hand.swing();
+    Sound.portal();
+    if (this.mode === 'survival') this.inventory.consumeSelected();
+  };
+
+  // twelve eyes in the ring open the portal in the middle
+  Game.checkEndPortal = function (x, y, z) {
+    const w = this.world;
+    for (let cx = x - 3; cx <= x + 3; cx++) {
+      for (let cz = z - 3; cz <= z + 3; cz++) {
+        let ok = true;
+        for (let i = -1; i <= 1 && ok; i++) {
+          for (const [fx, fz] of [[cx + i, cz - 2], [cx + i, cz + 2], [cx - 2, cz + i], [cx + 2, cz + i]]) {
+            if (w.getBlock(fx, y, fz) !== B.END_FRAME_EYE) { ok = false; break; }
+          }
+        }
+        if (!ok) continue;
+        const cells = [];
+        for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) cells.push([cx + i, y, cz + j, B.END_PORTAL]);
+        this.setBlocks(cells);
+        Sound.portal();
+        UI.toast('엔드 차원문이 열렸어요', 2500);
+        return true;
+      }
+    }
+    return false;
+  };
+
   // lit TNT jumps out of its block and goes off a few seconds later
   Game.primeTnt = function (x, y, z, fuse) {
     if (this.world.getBlock(x, y, z) !== B.TNT) return;
@@ -2052,6 +2234,9 @@
       Mobs.addArrow(msg.x, msg.y, msg.z, msg.vx, msg.vy, msg.vz, msg.fire === 2 ? 'small' : !!msg.fire);
     } else if (msg.kind === 'drop' && msg.to === Net.myId) {
       this.spawnDrop(msg.x, msg.y, msg.z, msg.id, msg.count);
+    } else if (msg.kind === 'xp' && msg.to === Net.myId) {
+      const p = this.player;
+      Entities.dropXp(p.pos.x, p.pos.y + 1, p.pos.z, msg.n);
     }
   };
 
@@ -2295,9 +2480,19 @@
         if (o.type === mob.type && Math.hypot(o.x - mob.x, o.z - mob.z) < 16) o.angry = 40;
       }
     }
-    mob.x += kx * 0.45;
-    mob.z += kz * 0.45;
-    if (mob.onGround) mob.vy = 5.2;
+    if (!mob.def.still) {
+      mob.x += kx * 0.45;
+      mob.z += kz * 0.45;
+      if (mob.onGround) mob.vy = 5.2;
+    }
+    // an enderman blinks away from a blow; anything hitting one angers it
+    if (mob.def.enderman) { mob.angry = 30; if (!mob.dead && Math.random() < 0.7) Mobs.teleport(mob, this.world); }
+    if (mob.dead && mob.def.crystal) {
+      Mobs.remove(mob);
+      Mobs.explode({ x: mob.x, y: mob.y, z: mob.z, def: { drops: [] }, size: 1 }, this.world, this.player, this, 3);
+      return;
+    }
+    if (mob.dead && mob.def.dragon) { this.onDragonDeath(mob, byId); return; }
     // animals bolt when hit
     if (!mob.def.hostile && !mob.def.neutral) { mob.panic = 3; mob.wanderYaw = Math.atan2(kx, kz); }
     Sound.mob(mob.type, 'hurt', this.distTo(mob.x, mob.y, mob.z));
@@ -2497,8 +2692,8 @@
   Game.useBed = function (x, y, z) {
     const p = this.player;
     if (Math.hypot(p.pos.x - (x + 0.5), p.pos.z - (z + 0.5)) > 4) return;
-    // a bed in the nether goes off like a creeper, as it does in Minecraft
-    if (this.dimension === 'nether') {
+    // a bed in the nether or the End goes off like a creeper, as in Minecraft
+    if (this.dimension !== 'overworld') {
       this.changeBlock(x, y, z, B.AIR);
       Mobs.explode({ x: x + 0.5, y, z: z + 0.5, def: { drops: [] }, size: 1 }, this.world, p, this);
       return;
@@ -2877,9 +3072,32 @@
     Entities.boatMat.color.setScalar(here);
   };
 
+  // the End: black-purple void, dim and still, with a faint light over everything
+  const END_FOG = new THREE.Color(0x0e0918);
+  Game.updateEndSky = function (dt) {
+    const L = World.lightUniforms;
+    L.uDaylight.value = 0;
+    L.uMinLight.value = 0.42;
+    L.uSkyTint.value.setRGB(0.95, 0.9, 1);
+    this.scene.background = END_FOG;
+    this.fog.color.copy(END_FOG);
+    const base = this.world.renderDistance * WorldConst.CHUNK_SIZE - 8;
+    const edge = this.world.meshedRadius;
+    const want = Math.min(base, isFinite(edge) ? Math.max(16, edge - 1) : base);
+    if (this._fogFar === undefined) this._fogFar = want;
+    this._fogFar += (want - this._fogFar) * Math.min(1, dt * (want < this._fogFar ? 10 : 1.5));
+    this.fog.far = this._fogFar;
+    this.fog.near = this._fogFar * 0.5;
+    Sky.setVisible(false);
+    const here = Math.min(1, this.lightHere(0.3) + 0.1);
+    this.itemMaterial.color.setScalar(here);
+    Entities.boatMat.color.setScalar(here);
+  };
+
   Game.updateSky = function (dt) {
     this.dayTime = (this.dayTime + dt / DAY_LENGTH) % 1;
     if (this.dimension === 'nether') { this.updateNetherSky(dt); return; }
+    if (this.dimension === 'end') { this.updateEndSky(dt); return; }
     World.lightUniforms.uMinLight.value = 0.06;
     const t = this.dayTime;
     const sunAngle = t * Math.PI * 2 - Math.PI / 2;
@@ -3108,6 +3326,15 @@
     if (this.effectLevel('night_vision')) World.lightUniforms.uMinLight.value = Math.max(World.lightUniforms.uMinLight.value, 0.8);
     this.keepGuestLand();
     if (!this.paused) Mobs.update(dt, this.world, p, this);
+    // falling into the void below the End (or the bottom of any world) is fatal
+    if (p.pos.y < -8 && !p.dead) {
+      if (this.mode === 'survival') {
+        this._voidT = (this._voidT || 0) + dt;
+        if (this._voidT >= 0.5) { this._voidT = 0; p.hurt(4); this._lastAttacker = { name: '공허', at: performance.now() }; }
+      } else if (p.pos.y < -40) { p.pos.y = 60; p.vel.y = 0; }
+    }
+    const boss = Mobs.list.find((m) => m.def.boss);
+    UI.renderBoss(boss ? boss.def.name : null, boss ? boss.hp / boss.def.hp : 0);
     if (Net.active) {
       Net.sendPos(p);
       if (Net.isHost) Net.sendMobs(Mobs.snapshot());

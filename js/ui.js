@@ -1051,6 +1051,18 @@
     if (fuel) fuel.style.width = Math.round(st.fuelLeft / Brewing.FUEL_BREWS * 100) + '%';
   };
 
+  // the boss's health across the top of the screen
+  UI.renderBoss = function (name, frac) {
+    const bar = el('bossBar');
+    if (!bar) return;
+    const show = !!name;
+    if (bar.classList.contains('hidden') === show) bar.classList.toggle('hidden', !show);
+    if (!show) return;
+    if (this._bossName !== name) { this._bossName = name; el('bossName').textContent = name; }
+    const w = Math.max(0, Math.min(1, frac)) * 100;
+    if (Math.abs((this._bossW || 0) - w) > 0.2) { this._bossW = w; el('bossFill').style.width = w.toFixed(1) + '%'; }
+  };
+
   // what potions are working on you, with the time left
   UI.renderEffects = function (game) {
     const box = el('effects');

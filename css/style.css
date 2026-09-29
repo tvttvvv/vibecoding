@@ -629,3 +629,12 @@ body.onTitle #rightControls, body.onTitle #topRight, body.onTitle #crosshair { d
 .brewProg { width: 10px; height: 44px; background: #2a2a2a; border: 1px solid #000; display: flex; align-items: flex-start; }
 .brewProg span { display: block; width: 100%; background: #e8e8e8; }
 .brewBottles { display: flex; gap: 14px; }
+
+/* ---- boss ---- */
+#bossBar {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: min(420px, 70vw);
+  text-align: center; pointer-events: none; z-index: 20;
+}
+#bossName { color: #fff; font-size: 13px; text-shadow: 1px 1px 0 #3a3a3a; margin-bottom: 3px; }
+#bossTrack { height: 7px; background: #3a1040; border: 1px solid #000; }
+#bossFill { height: 100%; width: 100%; background: #d050e0; }

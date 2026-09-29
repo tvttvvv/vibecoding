@@ -695,6 +695,48 @@
   for (const k in POTION_COLORS) define('potion_' + k, potionTile(POTION_COLORS[k]));
   define('oak_fence', (api) => speckle(api, '#9c7b4a', ['#8b6a3f', '#a8875a'], 0.4));
 
+  // ---- the End, strongholds ---------------------------------------------------
+  define('end_stone', (api) => {
+    speckle(api, '#dcdca0', ['#e8e8b0', '#c8c890', '#d4d49a', '#bebe86'], 0.6);
+    for (const [x, y] of [[3, 4], [11, 3], [7, 10], [13, 12], [2, 13]]) { api.put(x, y, '#b0b078'); api.put(x + 1, y, '#b0b078'); }
+  });
+  function bricks(base, shades, mortar, moss) {
+    return (api) => {
+      speckle(api, base, shades, 0.4);
+      for (let x = 0; x < TILE; x++) { api.put(x, 7, mortar); api.put(x, 15, mortar); }
+      for (let y = 0; y < 7; y++) api.put(15, y, mortar);
+      for (let y = 8; y < 15; y++) api.put(7, y, mortar);
+      if (moss) for (let i = 0; i < 40; i++) api.put(Math.floor(rnd() * TILE), Math.floor(rnd() * TILE), pick(['#5a7a3a', '#4a6a2a', '#6a8a4a']));
+    };
+  }
+  define('stone_bricks', bricks('#8a8a8a', ['#7d7d7d', '#959595', '#848484'], '#5e5e5e', false));
+  define('mossy_stone_bricks', bricks('#8a8a8a', ['#7d7d7d', '#959595'], '#5e5e5e', true));
+  define('end_frame_top', (api) => {
+    speckle(api, '#3a6a5a', ['#2f5a4a', '#467a68', '#3a6a5a'], 0.5);
+    for (let i = 0; i < TILE; i++) { api.put(i, 0, '#dcdca0'); api.put(i, 15, '#dcdca0'); api.put(0, i, '#dcdca0'); api.put(15, i, '#dcdca0'); }
+    rectOn(api, 5, 5, 6, 6, '#1f3a30');
+  });
+  define('end_frame_side', (api) => {
+    speckle(api, '#dcdca0', ['#e8e8b0', '#c8c890'], 0.5);
+    for (let x = 0; x < TILE; x++) for (let y = 0; y < 4; y++) api.put(x, y, pick(['#3a6a5a', '#2f5a4a']));
+  });
+  define('ender_eye_block', (api) => {
+    speckle(api, '#2a8a6a', ['#1f6a52', '#38a882'], 0.5);
+    rectOn(api, 5, 5, 6, 6, '#0a2a1f'); rectOn(api, 7, 7, 2, 2, '#9ff0d0');
+  });
+  define('end_portal', (api) => {
+    api.fill('#070a14');
+    for (let i = 0; i < 26; i++) api.put(Math.floor(rnd() * TILE), Math.floor(rnd() * TILE), pick(['#2a6a7a', '#3a8a8a', '#6ad0c0', '#1a3a5a', '#e0f0ff']));
+  });
+  define('dragon_egg', (api) => {
+    speckle(api, '#1a0f22', ['#24142e', '#140a1a', '#2e1a3a'], 0.5);
+    for (let i = 0; i < 8; i++) api.put(Math.floor(rnd() * TILE), Math.floor(rnd() * TILE), '#5a2a7a');
+  });
+  define('item_ender_eye', (api) => {
+    api.clear();
+    rectOn(api, 5, 4, 6, 8, '#2a8a6a'); rectOn(api, 4, 5, 8, 6, '#2a8a6a'); rectOn(api, 6, 6, 4, 4, '#9ff0d0'); rectOn(api, 7, 7, 2, 2, '#0a2a1f');
+  });
+
   define('chest_top', (api) => {
     speckle(api, '#a0712f', ['#8b5f24', '#b58239', '#946826'], 0.5);
     for (let i = 0; i < TILE; i++) { api.put(i, 0, '#4a3312'); api.put(i, 15, '#4a3312'); api.put(0, i, '#4a3312'); api.put(15, i, '#4a3312'); }

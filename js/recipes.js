@@ -120,6 +120,9 @@
   shaped(I.GLASS_BOTTLE, 3, ['G G', ' G '], { G: B.GLASS });
   shapeless(I.SUGAR, 1, [B.SUGAR_CANE]);
   shaped(B.BREWING_STAND, 1, [' R ', 'CCC'], { R: I.BLAZE_ROD, C: B.COBBLESTONE });
+  // the End
+  shapeless(I.ENDER_EYE, 1, [I.ENDER_PEARL, I.BLAZE_POWDER]);
+  shaped(B.STONE_BRICKS, 4, ['##', '##'], { '#': B.STONE });
   shaped(B.ENCHANTING_TABLE, 1, [' B ', 'D#D', '###'], { B: I.BOOK, D: I.DIAMOND, '#': B.OBSIDIAN });
 
   for (const [, mat, tier] of PLANK_LIKE) {

@@ -265,6 +265,14 @@
         tone({ from: kind === 'shoot' ? 700 : 520, to: kind === 'shoot' ? 300 : 460, dur: 0.9, gain: 0.3, wave: 'sine', dist: d * 0.5 });
         tone({ from: 780, to: 700, dur: 0.8, gain: 0.12, wave: 'triangle', delay: 0.05, dist: d * 0.5 });
         break;
+      case 'enderman':
+        tone({ from: kind === 'angry' ? 500 : 300, to: kind === 'angry' ? 120 : 260, dur: kind === 'angry' ? 0.8 : 0.4, gain: 0.25, wave: 'sawtooth', dist: d });
+        tone({ from: 90, to: 60, dur: 0.5, gain: 0.2, wave: 'sine', delay: 0.1, dist: d });
+        break;
+      case 'dragon':
+        tone({ from: 110, to: 60, dur: 1.4, gain: 0.35, wave: 'sawtooth', dist: d * 0.3 });
+        tone({ from: 160, to: 90, dur: 1.2, gain: 0.2, wave: 'square', delay: 0.2, dist: d * 0.3 });
+        break;
       case 'blaze':
         tone({ from: kind === 'shoot' ? 260 : 180, to: kind === 'shoot' ? 120 : 160, dur: 0.35, gain: 0.25, wave: 'sawtooth', dist: d });
         tone({ from: 90, to: 70, dur: 0.4, gain: 0.2, wave: 'triangle', delay: 0.05, dist: d });

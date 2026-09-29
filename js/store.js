@@ -76,6 +76,7 @@
       remove(worldKey + ':world');
       remove(worldKey + ':me');
       remove(worldKey + ':nether:world');
+      remove(worldKey + ':end:world');
     },
 
     // no seed typed on the menu: carry on with the most recent single-player world
@@ -86,9 +87,9 @@
         const w = this.loadWorld(key);
         if (!w) continue;
         // a world whose player is off in the nether was still played last
-        const n = this.loadWorld(key + ':nether');
-        const t = Math.max(w.savedAt || 0, n ? n.savedAt || 0 : 0);
-        if ((w.edits.length || (n && n.edits.length)) && (!best || t > bestT)) { best = w; bestT = t; }
+        const n = this.loadWorld(key + ':nether'), e = this.loadWorld(key + ':end');
+        const t = Math.max(w.savedAt || 0, n ? n.savedAt || 0 : 0, e ? e.savedAt || 0 : 0);
+        if ((w.edits.length || (n && n.edits.length) || (e && e.edits.length)) && (!best || t > bestT)) { best = w; bestT = t; }
       }
       return best;
     },
@@ -119,7 +120,7 @@
           if (k && k.startsWith(PREFIX) && k.endsWith(':world')) {
             const key = k.slice(PREFIX.length, -':world'.length);
             // the nether is part of the world it hangs off, not a world of its own
-            if (!/:nether$/.test(key)) out.push(key);
+            if (!/:(nether|end)$/.test(key)) out.push(key);
           }
         }
       } catch (e) { /* ignore */ }

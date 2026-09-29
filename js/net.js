@@ -190,6 +190,7 @@
         savedAt: this.handlers.getSavedAt ? this.handlers.getSavedAt() : 0,
         entities: this.handlers.getEntities ? this.handlers.getEntities() : [],
         nether: this.handlers.getDimData ? this.handlers.getDimData('nether') : null,
+        end: this.handlers.getDimData ? this.handlers.getDimData('end') : null,
         roster: this.roster(),
         host: this.name
       });

@@ -14,6 +14,7 @@
     orbs: [],
     falling: [],
     tnt: [],
+    thrown: [],
     boats: [],
     _pool: [],
     riding: null
@@ -31,7 +32,7 @@
   };
 
   Entities.clear = function () {
-    for (const list of [this.particles, this.orbs, this.falling, this.boats, this.arrows, this.tnt]) {
+    for (const list of [this.particles, this.orbs, this.falling, this.boats, this.arrows, this.tnt, this.thrown]) {
       for (const e of list) this.group.remove(e.mesh);
       list.length = 0;
     }
@@ -224,6 +225,63 @@
       // someone else's TNT: their game breaks the blocks and sends the blast
       if (t.visual) continue;
       Mobs.explode({ x: t.x, y: t.y, z: t.z, def: { drops: [] }, size: 1 }, world, game.player, game, 4);
+    }
+  };
+
+  // ------------------------------------------------------------- thrown things
+  // An ender pearl flies in an arc and takes its thrower to wherever it
+  // lands; an eye of ender floats off toward the nearest stronghold, hangs
+  // there a moment, then drops (or, one time in five, shatters).
+  Entities.throwPearl = function (x, y, z, vx, vy, vz, onLand) {
+    const mesh = new THREE.Mesh(this.game.flatItemGeometry(Items.ENDER_PEARL), this.game.itemMaterial);
+    mesh.scale.setScalar(0.5);
+    mesh.position.set(x, y, z);
+    this.group.add(mesh);
+    this.thrown.push({ kind: 'pearl', mesh, x, y, z, vx, vy, vz, age: 0, onLand });
+  };
+
+  Entities.throwEye = function (x, y, z, tx, tz) {
+    const mesh = new THREE.Mesh(this.game.flatItemGeometry(Items.ENDER_EYE), this.game.itemMaterial);
+    mesh.scale.setScalar(0.5);
+    mesh.position.set(x, y, z);
+    this.group.add(mesh);
+    const dx = tx - x, dz = tz - z, len = Math.hypot(dx, dz) || 1;
+    const go = Math.min(12, len);
+    this.thrown.push({ kind: 'eye', mesh, x, y, z, sx: x, sy: y, sz: z, ex: x + dx / len * go, ey: y + 3, ez: z + dz / len * go, age: 0 });
+  };
+
+  Entities.updateThrown = function (dt) {
+    const game = this.game, world = game.world;
+    for (let i = this.thrown.length - 1; i >= 0; i--) {
+      const t = this.thrown[i];
+      t.age += dt;
+      if (t.kind === 'pearl') {
+        t.vy -= 14 * dt;
+        const nx = t.x + t.vx * dt, ny = t.y + t.vy * dt, nz = t.z + t.vz * dt;
+        const d = B.byId[world.getBlock(Math.floor(nx), Math.floor(ny), Math.floor(nz))];
+        if ((d && d.solid) || t.age > 8 || ny < -20) {
+          this.group.remove(t.mesh);
+          this.thrown.splice(i, 1);
+          if (t.age <= 8 && ny >= -20 && t.onLand) t.onLand(t.x, t.y, t.z);
+          continue;
+        }
+        t.x = nx; t.y = ny; t.z = nz;
+        if (Math.random() < 0.5) this.burst(t.x, t.y, t.z, B.OBSIDIAN, 1, 0.05, 0.05);
+      } else {
+        const k = Math.min(1, t.age / 1.6);
+        const e = 1 - (1 - k) * (1 - k);
+        t.x = t.sx + (t.ex - t.sx) * e; t.z = t.sz + (t.ez - t.sz) * e; t.y = t.sy + (t.ey - t.sy) * e + Math.sin(t.age * 6) * 0.08;
+        if (Math.random() < 0.4) this.burst(t.x, t.y, t.z, B.OBSIDIAN, 1, 0.08, 0.04);
+        if (t.age > 2.6) {
+          this.group.remove(t.mesh);
+          this.thrown.splice(i, 1);
+          if (Math.random() < 0.8) game.spawnDrop(t.x, t.y, t.z, Items.ENDER_EYE, 1);
+          else { this.burst(t.x, t.y, t.z, B.GLASS, 8, 0.3); if (global.Sound) Sound.dig(B.GLASS); }
+          continue;
+        }
+      }
+      t.mesh.position.set(t.x, t.y, t.z);
+      t.mesh.rotation.y += dt * 4;
     }
   };
 
@@ -520,6 +578,7 @@
     this.updateOrbs(dt);
     this.updateFalling(dt);
     this.updateTnt(dt);
+    this.updateThrown(dt);
     this.updateArrows(dt);
     this.updateBoats(dt, input);
   };

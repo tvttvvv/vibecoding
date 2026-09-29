@@ -307,6 +307,7 @@
 
     growPlants(chunk, seed);
     if (global.Villages) Villages.stamp(chunk, seed, columnHeight);
+    if (global.Strongholds) Strongholds.stamp(chunk, seed);
     growFeatures(chunk, seed);
     chunk.generated = true;
   }
@@ -422,6 +423,61 @@
       }
     }
     if (global.Fortress) Fortress.stamp(chunk, seed);
+    chunk.generated = true;
+  }
+
+  // ---------------------------------------------------------------- the End
+  // An island of end stone floating in the void, ringed by ten obsidian
+  // pillars with a bedrock cap where an end crystal sits, and a bedrock
+  // pedestal in the middle that becomes the way home once the dragon is dead.
+  const END_ISLAND = 62;
+  const END_PORTAL_Y = 39;
+  function endPillars() {
+    const out = [];
+    for (let i = 0; i < 10; i++) {
+      const a = i / 10 * Math.PI * 2;
+      out.push({ x: Math.round(Math.cos(a) * 30), z: Math.round(Math.sin(a) * 30), r: 2 + (i % 3), top: 50 + ((i * 7) % 5) * 4 });
+    }
+    return out;
+  }
+  const PILLARS = endPillars();
+
+  function generateEnd(chunk, seed) {
+    const baseX = chunk.cx * CHUNK_SIZE, baseZ = chunk.cz * CHUNK_SIZE;
+    let maxY = 0;
+    const set = (lx, y, lz, id) => {
+      if (y < 1 || y >= WORLD_HEIGHT) return;
+      chunk.data[(y * CHUNK_SIZE + lz) * CHUNK_SIZE + lx] = id;
+      if (y > maxY) maxY = y;
+    };
+    for (let lz = 0; lz < CHUNK_SIZE; lz++) {
+      for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+        const wx = baseX + lx, wz = baseZ + lz;
+        const r = Math.hypot(wx, wz);
+        const n = Noise.fbm2(wx * 0.05, wz * 0.05, seed + 401, 3);
+        const edge = END_ISLAND + (n - 0.5) * 16;
+        if (r < edge) {
+          const k = 1 - r / edge;
+          const top = Math.floor(34 + k * 4 + (n - 0.5) * 3);
+          const bottom = Math.floor(top - 2 - k * 22 - n * 4);
+          for (let y = Math.max(1, bottom); y <= top; y++) set(lx, y, lz, B.END_STONE);
+        }
+        for (const p of PILLARS) {
+          if (Math.hypot(wx - p.x, wz - p.z) > p.r + 0.5) continue;
+          for (let y = 20; y <= p.top; y++) set(lx, y, lz, B.OBSIDIAN);
+          if (wx === p.x && wz === p.z) set(lx, p.top + 1, lz, B.BEDROCK);
+        }
+        // the exit portal's pedestal
+        if (r <= 3.5) {
+          for (let y = 30; y < END_PORTAL_Y - 1; y++) set(lx, y, lz, B.END_STONE);
+          set(lx, END_PORTAL_Y - 1, lz, B.BEDROCK);
+          set(lx, END_PORTAL_Y, lz, r > 2.5 ? B.BEDROCK : B.AIR);
+          for (let y = END_PORTAL_Y + 1; y < END_PORTAL_Y + 5; y++) set(lx, y, lz, B.AIR);
+          if (wx === 0 && wz === 0) for (let y = END_PORTAL_Y; y < END_PORTAL_Y + 4; y++) set(lx, y, lz, B.BEDROCK);
+        }
+      }
+    }
+    chunk.maxY = Math.max(maxY, 1);
     chunk.generated = true;
   }
 
@@ -551,7 +607,7 @@
       this._lastKey = '';
     }
     if (!c.generated) {
-      (this.dim === 'nether' ? generateNether : generateChunk)(c, this.seed);
+      (this.dim === 'nether' ? generateNether : this.dim === 'end' ? generateEnd : generateChunk)(c, this.seed);
       // edits made by anyone outlive chunk unload, so replay them on rebuild
       if (this.onChunkReady) this.onChunkReady(c);
     }
@@ -651,7 +707,7 @@
     return 0;
   };
 
-  const GROUND_IDS = [B.GRASS, B.DIRT, B.STONE, B.SAND, B.SANDSTONE, B.GRAVEL, B.SNOW, B.SNOW_GRASS];
+  const GROUND_IDS = [B.GRASS, B.DIRT, B.STONE, B.SAND, B.SANDSTONE, B.GRAVEL, B.SNOW, B.SNOW_GRASS, B.END_STONE, B.OBSIDIAN];
 
   World.prototype.groundY = function (x, z) {
     const cx = Math.floor(x / CHUNK_SIZE), cz = Math.floor(z / CHUNK_SIZE);
@@ -919,7 +975,7 @@
     const yTop = Math.min(WORLD_HEIGHT - 1, chunk.maxY + 1);
 
     const info = this.fillRegion(chunk);
-    lightRegion(Math.max(info.top, yTop + 1), info.anyLight, this.dim === 'nether');
+    lightRegion(Math.max(info.top, yTop + 1), info.anyLight, this.dim === 'nether' || this.dim === 'end');
 
     // keep this chunk's own light for later questions about it
     if (!chunk.sky) {
@@ -1305,5 +1361,5 @@
   global.World = World;
   global.WorldConst = { CHUNK_SIZE, WORLD_HEIGHT, SEA_LEVEL };
   // for structures that lay themselves over the terrain (villages)
-  global.WorldGen = { columnHeight, biomeAt };
+  global.WorldGen = { columnHeight, biomeAt, END_PORTAL_Y, PILLARS };
 })(window);

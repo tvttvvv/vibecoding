@@ -7,12 +7,12 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>복셀 크래프트</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23795433'/><rect width='16' height='5' fill='%235d9c3c'/></svg>">
-<link rel="stylesheet" href="css/style.css?v=26">
+<link rel="stylesheet" href="css/style.css?v=27">
 <script>
 // GitHub Pages caches this page for ten minutes, so a new build can sit
 // unseen. Ask an uncached version file and reload once if we are behind.
 (function () {
-  var BUILD = 26;
+  var BUILD = 27;
   try {
     fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
       .then(function (r) { return r.json(); })
@@ -82,6 +82,7 @@
   </div>
 
   <div id="crosshair"></div>
+  <div id="bossBar" class="hidden"><div id="bossName"></div><div id="bossTrack"><div id="bossFill"></div></div></div>
 
   <div id="debugPanel" class="hidden"></div>
   <div id="hint" class="hidden"></div>
@@ -210,30 +211,31 @@
 
 <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/store.js?v=26"></script>
-<script src="js/settings.js?v=26"></script>
-<script src="js/noise.js?v=26"></script>
-<script src="js/textures.js?v=26"></script>
-<script src="js/blocks.js?v=26"></script>
-<script src="js/items.js?v=26"></script>
-<script src="js/recipes.js?v=26"></script>
-<script src="js/enchant.js?v=26"></script>
-<script src="js/world.js?v=26"></script>
-<script src="js/villages.js?v=26"></script>
-<script src="js/fortress.js?v=26"></script>
-<script src="js/brewing.js?v=26"></script>
-<script src="js/player.js?v=26"></script>
-<script src="js/inventory.js?v=26"></script>
-<script src="js/net.js?v=26"></script>
-<script src="js/sound.js?v=26"></script>
-<script src="js/fluids.js?v=26"></script>
-<script src="js/redstone.js?v=26"></script>
-<script src="js/entities.js?v=26"></script>
-<script src="js/sky.js?v=26"></script>
-<script src="js/hand.js?v=26"></script>
-<script src="js/mobs.js?v=26"></script>
-<script src="js/controls.js?v=26"></script>
-<script src="js/ui.js?v=26"></script>
-<script src="js/game.js?v=26"></script>
+<script src="js/store.js?v=27"></script>
+<script src="js/settings.js?v=27"></script>
+<script src="js/noise.js?v=27"></script>
+<script src="js/textures.js?v=27"></script>
+<script src="js/blocks.js?v=27"></script>
+<script src="js/items.js?v=27"></script>
+<script src="js/recipes.js?v=27"></script>
+<script src="js/enchant.js?v=27"></script>
+<script src="js/world.js?v=27"></script>
+<script src="js/villages.js?v=27"></script>
+<script src="js/fortress.js?v=27"></script>
+<script src="js/strongholds.js?v=27"></script>
+<script src="js/brewing.js?v=27"></script>
+<script src="js/player.js?v=27"></script>
+<script src="js/inventory.js?v=27"></script>
+<script src="js/net.js?v=27"></script>
+<script src="js/sound.js?v=27"></script>
+<script src="js/fluids.js?v=27"></script>
+<script src="js/redstone.js?v=27"></script>
+<script src="js/entities.js?v=27"></script>
+<script src="js/sky.js?v=27"></script>
+<script src="js/hand.js?v=27"></script>
+<script src="js/mobs.js?v=27"></script>
+<script src="js/controls.js?v=27"></script>
+<script src="js/ui.js?v=27"></script>
+<script src="js/game.js?v=27"></script>
 </body>
 </html>

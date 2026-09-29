@@ -197,6 +197,47 @@
     ]
   };
 
+  // ---- the End
+  TYPES.enderman = {
+    name: '엔더맨', hp: 40, hw: 0.3, h: 2.9, speed: 3.0, hostile: false, enderman: true,
+    damage: 7, reach: 2.0, drops: [[I.ENDER_PEARL, 0, 1]], noSpawn: true,
+    parts: [
+      [0.5, 0.75, 0.26, 0x141414, 0, 1.95, 0],
+      [0.12, 1.55, 0.12, 0x101010, -0.14, 0.78, 0], [0.12, 1.55, 0.12, 0x101010, 0.14, 0.78, 0],
+      [0.12, 1.5, 0.12, 0x101010, -0.33, 1.6, 0], [0.12, 1.5, 0.12, 0x101010, 0.33, 1.6, 0],
+      [0.5, 0.5, 0.5, 0x161616, 0, 2.6, 0, 'head'],
+      [0.16, 0.05, 0.03, 0xd070f0, -0.12, 2.58, -0.26, 'head'], [0.16, 0.05, 0.03, 0xd070f0, 0.12, 2.58, -0.26, 'head']
+    ]
+  };
+  TYPES.crystal = {
+    name: '엔드 수정', hp: 1, hw: 0.5, h: 1.6, speed: 0, hostile: false, crystal: true, still: true, noSpawn: true,
+    drops: [],
+    parts: [
+      [0.9, 0.9, 0.9, 0xf0b8f0, 0, 0.9, 0, 'head'],
+      [0.5, 0.5, 0.5, 0xd040d0, 0, 0.9, 0, 'head'],
+      [1.0, 0.25, 1.0, 0x2a2a2a, 0, 0.12, 0]
+    ]
+  };
+  TYPES.dragon = {
+    name: '엔더 드래곤', hp: 200, hw: 2.5, h: 2.6, speed: 13, hostile: true, dragon: true, boss: true,
+    fireImmune: true, still: true, noSpawn: true, drops: [],
+    parts: [
+      [2.2, 1.9, 7.0, 0x1a1a1a, 0, 1.5, 0],
+      [0.9, 0.9, 3.0, 0x161616, 0, 2.0, -4.6],
+      [1.5, 1.2, 2.0, 0x1c1c1c, 0, 2.2, -6.9, 'head'],
+      [1.3, 0.5, 1.2, 0x121212, 0, 1.7, -8.2, 'head'],
+      [0.3, 0.15, 0.05, 0xc050e0, -0.45, 2.45, -7.92, 'head'], [0.3, 0.15, 0.05, 0xc050e0, 0.45, 2.45, -7.92, 'head'],
+      [0.25, 0.5, 0.25, 0x2a2a2a, -0.4, 3.0, -6.6, 'head'], [0.25, 0.5, 0.25, 0x2a2a2a, 0.4, 3.0, -6.6, 'head'],
+      [7.0, 0.2, 4.0, 0x242424, -4.5, 2.6, -0.8], [7.0, 0.2, 4.0, 0x242424, 4.5, 2.6, -0.8],
+      [0.3, 0.3, 4.2, 0x3a3a3a, -4.5, 2.8, -0.8], [0.3, 0.3, 4.2, 0x3a3a3a, 4.5, 2.8, -0.8],
+      [0.7, 0.7, 5.0, 0x161616, 0, 1.4, 5.8],
+      [0.35, 0.35, 3.0, 0x141414, 0, 1.3, 9.3],
+      [0.5, 1.4, 0.5, 0x141414, -0.8, 0.2, -2.0], [0.5, 1.4, 0.5, 0x141414, 0.8, 0.2, -2.0],
+      [0.6, 1.6, 0.6, 0x141414, -0.8, 0.1, 2.2], [0.6, 1.6, 0.6, 0x141414, 0.8, 0.1, 2.2],
+      [0.3, 0.4, 0.3, 0x2a2a2a, 0, 2.6, -2.0], [0.3, 0.4, 0.3, 0x2a2a2a, 0, 2.6, 0.5], [0.3, 0.4, 0.3, 0x2a2a2a, 0, 2.6, 3.0]
+    ]
+  };
+
   // slimes bounce about in the dark underground
   TYPES.slime = {
     name: '슬라임', hp: 8, hw: 0.5, h: 1.0, speed: 2.4, hostile: true, hops: true, underground: true,
@@ -498,6 +539,115 @@
     return false;
   };
 
+  // An enderman hit (or standing in water) blinks somewhere else nearby
+  Mobs.teleport = function (m, world) {
+    for (let i = 0; i < 16; i++) {
+      const x = Math.floor(m.x + (Math.random() - 0.5) * 32), z = Math.floor(m.z + (Math.random() - 0.5) * 32);
+      for (let y = Math.floor(m.y) + 8; y > Math.floor(m.y) - 8; y--) {
+        const below = B.byId[world.getBlock(x, y - 1, z)];
+        if (!below.solid || below.fluid) continue;
+        if (world.getBlock(x, y, z) !== B.AIR || world.getBlock(x, y + 1, z) !== B.AIR || world.getBlock(x, y + 2, z) !== B.AIR) continue;
+        if (global.Entities) Entities.burst(m.x, m.y + 1.4, m.z, B.OBSIDIAN, 10, 0.6);
+        m.x = x + 0.5; m.y = y; m.z = z + 0.5;
+        if (global.Sound) Sound.portal();
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // ------------------------------------------------------------- the dragon
+  // It circles the pillars, now and then dives at the nearest player, and
+  // spits fireballs from the circle. Crystals on the pillars heal it.
+  Mobs.dragonThink = function (m, dt, world, targets, game) {
+    m.age += dt;
+    if (!m.phase) { m.phase = 'circle'; m.angle = 0; m.phaseT = 10; m.fireT = 6; }
+    let tx, ty, tz;
+    let target = null, td = Infinity;
+    for (const t of targets) {
+      if (t.dead) continue;
+      const d = Math.hypot(t.pos.x - m.x, t.pos.z - m.z);
+      if (d < td) { td = d; target = t; }
+    }
+    const canFight = game.mode === 'survival' && target && td < 160;
+    m.phaseT -= dt;
+    if (m.phase === 'circle') {
+      m.angle += dt * 0.32;
+      tx = Math.cos(m.angle) * 42; tz = Math.sin(m.angle) * 42; ty = 58 + Math.sin(m.age * 0.5) * 5;
+      m.fireT -= dt;
+      if (canFight && m.fireT <= 0) {
+        m.fireT = 7 + Math.random() * 4;
+        if (this.canSee(world, m, target)) this.shoot(m, target, true);
+      }
+      if (canFight && m.phaseT <= 0) { m.phase = 'charge'; m.phaseT = 7; }
+    } else {
+      // diving at its prey
+      if (!target) { m.phase = 'circle'; m.phaseT = 10; return; }
+      tx = target.pos.x; ty = target.pos.y + 1; tz = target.pos.z;
+      const d = Math.hypot(tx - m.x, ty - (m.y + 1.5), tz - m.z);
+      if (d < 3.5) {
+        const len = Math.hypot(tx - m.x, tz - m.z) || 1;
+        game.mobAttack(m, 10, (tx - m.x) / len * 2, (tz - m.z) / len * 2, target, true);
+        m.phase = 'circle'; m.phaseT = 12 + Math.random() * 6;
+      } else if (m.phaseT <= 0) {
+        m.phase = 'circle'; m.phaseT = 10;
+      }
+    }
+    const dx = tx - m.x, dy = ty - m.y, dz = tz - m.z;
+    const len = Math.hypot(dx, dy, dz) || 1;
+    const sp = (m.phase === 'charge' ? 16 : 13) * dt;
+    const step = Math.min(sp, len);
+    m.x += dx / len * step; m.y += dy / len * step; m.z += dz / len * step;
+    // turn toward where it is going
+    const want = Math.atan2(dx, dz);
+    let dyaw = want - m.yaw;
+    while (dyaw > Math.PI) dyaw -= Math.PI * 2;
+    while (dyaw < -Math.PI) dyaw += Math.PI * 2;
+    m.yaw += dyaw * Math.min(1, dt * 3);
+    // the crystals keep it topped up
+    m.healT = (m.healT || 0) + dt;
+    let healer = null, hd = 48;
+    for (const c of this.list) {
+      if (!c.def.crystal || c.dead) continue;
+      const d = Math.hypot(c.x - m.x, c.y - m.y, c.z - m.z);
+      if (d < hd) { hd = d; healer = c; }
+    }
+    m.healer = healer;
+    if (healer && m.healT >= 1) { m.healT = 0; m.hp = Math.min(m.def.hp, m.hp + 1); }
+    this.drawBeam(m, healer);
+    if (Math.random() < dt / 6 && global.Sound) Sound.mob('dragon', 'idle', Math.hypot(game.player.pos.x - m.x, game.player.pos.z - m.z));
+  };
+
+  Mobs.drawBeam = function (m, crystal) {
+    if (!this._beam) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+      this._beam = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xf080f0, fog: false }));
+      this._beam.frustumCulled = false;
+    }
+    const beam = this._beam;
+    if (beam.parent !== this._group) this._group.add(beam);
+    beam.visible = !!crystal;
+    if (!crystal) return;
+    const a = beam.geometry.attributes.position.array;
+    a[0] = crystal.x; a[1] = crystal.y + 0.9; a[2] = crystal.z;
+    a[3] = m.x; a[4] = m.y + 1.5; a[5] = m.z;
+    beam.geometry.attributes.position.needsUpdate = true;
+  };
+
+  // the End: endermen wander the island
+  Mobs.trySpawnEnd = function (world, player) {
+    if (this.list.filter((m) => m.def.enderman).length >= 8) return;
+    const ang = Math.random() * Math.PI * 2;
+    const dist = SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
+    const x = Math.floor(player.pos.x + Math.cos(ang) * dist);
+    const z = Math.floor(player.pos.z + Math.sin(ang) * dist);
+    const y = world.groundY(x, z);
+    if (y <= 0 || world.getBlock(x, y, z) !== B.END_STONE) return;
+    if (world.getBlock(x, y + 1, z) !== B.AIR || world.getBlock(x, y + 2, z) !== B.AIR || world.getBlock(x, y + 3, z) !== B.AIR) return;
+    this.spawn('enderman', x + 0.5, y + 1, z + 0.5);
+  };
+
   // the nether spawns its own: packs of zombified piglins on the rock, and
   // now and then a ghast out over the open caverns
   Mobs.trySpawnNether = function (world, player, game) {
@@ -543,6 +693,7 @@
 
   Mobs.trySpawn = function (world, player, game) {
     if (game.dimension === 'nether') { this.trySpawnNether(world, player, game); return; }
+    if (game.dimension === 'end') { this.trySpawnEnd(world, player); return; }
     const night = isNight(game.dayTime);
     for (let attempt = 0; attempt < 6; attempt++) {
       const hostile = attempt < 3;
@@ -579,7 +730,8 @@
         if (this.litNearby(game, x, y + 1, z)) continue;
         const type = HOSTILE[Math.floor(Math.random() * HOSTILE.length)];
         if (TYPES[type].underground && (y > 40 || open)) continue;
-        this.spawn(type, x + 0.5, y + 1, z + 0.5);
+        // now and then an enderman instead
+        this.spawn(Math.random() < 0.08 ? 'enderman' : type, x + 0.5, y + 1, z + 0.5);
       } else {
         if (!open) continue;
         if (surface !== B.GRASS && surface !== B.SNOW_GRASS) continue;
@@ -635,7 +787,7 @@
         distSq = (t.pos.x - m.x) ** 2 + (t.pos.y - m.y) ** 2 + (t.pos.z - m.z) ** 2;
       }
 
-      if (distSq > DESPAWN_DIST * DESPAWN_DIST || m.y < -6) {
+      if ((distSq > DESPAWN_DIST * DESPAWN_DIST && !m.def.still) || m.y < -6) {
         this.remove(m);
         continue;
       }
@@ -655,6 +807,13 @@
         continue;
       }
 
+      if (m.def.dragon) { this.dragonThink(m, dt, world, targets, game); this.sync(m); continue; }
+      if (m.def.crystal) { if (m.group && m.group.userData.head) m.group.userData.head.rotation.y += dt * 2; this.sync(m); continue; }
+      // endermen take offence at being stared at
+      if (m.def.enderman && !(m.angry > 0) && game.staredAt && game.staredAt(m)) {
+        m.angry = 30;
+        if (global.Sound) Sound.mob('enderman', 'angry', Math.sqrt(distSq));
+      }
       this.think(m, dt, world, target, game, distSq);
       // every so often a mob makes its noise
       if (Math.random() < dt / 9 && global.Sound) {
@@ -684,7 +843,7 @@
       return;
     }
     // piglins go for anyone not wearing gold
-    const aggressive = def.hostile || (def.neutral && m.angry > 0) ||
+    const aggressive = def.hostile || ((def.neutral || def.enderman) && m.angry > 0) ||
       (def.piglin && (m.angry > 0 || !(game.wearsGold && game.wearsGold(player))));
     const reachY = def.flying ? 40 : 8;
     const range = def.flying ? 40 : 18;
@@ -1023,7 +1182,7 @@
     for (const m of this.list) {
       out.push([m.id, TYPE_NAMES.indexOf(m.type),
         +m.x.toFixed(2), +m.y.toFixed(2), +m.z.toFixed(2), +m.yaw.toFixed(2),
-        m.size < 1 ? 1 : 0, m.love > 0 ? 1 : 0]);
+        m.size < 1 ? 1 : 0, m.love > 0 ? 1 : 0, m.def.boss ? Math.ceil(m.hp) : 0]);
     }
     return out;
   };
@@ -1046,6 +1205,7 @@
       }
       m.x = r[2]; m.y = r[3]; m.z = r[4]; m.yaw = r[5];
       m.size = r[6] ? 0.5 : 1;
+      if (m.def.boss) m.hp = r[8];
       m.group.scale.setScalar(m.size);
       if (r[7] && global.Entities && Math.random() < 0.08) Entities.hearts(m.x, m.y + m.def.h * m.size + 0.2, m.z, 1);
     }

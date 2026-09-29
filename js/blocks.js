@@ -447,6 +447,31 @@
   });
   const MELON = def(367, '수박', { top: T.melon_top, side: T.melon_side, bottom: T.melon_top, hardness: 1, tool: 'axe', drop: 0 });
 
+  // ---- the End ---------------------------------------------------------------
+  const END_STONE = simple(380, '엔드 돌', T.end_stone, { hardness: 3, tool: 'pickaxe', tier: 1 });
+  const STONE_BRICKS = simple(381, '석재 벽돌', T.stone_bricks, { hardness: 1.5, tool: 'pickaxe', tier: 1 });
+  const MOSSY_STONE_BRICKS = simple(382, '이끼 낀 석재 벽돌', T.mossy_stone_bricks, { hardness: 1.5, tool: 'pickaxe', tier: 1 });
+  // the frame that holds the eyes of ender: it cannot be broken
+  const END_FRAME = def(383, '엔드 차원문 틀', {
+    top: T.end_frame_top, side: T.end_frame_side, bottom: T.end_stone, opaque: false, hardness: Infinity, drop: 0,
+    render: 'boxes', boxes: [[0, 0, 0, 1, 13 * P, 1]], endFrame: true, interactive: 'endframe'
+  });
+  const END_FRAME_EYE = def(384, '엔드 차원문 틀', {
+    top: T.end_frame_top, side: T.end_frame_side, bottom: T.end_stone, opaque: false, hardness: Infinity, drop: 0,
+    render: 'boxes', boxes: [[0, 0, 0, 1, 13 * P, 1], [4 * P, 13 * P, 4 * P, 12 * P, 1, 12 * P, T.ender_eye_block]],
+    endFrame: true, hasEye: true, light: 1
+  });
+  // a sheet of stars you fall into
+  const END_PORTAL = def(385, '엔드 차원문', {
+    top: T.end_portal, side: T.end_portal, bottom: T.end_portal, opaque: false, solid: false, hardness: Infinity,
+    drop: 0, render: 'boxes', boxes: [[0, 0, 0, 1, 12 * P, 1]], endPortal: true, light: 15
+  });
+  const DRAGON_EGG = def(386, '드래곤 알', {
+    top: T.dragon_egg, side: T.dragon_egg, bottom: T.dragon_egg, opaque: false, hardness: 3, light: 1,
+    render: 'boxes', boxes: [[6 * P, 0, 6 * P, 10 * P, 1 * P, 10 * P], [4 * P, P, 4 * P, 12 * P, 10 * P, 12 * P],
+      [5 * P, 10 * P, 5 * P, 11 * P, 13 * P, 11 * P], [6 * P, 13 * P, 6 * P, 10 * P, 15 * P, 10 * P]]
+  });
+
   byId[RS_TORCH].litId = byId[RS_TORCH_OFF].litId = RS_TORCH;
   byId[RS_TORCH].offId = byId[RS_TORCH_OFF].offId = RS_TORCH_OFF;
 
@@ -511,7 +536,8 @@
     NETHERRACK, SOUL_SAND, GLOWSTONE, QUARTZ_ORE, BEDROCK,
     REDSTONE_ORE, RS_TORCH, LEVER, BUTTON, PLATE, LAMP, REDSTONE_BLOCK, TNT,
     REPEATER, COMPARATOR, PISTON, STICKY_PISTON, OBSERVER,
-    NETHER_BRICKS, NETHER_FENCE, OAK_FENCE, BREWING_STAND, MELON
+    NETHER_BRICKS, NETHER_FENCE, OAK_FENCE, BREWING_STAND, MELON,
+    END_STONE, STONE_BRICKS, MOSSY_STONE_BRICKS, END_FRAME, DRAGON_EGG
   ];
 
   global.Blocks = {
@@ -527,6 +553,7 @@
     TORCH_WALL, RS_TORCH_WALL, mount,
     REPEATER, COMPARATOR, PISTON, STICKY_PISTON, PISTON_HEAD, OBSERVER, D6, OPP6,
     NETHER_BRICKS, NETHER_FENCE, OAK_FENCE, NETHER_WART, BREWING_STAND, MELON,
+    END_STONE, STONE_BRICKS, MOSSY_STONE_BRICKS, END_FRAME, END_FRAME_EYE, END_PORTAL, DRAGON_EGG,
     byId, tileFor, isOpaque, isSolid, isLiquid, mineTime, canHarvest, iconFor, creativeList
   };
 })(window);
