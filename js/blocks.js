@@ -227,6 +227,82 @@
     render: 'boxes', boxes: [[0.375, 0, 0, 0.625, 1, 1]], light: 11, drop: 0, portal: 'z', needsGround: true
   });
 
+  // ---- redstone --------------------------------------------------------------
+  // Ids 200 and up (100-199 belong to items). Each power level of the dust and
+  // each position of a lever or button is its own id, the way doors are.
+  const REDSTONE_ORE = simple(200, '레드스톤 광석', T.redstone_ore, { hardness: 3, tool: 'pickaxe', tier: 3, drop: 193 });
+  const WIRE = 201;                // 201..216: power 0..15
+  for (let pw = 0; pw < 16; pw++) {
+    const t = T['dust_' + (pw === 0 ? 0 : pw < 6 ? 1 : pw < 11 ? 2 : 3)];
+    // the mesher draws the dust's real shape from its neighbours
+    def(WIRE + pw, '레드스톤 가루', {
+      top: t, side: t, bottom: t, opaque: false, solid: false, hardness: 0, render: 'boxes',
+      boxes: [[0, 0, 0, 1, 1 / 16, 1]], needsGround: true, drop: 193, wire: true, power: pw, family: WIRE
+    });
+  }
+  const RS_TORCH = def(217, '레드스톤 횃불', {
+    top: T.rs_torch_on, side: T.rs_torch_on, bottom: T.rs_torch_on, opaque: false, solid: false, hardness: 0,
+    render: 'cross', light: 7, needsGround: true, rsTorch: true, on: true
+  });
+  const RS_TORCH_OFF = def(218, '레드스톤 횃불', {
+    top: T.rs_torch_off, side: T.rs_torch_off, bottom: T.rs_torch_off, opaque: false, solid: false, hardness: 0,
+    render: 'cross', needsGround: true, rsTorch: true, on: false, drop: RS_TORCH
+  });
+
+  // levers and buttons sit on the floor (0) or on a wall (1-4, the wall at
+  // facing 0-3 as for ladders); boxes are drawn floor-up and turned onto walls
+  function mount(a, box) {
+    const [x0, y0, z0, x1, y1, z1] = box;
+    let r;
+    if (a === 0) r = [x0, y0, z0, x1, y1, z1];
+    else if (a === 1) r = [x0, z0, y0, x1, z1, y1];
+    else if (a === 2) r = [1 - y1, z0, x0, 1 - y0, z1, x1];
+    else if (a === 3) r = [x0, z0, 1 - y1, x1, z1, 1 - y0];
+    else r = [y0, z0, x0, y1, z1, x1];
+    if (box.length > 6) r.push(box[6]);
+    return r;
+  }
+  const P = 1 / 16;
+  const LEVER = 219;               // 219 + attach * 2 + on
+  for (let a = 0; a < 5; a++) {
+    for (let on = 0; on < 2; on++) {
+      // on a wall the handle points down when on, as in Minecraft
+      const back = a === 0 ? !on : !!on;
+      const handle = back
+        ? [[7 * P, 3 * P, 5 * P, 9 * P, 9 * P, 7 * P, T.planks], [7 * P, 9 * P, 4 * P, 9 * P, 11 * P, 6 * P, T.planks]]
+        : [[7 * P, 3 * P, 9 * P, 9 * P, 9 * P, 11 * P, T.planks], [7 * P, 9 * P, 10 * P, 9 * P, 11 * P, 12 * P, T.planks]];
+      const boxes = [[5 * P, 0, 4 * P, 11 * P, 3 * P, 12 * P]].concat(handle).map((b) => mount(a, b));
+      def(LEVER + a * 2 + on, '레버', {
+        top: T.cobblestone, side: T.cobblestone, bottom: T.cobblestone, opaque: false, solid: false,
+        hardness: 0.5, render: 'boxes', boxes, needsGround: true, attach: a, lever: true, on: !!on,
+        drop: LEVER, family: LEVER, icon: T.item_lever, flatItem: true, interactive: 'lever'
+      });
+    }
+  }
+  const BUTTON = 229;              // 229 + attach * 2 + pressed
+  for (let a = 0; a < 5; a++) {
+    for (let on = 0; on < 2; on++) {
+      def(BUTTON + a * 2 + on, '돌 버튼', {
+        top: T.stone, side: T.stone, bottom: T.stone, opaque: false, solid: false, hardness: 0.5,
+        render: 'boxes', boxes: [mount(a, [5 * P, 0, 6 * P, 11 * P, (on ? 1 : 2) * P, 10 * P])],
+        needsGround: true, attach: a, button: true, on: !!on, drop: BUTTON, family: BUTTON,
+        flatItem: true, interactive: 'button'
+      });
+    }
+  }
+  const LAMP = def(239, '레드스톤 램프', { top: T.lamp_off, side: T.lamp_off, bottom: T.lamp_off, hardness: 0.3, lamp: true, on: false });
+  const LAMP_ON = def(240, '레드스톤 램프', { top: T.lamp_on, side: T.lamp_on, bottom: T.lamp_on, hardness: 0.3, lamp: true, on: true, light: 15, drop: LAMP });
+  const REDSTONE_BLOCK = simple(241, '레드스톤 블록', T.redstone_block, { hardness: 5, tool: 'pickaxe', tier: 1, rsBlock: true });
+  const PLATE = 242;               // 242 up, 243 pressed
+  for (let on = 0; on < 2; on++) {
+    def(PLATE + on, '돌 압력판', {
+      top: T.stone, side: T.stone, bottom: T.stone, opaque: false, solid: false, hardness: 0.5,
+      render: 'boxes', boxes: [[P, 0, P, 15 * P, (on ? 0.5 : 1) * P, 15 * P]], needsGround: true, attach: 0,
+      plate: true, on: !!on, drop: PLATE, family: PLATE, flatItem: true
+    });
+  }
+  const TNT = def(244, 'TNT', { top: T.tnt_top, side: T.tnt_side, bottom: T.tnt_bottom, hardness: 0, tnt: true });
+
   const CARROTS = 84;
   for (let s = 0; s < 4; s++) {
     simple(CARROTS + s, '당근', T['carrots_' + s], Object.assign({}, PLANT, { replaceable: false, crop: s, cropKind: 'carrot', drop: 0 }));
@@ -272,7 +348,8 @@
   }
 
   function iconFor(id) {
-    return Textures.iconURL(byId[id].side, !byId[id].opaque);
+    const d = byId[id];
+    return Textures.iconURL(d.icon !== undefined ? d.icon : d.side, !d.opaque);
   }
 
   const creativeList = [
@@ -283,7 +360,8 @@
     TALL_GRASS, DANDELION, POPPY,
     SLABS[0], SLABS[1], SLABS[2], STAIRS[0], STAIRS[1], LADDER, OBSIDIAN,
     LAPIS_ORE, SUGAR_CANE, BOOKSHELF, ENCHANTING_TABLE,
-    NETHERRACK, SOUL_SAND, GLOWSTONE, QUARTZ_ORE, BEDROCK
+    NETHERRACK, SOUL_SAND, GLOWSTONE, QUARTZ_ORE, BEDROCK,
+    REDSTONE_ORE, RS_TORCH, LEVER, BUTTON, PLATE, LAMP, REDSTONE_BLOCK, TNT
   ];
 
   global.Blocks = {
@@ -295,6 +373,7 @@
     SLABS, STAIRS, DOOR, LADDER, WATER_FLOW, LAVA, OBSIDIAN, CARROTS,
     LAPIS_ORE, SUGAR_CANE, BOOKSHELF, ENCHANTING_TABLE,
     NETHERRACK, SOUL_SAND, GLOWSTONE, QUARTZ_ORE, PORTAL_X, PORTAL_Z,
+    REDSTONE_ORE, WIRE, RS_TORCH, RS_TORCH_OFF, LEVER, BUTTON, LAMP, LAMP_ON, REDSTONE_BLOCK, PLATE, TNT,
     byId, tileFor, isOpaque, isSolid, isLiquid, mineTime, canHarvest, iconFor, creativeList
   };
 })(window);

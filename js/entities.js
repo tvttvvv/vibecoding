@@ -13,6 +13,7 @@
     particles: [],
     orbs: [],
     falling: [],
+    tnt: [],
     boats: [],
     _pool: [],
     riding: null
@@ -30,7 +31,7 @@
   };
 
   Entities.clear = function () {
-    for (const list of [this.particles, this.orbs, this.falling, this.boats, this.arrows]) {
+    for (const list of [this.particles, this.orbs, this.falling, this.boats, this.arrows, this.tnt]) {
       for (const e of list) this.group.remove(e.mesh);
       list.length = 0;
     }
@@ -188,6 +189,39 @@
           f.y < p.pos.y + 1.8 && f.y > p.pos.y) {
         p.pos.y = Math.min(p.pos.y, f.y - 1.8);
       }
+    }
+  };
+
+  // ------------------------------------------------------------- primed TNT
+  // It hops up out of its block, falls where it can and flashes white until
+  // the fuse runs out.
+  Entities.primeTnt = function (x, y, z, fuse) {
+    const mesh = new THREE.Mesh(this.game.blockGeometry(B.TNT, 0.98), this.game.itemMaterial);
+    const flash = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.0, 1.0),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, depthWrite: false }));
+    mesh.add(flash);
+    mesh.position.set(x, y + 0.5, z);
+    this.group.add(mesh);
+    this.tnt.push({ mesh, flash, x, y, z, vy: 3, fuse });
+  };
+
+  Entities.updateTnt = function (dt) {
+    const game = this.game, world = game.world;
+    for (let i = this.tnt.length - 1; i >= 0; i--) {
+      const t = this.tnt[i];
+      t.fuse -= dt;
+      t.vy = Math.max(-40, t.vy - G * dt);
+      const ny = t.y + t.vy * dt;
+      const below = B.byId[world.getBlock(Math.floor(t.x), Math.floor(ny), Math.floor(t.z))];
+      if (t.vy < 0 && below && below.solid) { t.y = Math.floor(ny) + 1; t.vy = 0; } else t.y = ny;
+      t.mesh.position.set(t.x, t.y + 0.5, t.z);
+      t.flash.visible = Math.floor(t.fuse * 4) % 2 === 0;
+      const s = t.fuse < 0.4 ? 1 + (0.4 - t.fuse) * 0.4 : 1;
+      t.mesh.scale.setScalar(s);
+      if (t.fuse > 0) continue;
+      this.group.remove(t.mesh);
+      this.tnt.splice(i, 1);
+      Mobs.explode({ x: t.x, y: t.y, z: t.z, def: { drops: [] }, size: 1 }, world, game.player, game, 4);
     }
   };
 
@@ -483,6 +517,7 @@
     this.updateParticles(dt);
     this.updateOrbs(dt);
     this.updateFalling(dt);
+    this.updateTnt(dt);
     this.updateArrows(dt);
     this.updateBoats(dt, input);
   };

@@ -92,6 +92,15 @@
   shapeless(I.FLINT_AND_STEEL, 1, [I.IRON_INGOT, I.FLINT]);
   shapeless(I.BOOK, 1, [I.PAPER, I.PAPER, I.PAPER, I.LEATHER]);
   shaped(B.BOOKSHELF, 1, ['###', 'BBB', '###'], { '#': B.PLANKS, B: I.BOOK });
+  // redstone
+  shaped(B.RS_TORCH, 1, ['R', '|'], { R: I.REDSTONE, '|': I.STICK });
+  shaped(B.LEVER, 1, ['|', '#'], { '|': I.STICK, '#': B.COBBLESTONE });
+  shapeless(B.BUTTON, 1, [B.STONE]);
+  shaped(B.PLATE, 1, ['##'], { '#': B.STONE });
+  shaped(B.LAMP, 1, [' R ', 'RGR', ' R '], { R: I.REDSTONE, G: B.GLOWSTONE });
+  shaped(B.REDSTONE_BLOCK, 1, ['RRR', 'RRR', 'RRR'], { R: I.REDSTONE });
+  shapeless(I.REDSTONE, 9, [B.REDSTONE_BLOCK]);
+  shaped(B.TNT, 1, ['GSG', 'SGS', 'GSG'], { G: I.GUNPOWDER, S: B.SAND });
   shaped(B.ENCHANTING_TABLE, 1, [' B ', 'D#D', '###'], { B: I.BOOK, D: I.DIAMOND, '#': B.OBSIDIAN });
 
   for (const [, mat, tier] of PLANK_LIKE) {

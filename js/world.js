@@ -38,6 +38,7 @@
 
   let OPAQUE = null, LIQUID = null, FACE_TILE_OF = null, TILE_UV = null;
   let CROSS = null, BHEIGHT = null, BOXES = null, LTOP = null, LAVAF = null, FLUIDK = null;
+  let WIREL = null, RSC = null;
   function buildLookups() {
     const n = B.byId.length;
     OPAQUE = new Uint8Array(n);
@@ -48,10 +49,15 @@
     LTOP = new Float32Array(n);
     LAVAF = new Uint8Array(n);
     FLUIDK = new Uint8Array(n);
+    WIREL = new Uint8Array(n);
+    RSC = new Uint8Array(n);
     for (let i = 0; i < n; i++) {
       const d = B.byId[i];
       if (!d) continue;
       if (d.render === 'boxes') BOXES[i] = d.boxes;
+      if (d.wire) WIREL[i] = 1;
+      // what redstone dust reaches out and joins up with
+      if (d.wire || d.rsTorch || d.lever || d.button || d.plate || d.rsBlock) RSC[i] = 1;
       if (d.fluid) {
         FLUIDK[i] = d.fluid === 'water' ? 1 : 2;
         LAVAF[i] = d.fluid === 'lava' ? 1 : 0;
@@ -192,6 +198,7 @@
     if (y < 14 && v < 0.0018) return B.DIAMOND_ORE;
     if (y < 26 && v < 0.0034) return B.GOLD_ORE;
     if (y < 30 && v > 0.9982) return B.LAPIS_ORE;
+    if (y < 16 && v > 0.9935) return B.REDSTONE_ORE;
     if (y < 44 && v < 0.015) return B.IRON_ORE;
     if (y < 58 && v < 0.026) return B.COAL_ORE;
     return 0;
@@ -643,6 +650,34 @@
   // colours and the shader mixes them with the time of day, so night falls
   // without rebuilding a single chunk.
   const RW = CHUNK_SIZE * 3;           // region width in x and z
+  // Redstone dust joins up with its neighbours: a cross when alone, a straight
+  // line through when it touches one thing, and arms toward each of several.
+  // Bits: 1 north (-z), 2 east (+x), 4 south (+z), 8 west (-x).
+  const WIRE_SHAPES = [];
+  (function () {
+    const P = 1 / 16, h = P;
+    const arms = [[6 * P, 0, 0, 10 * P, h, 6 * P], [10 * P, 0, 6 * P, 1, h, 10 * P],
+      [6 * P, 0, 10 * P, 10 * P, h, 1], [0, 0, 6 * P, 6 * P, h, 10 * P]];
+    for (let m = 0; m < 16; m++) {
+      let dirs = m;
+      if (m === 0) dirs = 15;
+      else if (m === 1 || m === 4) dirs = 5;
+      else if (m === 2 || m === 8) dirs = 10;
+      const list = [[5 * P, 0, 5 * P, 11 * P, h, 11 * P]];
+      for (let d = 0; d < 4; d++) if (dirs & (1 << d)) list.push(arms[d]);
+      WIRE_SHAPES.push(list);
+    }
+  })();
+  function wireMask(pad, p) {
+    let m = 0;
+    const offs = [-SZ, 1, SZ, -1];
+    for (let d = 0; d < 4; d++) {
+      const o = p + offs[d];
+      if (RSC[pad[o]] || (WIREL[pad[o - SY]] && !OPAQUE[pad[o]]) || (WIREL[pad[o + SY]] && !OPAQUE[pad[p + SY]])) m |= 1 << d;
+    }
+    return m;
+  }
+
   const RM = CHUNK_SIZE;               // margin: region x/z index = local + 16
   const RH = WORLD_HEIGHT + 4;         // region height, y index = y + 2
   const SZ = RW, SY = RW * RW;
@@ -906,8 +941,9 @@
 
           // doors, stairs, slabs, ladders: a few boxes, each face textured with
           // the matching part of the tile so nothing looks stretched
-          if (BOXES[id]) {
-            const boxes = BOXES[id];
+          const shapeBoxes = WIREL[id] ? WIRE_SHAPES[wireMask(pad, pHere)] : BOXES[id];
+          if (shapeBoxes) {
+            const boxes = shapeBoxes;
             for (let bi = 0; bi < boxes.length; bi++) {
               const bx = boxes[bi];
               for (let f = 0; f < 6; f++) {
@@ -921,7 +957,8 @@
                 if (sVert + 4 > capFaces * 4) ensureScratch(capFaces * 2);
                 const lc = onEdge ? pNb : pHere;
                 const ls = skyL[lc] / 15, lb = blkL[lc] / 15;
-                const tile = FACE_TILE_OF[id * 6 + f] * 4;
+                // a box may carry its own tile (a lever's wooden handle)
+                const tile = (bx.length > 6 ? bx[6] : FACE_TILE_OF[id * 6 + f]) * 4;
                 const u0 = TILE_UV[tile], u1 = TILE_UV[tile + 1];
                 const v0 = TILE_UV[tile + 2], v1 = TILE_UV[tile + 3];
                 const tux = FACE_TU[f3], tuy = FACE_TU[f3 + 1], tuz = FACE_TU[f3 + 2];

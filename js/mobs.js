@@ -777,6 +777,8 @@
           if (x * x + y * y + z * z > R * R) continue;
           const id = world.getBlock(cx + x, cy + y, cz + z);
           if (id === B.AIR || !isFinite(B.byId[id].hardness) || B.byId[id].hardness >= 50) continue;
+          // TNT caught in a blast is set off on a short fuse
+          if (id === B.TNT && game.primeTnt) { game.primeTnt(cx + x, cy + y, cz + z, 0.5 + Math.random()); continue; }
           game.changeBlock(cx + x, cy + y, cz + z, B.AIR);
         }
       }
@@ -788,6 +790,16 @@
       const dmg = Math.max(1, Math.round((1 - dist / reach) * 22 * R / 3));
       const len = Math.hypot(dx, dz) || 1;
       game.mobAttack(m, dmg, dx / len, dz / len);
+    }
+    // and anything else standing too close
+    // (monsters live on the host, so only the host hurts them)
+    for (const o of (Net.active && !Net.isHost) ? [] : this.list.slice()) {
+      if (o === m || o.dead) continue;
+      const ox = o.x - m.x, oy = o.y - m.y, oz = o.z - m.z;
+      const od = Math.hypot(ox, oy, oz);
+      if (od >= reach) continue;
+      const ol = Math.hypot(ox, oz) || 1;
+      if (game.damageMob) game.damageMob(o, Math.max(1, Math.round((1 - od / reach) * 22 * R / 3)), ox / ol, oz / ol, true);
     }
     this.dropLoot(m, game);
     this.remove(m);

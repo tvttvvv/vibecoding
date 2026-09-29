@@ -146,7 +146,7 @@
     const key = id + ':' + size;
     if (this._geoCache[key]) return this._geoCache[key];
     // torches, flowers and seeds show as a flat sprite, not a tiny cube
-    const isBlock = Items.isBlock(id) && B.byId[id].render !== 'cross';
+    const isBlock = Items.isBlock(id) && B.byId[id].render !== 'cross' && !B.byId[id].flatItem;
     const geo = isBlock
       ? new THREE.BoxGeometry(size, size * (B.byId[id].height || 1), size)
       : new THREE.BoxGeometry(size, size, size * 0.14);
@@ -277,6 +277,7 @@
     this._stepDist = 0;
     this.eating = null;
     Fluids.clear();
+    Redstone.reset(this);
     UI.renderXp(this.player);
     UI.setSneak(false);
   };
@@ -464,6 +465,7 @@
     Net.sendEdit(x, y, z, id, this.dimension);
     this.blockUpdate(x, y, z);
     Fluids.touch(this.world, x, y, z);
+    Redstone.touch(this.world, x, y, z);
     return true;
   };
 
@@ -480,8 +482,12 @@
     if (msg.id === B.AIR && this.blockEntities.has(key)) this.blockEntities.delete(key);
     if (msg.id === B.FURNACE) this.furnaceAt(msg.x, msg.y, msg.z);
     if (msg.id === B.CHEST) this.chestAt(msg.x, msg.y, msg.z);
-    // the host runs the water for everyone, so a guest's change wakes it here
-    if (Net.isHost) Fluids.touch(this.world, msg.x, msg.y, msg.z);
+    // the host runs the water and the redstone for everyone, so a guest's
+    // change wakes them here
+    if (Net.isHost) {
+      Fluids.touch(this.world, msg.x, msg.y, msg.z);
+      Redstone.touch(this.world, msg.x, msg.y, msg.z);
+    }
   };
 
   // ------------------------------------------------------------ block updates
@@ -505,6 +511,12 @@
       return below !== B.AIR && B.byId[below].solid && !B.byId[below].door && !!(above && above.door && above.door.upper);
     }
     if (def.portal) return this.portalHeld(x, y, z, def);
+    // levers, buttons and plates hang on the block behind or under them
+    if (def.attach !== undefined) {
+      const s = Redstone.support(def, x, y, z);
+      const sd = B.byId[this.world.getBlock(s[0], s[1], s[2])];
+      return !!(sd && sd.solid && (sd.opaque || def.attach === 0));
+    }
     if (def.ladder !== undefined) {
       const dir = [[0, -1], [1, 0], [0, 1], [-1, 0]][def.ladder];
       const wall = this.world.getBlock(x + dir[0], y, z + dir[1]);
@@ -564,6 +576,7 @@
     if (id === B.GRAVEL && Math.random() < 0.1) return [[Items.FLINT, 1]];
     if (id === B.BOOKSHELF) return [[Items.BOOK, 3]];
     if (id === B.LAPIS_ORE) return B.canHarvest(id, toolDef) ? [[Items.LAPIS, 4 + Math.floor(Math.random() * 5)]] : out;
+    if (id === B.REDSTONE_ORE) return B.canHarvest(id, toolDef) ? [[Items.REDSTONE, 4 + Math.floor(Math.random() * 2)]] : out;
     if (def.crop !== undefined) {
       if (def.crop >= 3) {
         out.push([Items.WHEAT, 1]);
@@ -1358,6 +1371,8 @@
       }
       if (targetDef.interactive === 'bed') { this.useBed(hit.x, hit.y, hit.z); return; }
       if (targetDef.interactive === 'door') { this.toggleDoor(hit.x, hit.y, hit.z); return; }
+      if (targetDef.interactive === 'lever') { this.useLever(hit.x, hit.y, hit.z); return; }
+      if (targetDef.interactive === 'button') { this.useButton(hit.x, hit.y, hit.z); return; }
       if (targetDef.interactive === 'enchant') {
         UI.openScreen('enchant', { type: 'enchant', item: [null], lapis: [null], shelves: this.shelvesAround(hit.x, hit.y, hit.z) });
         return;
@@ -1369,6 +1384,12 @@
     // food works anywhere, not only when you are pointing at a block
     if (this.tryEat(stack)) return;
     if (stack.id === Items.FLINT_AND_STEEL) {
+      if (hit && hit.id === B.TNT) {
+        this.primeTnt(hit.x, hit.y, hit.z, 4);
+        if (this.mode === 'survival') this.inventory.damageSelected(1);
+        Hand.swing();
+        return;
+      }
       if (hit && this.tryLightPortal(hit)) {
         if (this.mode === 'survival') this.inventory.damageSelected(1);
       }
@@ -1578,6 +1599,7 @@
     this.scene.add(this.world.group);
     Mobs.attach(this.scene);
     this.enterDimEntities();
+    Redstone.reset(this);
 
     if (target) {
       const spot = this.findOrMakePortal(target.x, target.z);
@@ -1736,8 +1758,26 @@
       this.placed(B.PLANKS);
       return true;
     }
+    // redstone dust is laid on top of a block
+    if (id === Items.REDSTONE) {
+      if (!this.freeCell(x, y, z) || !this.isSupported(x, y, z, B.WIRE)) return true;
+      this.changeBlock(x, y, z, B.WIRE);
+      this.placed(B.WIRE);
+      return true;
+    }
     if (!Items.isBlock(id)) return false;
     const def = B.byId[id];
+
+    // levers and buttons go on the face you touched, floor or wall
+    if (def.lever || def.button) {
+      if (hit.ny === -1 || !this.freeCell(x, y, z)) return true;
+      const a = hit.ny === 1 ? 0 : hit.nz === 1 ? 1 : hit.nx === -1 ? 2 : hit.nz === -1 ? 3 : 4;
+      const pid = def.family + a * 2;
+      if (!this.isSupported(x, y, z, pid)) return true;
+      this.changeBlock(x, y, z, pid);
+      this.placed(pid);
+      return true;
+    }
 
     // slabs: top or bottom half by where you aim, two of a kind make a block
     if (def.slab) {
@@ -1784,6 +1824,32 @@
       return true;
     }
     return false;
+  };
+
+  // ------------------------------------------------------------------ redstone
+  Game.useLever = function (x, y, z) {
+    const d = B.byId[this.world.getBlock(x, y, z)];
+    if (!d.lever) return;
+    this.changeBlock(x, y, z, d.on ? d.id - 1 : d.id + 1);
+    Sound.click();
+    Hand.swing();
+  };
+
+  Game.useButton = function (x, y, z) {
+    const d = B.byId[this.world.getBlock(x, y, z)];
+    if (!d.button || d.on) return;
+    this.changeBlock(x, y, z, d.id + 1);
+    Redstone.press(x, y, z);
+    Sound.click();
+    Hand.swing();
+  };
+
+  // lit TNT jumps out of its block and goes off a few seconds later
+  Game.primeTnt = function (x, y, z, fuse) {
+    if (this.world.getBlock(x, y, z) !== B.TNT) return;
+    this.changeBlock(x, y, z, B.AIR);
+    Entities.primeTnt(x + 0.5, y, z + 0.5, fuse);
+    Sound.fuse(this.distTo(x, y, z));
   };
 
   Game.toggleDoor = function (x, y, z) {
@@ -1998,10 +2064,10 @@
     return true;
   };
 
-  Game.damageMob = function (mob, damage, kx, kz) {
+  Game.damageMob = function (mob, damage, kx, kz, calm) {
     if (!mob || mob.dead) return;
     mob.hurt(damage);
-    if (mob.def.neutral) {
+    if (mob.def.neutral && !calm) {
       for (const o of Mobs.list) {
         if (o.type === mob.type && Math.hypot(o.x - mob.x, o.z - mob.z) < 16) o.angry = 40;
       }
@@ -2393,6 +2459,7 @@
         if (id === B.COAL_ORE) Entities.dropXp(x + 0.5, y + 0.5, z + 0.5, Math.random() * 2);
         else if (id === B.DIAMOND_ORE) Entities.dropXp(x + 0.5, y + 0.5, z + 0.5, 3 + Math.random() * 4);
         else if (id === B.LAPIS_ORE) Entities.dropXp(x + 0.5, y + 0.5, z + 0.5, 2 + Math.random() * 3);
+        else if (id === B.REDSTONE_ORE) Entities.dropXp(x + 0.5, y + 0.5, z + 0.5, 1 + Math.random() * 4);
       }
       const instant = B.byId[id].hardness === 0;
       if (!instant && toolDef && toolDef.tool && this.inventory.damageSelected(1)) {
@@ -2692,6 +2759,7 @@
       if (this.dimension === 'overworld') this.updateVillages(dt);
       this.updatePortal(dt);
       Fluids.update(dt, this);
+      Redstone.update(dt, this);
       Entities.update(dt, input);
     } else {
       Entities.updateParticles(dt);

@@ -48,7 +48,7 @@
     }
     const isBlock = Items.isBlock(id);
     const def = Items.get(id);
-    const flat = !isBlock || (def && def.render === 'cross');
+    const flat = !isBlock || (def && (def.render === 'cross' || def.flatItem));
     this.item.geometry = flat
       ? this.game.flatItemGeometry(id)
       : this.game.blockGeometry(id, 0.2);

@@ -432,6 +432,75 @@
     }
   });
 
+  // ---- redstone --------------------------------------------------------------
+  oreTile('redstone_ore', ['#b01010', '#d42020', '#8a0a0a'], '#ff5a5a');
+  // dust at four strengths: the mesher cuts the wire shape out of it
+  ['#4a0808', '#7c0c0c', '#b41212', '#f01c1c'].forEach((base, i) => {
+    define('dust_' + i, (api) => {
+      api.fill(base);
+      for (let k = 0; k < 60; k++) {
+        const x = Math.floor(rnd() * TILE), y = Math.floor(rnd() * TILE);
+        api.put(x, y, rnd() < 0.5 ? (i === 3 ? '#ff6a4a' : '#2a0404') : (i >= 2 ? '#ff3a2a' : '#5a0a0a'));
+      }
+    });
+  });
+  function redTorch(on) {
+    return (api) => {
+      api.clear();
+      for (let y = 8; y < 16; y++) { api.put(7, y, '#6b4a2a'); api.put(8, y, '#8b6a3f'); }
+      api.put(7, 13, '#5c3f24'); api.put(8, 11, '#9c7b4a');
+      const a = on ? '#ff2a1a' : '#5a1010', b = on ? '#ffb0a0' : '#7a2020', c = on ? '#c01010' : '#3a0808';
+      for (let y = 5; y < 8; y++) { api.put(7, y, a); api.put(8, y, c); }
+      api.put(7, 4, b); api.put(8, 4, a);
+      if (on) { api.put(6, 5, '#ff4a2a'); api.put(9, 5, '#ff4a2a'); api.put(6, 6, '#a01010'); api.put(9, 6, '#a01010'); }
+    };
+  }
+  define('rs_torch_on', redTorch(true));
+  define('rs_torch_off', redTorch(false));
+  function lampTile(on) {
+    return (api) => {
+      speckle(api, on ? '#e8b060' : '#5a3a22', on ? ['#ffd890', '#f4c070', '#c88a40'] : ['#4a2e1a', '#6b4630', '#3a2414'], 0.6);
+      for (let i = 0; i < TILE; i++) {
+        const e = on ? '#8a5a2a' : '#2a1a0e';
+        api.put(i, 0, e); api.put(i, 15, e); api.put(0, i, e); api.put(15, i, e);
+        api.put(i, 7, e); api.put(7, i, e);
+      }
+    };
+  }
+  define('lamp_off', lampTile(false));
+  define('lamp_on', lampTile(true));
+  define('redstone_block', (api) => {
+    speckle(api, '#c41414', ['#e02020', '#a00e0e', '#ff3a2a'], 0.5);
+    for (let i = 0; i < TILE; i++) { api.put(i, 0, '#7a0808'); api.put(0, i, '#7a0808'); api.put(i, 15, '#7a0808'); api.put(15, i, '#7a0808'); }
+    for (const [x, y] of [[3, 3], [11, 4], [6, 10], [12, 12], [2, 12]]) { api.put(x, y, '#ffb0a0'); api.put(x + 1, y, '#ff6a5a'); }
+  });
+  define('tnt_side', (api) => {
+    speckle(api, '#c42a1a', ['#b02214', '#d8382a', '#a41c10'], 0.4);
+    for (let x = 0; x < TILE; x++) for (let y = 5; y < 11; y++) api.put(x, y, pick(['#e8e4dc', '#f4f0e8', '#dcd6cc']));
+    // T N T
+    const on = (x, y) => api.put(x, y, '#1a1a1a');
+    for (let x = 1; x < 4; x++) on(x, 6); for (let y = 7; y < 10; y++) on(2, y);
+    for (let y = 6; y < 10; y++) { on(6, y); on(9, y); } on(7, 7); on(8, 8);
+    for (let x = 12; x < 15; x++) on(x, 6); for (let y = 7; y < 10; y++) on(13, y);
+    for (let x = 0; x < TILE; x += 3) { api.put(x, 0, '#8a1a10'); api.put(x + 1, 15, '#8a1a10'); }
+  });
+  define('tnt_top', (api) => {
+    speckle(api, '#c42a1a', ['#b02214', '#d8382a'], 0.4);
+    for (let x = 0; x < TILE; x += 4) for (let y = 0; y < TILE; y += 4) { api.put(x + 1, y + 1, '#7a1a10'); api.put(x + 2, y + 1, '#7a1a10'); }
+    rectOn(api, 7, 6, 2, 3, '#5a5a5a'); api.put(7, 5, '#3a3a3a');
+  });
+  define('tnt_bottom', (api) => speckle(api, '#c42a1a', ['#b02214', '#d8382a', '#a41c10'], 0.4));
+  define('item_redstone', (api) => {
+    api.clear();
+    const pts = [[6, 5], [8, 4], [10, 6], [5, 8], [7, 7], [9, 8], [11, 9], [6, 10], [8, 10], [10, 11], [4, 11], [7, 12]];
+    for (const [x, y] of pts) { api.put(x, y, '#e02020'); api.put(x + 1, y, '#a01010'); api.put(x, y + 1, '#ff4a3a'); }
+  });
+  define('item_lever', (api) => {
+    api.clear();
+    rectOn(api, 3, 11, 10, 3, '#7a7a7a'); rectOn(api, 3, 13, 10, 1, '#5a5a5a'); rectOn(api, 4, 11, 3, 1, '#9a9a9a');
+    for (let i = 0; i < 8; i++) { api.put(7 + (i >> 1), 10 - i, '#8b6a3f'); api.put(8 + (i >> 1), 10 - i, '#6b4a2a'); }
+  });
+
   define('chest_top', (api) => {
     speckle(api, '#a0712f', ['#8b5f24', '#b58239', '#946826'], 0.5);
     for (let i = 0; i < TILE; i++) { api.put(i, 0, '#4a3312'); api.put(i, 15, '#4a3312'); api.put(0, i, '#4a3312'); api.put(15, i, '#4a3312'); }
