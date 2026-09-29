@@ -108,6 +108,8 @@
   const QUARTZ = def(191, '네더 석영', T.item_quartz);
   const FLINT_AND_STEEL = def(192, '부싯돌과 부시', T.item_flint_and_steel, { stackMax: 1, durability: 64 });
   const REDSTONE = def(193, '레드스톤 가루', T.item_redstone);
+  // (100-199 ran out: new items start at 1000)
+  const SLIME_BALL = def(1000, '슬라임볼', T.item_slime_ball);
 
   // ---- unified block/item access -------------------------------------------
   // blocks are 0-99 and, since there came to be more of them, 200-999;
@@ -157,7 +159,7 @@
     STICK, COAL, IRON_INGOT, GOLD_INGOT, DIAMOND,
     APPLE, BREAD, COOKED_BEEF, COOKED_PORK, COOKED_CHICKEN, COOKED_MUTTON, BONE, STRING, GUNPOWDER,
     SEEDS, WHEAT, BOAT, OAK_DOOR, BUCKET, WATER_BUCKET, LAVA_BUCKET,
-    BOW, ARROW, FLINT, FEATHER, LEATHER, CARROT, LAPIS, PAPER, BOOK, EMERALD, QUARTZ, FLINT_AND_STEEL, REDSTONE,
+    BOW, ARROW, FLINT, FEATHER, LEATHER, CARROT, LAPIS, PAPER, BOOK, EMERALD, QUARTZ, FLINT_AND_STEEL, REDSTONE, SLIME_BALL,
     tools.wood_pickaxe, tools.wood_axe, tools.wood_shovel, tools.wood_sword, tools.wood_hoe,
     tools.stone_pickaxe, tools.stone_axe, tools.stone_shovel, tools.stone_sword, tools.stone_hoe,
     tools.iron_pickaxe, tools.iron_axe, tools.iron_shovel, tools.iron_sword, tools.iron_hoe,
@@ -180,7 +182,7 @@
     RAW_CHICKEN, COOKED_CHICKEN, RAW_MUTTON, COOKED_MUTTON,
     ROTTEN_FLESH, BONE, STRING, GUNPOWDER, SEEDS, WHEAT, BREAD, BOAT,
     OAK_DOOR, BUCKET, WATER_BUCKET, LAVA_BUCKET, BOW, ARROW, FLINT, FEATHER, LEATHER, CARROT,
-    LAPIS, PAPER, BOOK, EMERALD, QUARTZ, FLINT_AND_STEEL, REDSTONE,
+    LAPIS, PAPER, BOOK, EMERALD, QUARTZ, FLINT_AND_STEEL, REDSTONE, SLIME_BALL,
     PIECE_ORDER, creativeItems,
     isBlock, get, name, tileOf, icon, stackMax, maxDurability, fuelSeconds, foodOf
   };

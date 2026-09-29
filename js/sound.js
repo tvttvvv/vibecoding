@@ -215,6 +215,11 @@
     noise({ freq: 500, q: 2, dur: 0.2, gain: 0.3 });
   };
 
+  Sound.piston = function (dist, out) {
+    tone({ from: out ? 220 : 180, to: out ? 160 : 240, dur: 0.12, gain: 0.25, wave: 'square', dist });
+    tone({ from: 90, to: 70, dur: 0.1, gain: 0.25, wave: 'sawtooth', delay: 0.02, dist });
+  };
+
   Sound.click = function () {
     tone({ from: 900, to: 700, dur: 0.05, gain: 0.12, wave: 'square' });
   };

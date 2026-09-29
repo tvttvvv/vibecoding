@@ -156,6 +156,19 @@
     ]
   };
 
+  // slimes bounce about in the dark underground
+  TYPES.slime = {
+    name: '슬라임', hp: 8, hw: 0.5, h: 1.0, speed: 2.4, hostile: true, hops: true, underground: true,
+    damage: 2, reach: 1.4, drops: [[I.SLIME_BALL, 0, 2]],
+    parts: [
+      [0.98, 0.98, 0.98, 0x6fbf4a, 0, 0.49, 0],
+      [0.5, 0.5, 0.5, 0x4f9a30, 0, 0.45, 0],
+      [0.18, 0.18, 0.03, 0x1f3a14, -0.22, 0.62, -0.5, 'head'],
+      [0.18, 0.18, 0.03, 0x1f3a14, 0.22, 0.62, -0.5, 'head'],
+      [0.12, 0.08, 0.03, 0x1f3a14, 0.12, 0.32, -0.5, 'head']
+    ]
+  };
+
   // villagers, dressed by trade; they never spawn on their own
   const ROBES = { farmer: [0x8b6a3f, 0xc9a43a], librarian: [0xe8e2d8, 0x8b3a2b], smith: [0x3a3a3a, 0x6a6a6a], cleric: [0x6b3a8c, 0xc9a43a] };
   for (const prof of Object.keys(ROBES)) {
@@ -453,7 +466,14 @@
       const dist = SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
       const x = Math.floor(player.pos.x + Math.cos(ang) * dist);
       const z = Math.floor(player.pos.z + Math.sin(ang) * dist);
-      const y = world.groundY(x, z);
+      let y = world.groundY(x, z);
+      // monsters also come up out of the caves: a floor somewhere below
+      if (hostile && Math.random() < 0.5) {
+        const start = 2 + Math.floor(Math.random() * Math.max(1, y - 4));
+        for (let yy = start; yy > 1; yy--) {
+          if (B.byId[world.getBlock(x, yy, z)].solid && world.getBlock(x, yy + 1, z) === B.AIR && world.getBlock(x, yy + 2, z) === B.AIR) { y = yy; break; }
+        }
+      }
       if (y <= 0 || y >= WorldConst.WORLD_HEIGHT - 4) continue;
       const a1 = world.getBlock(x, y + 1, z), a2 = world.getBlock(x, y + 2, z);
       if (B.byId[a1].solid || B.byId[a1].liquid || B.byId[a2].solid || B.byId[a2].liquid) continue;
@@ -471,6 +491,7 @@
         // (away from the host the light may not be worked out yet: torches still count)
         if (this.litNearby(game, x, y + 1, z)) continue;
         const type = HOSTILE[Math.floor(Math.random() * HOSTILE.length)];
+        if (TYPES[type].underground && (y > 40 || open)) continue;
         this.spawn(type, x + 0.5, y + 1, z + 0.5);
       } else {
         if (!open) continue;
@@ -665,6 +686,23 @@
     }
     m.vy -= GRAVITY * dt;
     if (m.vy < -MAX_FALL) m.vy = -MAX_FALL;
+
+    // a slime only gets anywhere by jumping
+    if (m.def.hops) {
+      m.hopT = (m.hopT || 0) - dt;
+      if (!m.grounded) {
+        if (m.wantX) m.moveAxis(world, 'x', m.wantX * speed * dt);
+        if (m.wantZ) m.moveAxis(world, 'z', m.wantZ * speed * dt);
+      }
+      m.moveAxis(world, 'y', m.vy * dt);
+      m.grounded = m.onGround;
+      if (m.onGround && (m.wantX || m.wantZ) && m.hopT <= 0) {
+        m.vy = 6.2;
+        m.hopT = 0.8 + Math.random() * 0.9;
+        m.grounded = false;
+      }
+      return;
+    }
 
     const blockedX = m.wantX ? m.moveAxis(world, 'x', m.wantX * speed * dt) : false;
     const blockedZ = m.wantZ ? m.moveAxis(world, 'z', m.wantZ * speed * dt) : false;

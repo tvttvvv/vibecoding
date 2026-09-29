@@ -319,6 +319,111 @@
     wallTorch(RS_TORCH_WALL + 4 + f, '레드스톤 횃불', T.rs_torch_off, f,
       { drop: RS_TORCH, rsTorch: true, on: false, litId: RS_TORCH_WALL + f, offId: RS_TORCH_WALL + 4 + f });
   }
+  // ---- repeaters and comparators: a slab with little torches, facing 0-3 ------
+  // Drawn for facing north (output toward -z) and turned for the others.
+  function rotY(b, f) {
+    let r;
+    if (f === 0) r = b.slice(0, 6);
+    else if (f === 1) r = [1 - b[5], b[1], b[0], 1 - b[2], b[4], b[3]];
+    else if (f === 2) r = [1 - b[3], b[1], 1 - b[5], 1 - b[0], b[4], 1 - b[2]];
+    else r = [b[2], b[1], 1 - b[3], b[5], b[4], 1 - b[0]];
+    if (b.length > 6) r.push(b[6]);
+    return r;
+  }
+  function littleTorch(x, z, lit) {
+    return [[x, 2 * P, z, x + 2 * P, 5 * P, z + 2 * P, T.planks], [x, 5 * P, z, x + 2 * P, 7 * P, z + 2 * P, lit ? T.dust_3 : T.dust_0]];
+  }
+  const DIODE = { opaque: false, solid: true, hardness: 0, render: 'boxes', needsGround: true, flatItem: true };
+  const REPEATER = 260;            // 260 + facing * 8 + delay * 2 + on
+  for (let f = 0; f < 4; f++) {
+    for (let dl = 0; dl < 4; dl++) {
+      for (let on = 0; on < 2; on++) {
+        const top = f % 2 ? T.repeater_ew : T.repeater_ns;
+        const boxes = [[0, 0, 0, 1, 2 * P, 1]]
+          .concat(littleTorch(7 * P, 2 * P, on))
+          .concat(littleTorch(7 * P, (6 + dl * 2) * P, on))
+          .map((b) => rotY(b, f));
+        def(REPEATER + f * 8 + dl * 2 + on, '레드스톤 중계기', Object.assign({
+          top, side: T.smooth_stone, bottom: T.smooth_stone, boxes, repeater: true, facing: f, delay: dl, on: !!on,
+          drop: REPEATER, family: REPEATER, icon: T.item_repeater, interactive: 'repeater'
+        }, DIODE));
+      }
+    }
+  }
+  const COMPARATOR = 292;          // 292 + facing * 4 + subtract * 2 + on
+  for (let f = 0; f < 4; f++) {
+    for (let sub = 0; sub < 2; sub++) {
+      for (let on = 0; on < 2; on++) {
+        const top = f % 2 ? T.comparator_ew : T.comparator_ns;
+        const boxes = [[0, 0, 0, 1, 2 * P, 1]]
+          .concat(littleTorch(3 * P, 11 * P, on)).concat(littleTorch(11 * P, 11 * P, on))
+          .concat([[7 * P, 2 * P, 2 * P, 9 * P, 4 * P, 4 * P, sub ? T.dust_3 : T.dust_0]])
+          .map((b) => rotY(b, f));
+        def(COMPARATOR + f * 4 + sub * 2 + on, '레드스톤 비교기', Object.assign({
+          top, side: T.smooth_stone, bottom: T.smooth_stone, boxes, comparator: true, facing: f, subtract: !!sub, on: !!on,
+          drop: COMPARATOR, family: COMPARATOR, icon: T.item_comparator, interactive: 'comparator'
+        }, DIODE));
+      }
+    }
+  }
+
+  // ---- pistons and observers: facing 0 up, 1 down, 2 north, 3 east, 4 south, 5 west
+  const D6 = [[0, 1, 0], [0, -1, 0], [0, 0, -1], [1, 0, 0], [0, 0, 1], [-1, 0, 0]];
+  const FACE_OF_D6 = [2, 3, 5, 0, 4, 1];     // the mesher's face index for each facing
+  const OPP6 = [1, 0, 4, 5, 2, 3];
+  function faces6(f, front, back, side) {
+    const out = [side, side, side, side, side, side];
+    out[FACE_OF_D6[f]] = front;
+    out[FACE_OF_D6[OPP6[f]]] = back;
+    return out;
+  }
+  // a box in "facing up" space (y toward the front) turned to facing f
+  function turn6(b, f) {
+    const [x0, y0, z0, x1, y1, z1] = b;
+    let r;
+    switch (f) {
+      case 0: r = [x0, y0, z0, x1, y1, z1]; break;
+      case 1: r = [x0, 1 - y1, z0, x1, 1 - y0, z1]; break;
+      case 2: r = [x0, z0, 1 - y1, x1, z1, 1 - y0]; break;
+      case 3: r = [y0, z0, x0, y1, z1, x1]; break;
+      case 4: r = [x0, z0, y0, x1, z1, y1]; break;
+      default: r = [1 - y1, z0, x0, 1 - y0, z1, x1];
+    }
+    if (b.length > 6) r.push(b[6]);
+    return r;
+  }
+  const PISTON = 308, STICKY_PISTON = 320, PISTON_HEAD = 332;
+  for (let sticky = 0; sticky < 2; sticky++) {
+    const base = sticky ? STICKY_PISTON : PISTON;
+    const name = sticky ? '끈끈이 피스톤' : '피스톤';
+    const face = sticky ? T.sticky_top : T.piston_top;
+    for (let f = 0; f < 6; f++) {
+      def(base + f * 2, name, {
+        faces: faces6(f, face, T.piston_bottom, T.piston_side), hardness: 1.5, tool: 'pickaxe',
+        piston: true, sticky: !!sticky, facing6: f, extended: false, drop: base, family: base
+      });
+      def(base + f * 2 + 1, name, {
+        faces: faces6(f, T.piston_inner, T.piston_bottom, T.piston_side), hardness: 1.5, tool: 'pickaxe',
+        opaque: false, render: 'boxes', boxes: [turn6([0, 0, 0, 1, 12 * P, 1], f)], needsGround: true,
+        piston: true, sticky: !!sticky, facing6: f, extended: true, drop: base, family: base
+      });
+      def(PISTON_HEAD + f * 2 + sticky, name, {
+        faces: faces6(f, face, T.planks, T.planks), hardness: 1.5, tool: 'pickaxe', opaque: false, render: 'boxes',
+        boxes: [turn6([0, 12 * P, 0, 1, 1, 1], f), turn6([6 * P, -4 * P, 6 * P, 10 * P, 12 * P, 10 * P, T.planks], f)],
+        needsGround: true, pistonHead: true, sticky: !!sticky, facing6: f, drop: 0
+      });
+    }
+  }
+  const OBSERVER = 344;            // 344 + facing * 2 + on; the face looks toward facing
+  for (let f = 0; f < 6; f++) {
+    for (let on = 0; on < 2; on++) {
+      def(OBSERVER + f * 2 + on, '관측기', {
+        faces: faces6(f, T.observer_front, on ? T.observer_back_on : T.observer_back, T.observer_side),
+        hardness: 3, tool: 'pickaxe', tier: 1, observer: true, facing6: f, on: !!on, drop: OBSERVER, family: OBSERVER
+      });
+    }
+  }
+
   byId[RS_TORCH].litId = byId[RS_TORCH_OFF].litId = RS_TORCH;
   byId[RS_TORCH].offId = byId[RS_TORCH_OFF].offId = RS_TORCH_OFF;
 
@@ -337,7 +442,8 @@
   const FACE_TILE = ['side', 'side', 'top', 'bottom', 'side', 'side'];
 
   function tileFor(id, face) {
-    return byId[id][FACE_TILE[face]];
+    const d = byId[id];
+    return d.faces ? d.faces[face] : d[FACE_TILE[face]];
   }
 
   function isOpaque(id) { return byId[id].opaque; }
@@ -380,7 +486,8 @@
     SLABS[0], SLABS[1], SLABS[2], STAIRS[0], STAIRS[1], LADDER, OBSIDIAN,
     LAPIS_ORE, SUGAR_CANE, BOOKSHELF, ENCHANTING_TABLE,
     NETHERRACK, SOUL_SAND, GLOWSTONE, QUARTZ_ORE, BEDROCK,
-    REDSTONE_ORE, RS_TORCH, LEVER, BUTTON, PLATE, LAMP, REDSTONE_BLOCK, TNT
+    REDSTONE_ORE, RS_TORCH, LEVER, BUTTON, PLATE, LAMP, REDSTONE_BLOCK, TNT,
+    REPEATER, COMPARATOR, PISTON, STICKY_PISTON, OBSERVER
   ];
 
   global.Blocks = {
@@ -394,6 +501,7 @@
     NETHERRACK, SOUL_SAND, GLOWSTONE, QUARTZ_ORE, PORTAL_X, PORTAL_Z,
     REDSTONE_ORE, WIRE, RS_TORCH, RS_TORCH_OFF, LEVER, BUTTON, LAMP, LAMP_ON, REDSTONE_BLOCK, PLATE, TNT,
     TORCH_WALL, RS_TORCH_WALL, mount,
+    REPEATER, COMPARATOR, PISTON, STICKY_PISTON, PISTON_HEAD, OBSERVER, D6, OPP6,
     byId, tileFor, isOpaque, isSolid, isLiquid, mineTime, canHarvest, iconFor, creativeList
   };
 })(window);

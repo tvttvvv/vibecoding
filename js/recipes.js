@@ -101,6 +101,11 @@
   shaped(B.REDSTONE_BLOCK, 1, ['RRR', 'RRR', 'RRR'], { R: I.REDSTONE });
   shapeless(I.REDSTONE, 9, [B.REDSTONE_BLOCK]);
   shaped(B.TNT, 1, ['GSG', 'SGS', 'GSG'], { G: I.GUNPOWDER, S: B.SAND });
+  shaped(B.PISTON, 1, ['PPP', 'CIC', 'CRC'], { P: B.PLANKS, C: B.COBBLESTONE, I: I.IRON_INGOT, R: I.REDSTONE });
+  shapeless(B.STICKY_PISTON, 1, [I.SLIME_BALL, B.PISTON]);
+  shaped(B.REPEATER, 1, ['TRT', 'SSS'], { T: B.RS_TORCH, R: I.REDSTONE, S: B.STONE });
+  shaped(B.COMPARATOR, 1, [' T ', 'TQT', 'SSS'], { T: B.RS_TORCH, Q: I.QUARTZ, S: B.STONE });
+  shaped(B.OBSERVER, 1, ['CCC', 'RRQ', 'CCC'], { C: B.COBBLESTONE, R: I.REDSTONE, Q: I.QUARTZ });
   shaped(B.ENCHANTING_TABLE, 1, [' B ', 'D#D', '###'], { B: I.BOOK, D: I.DIAMOND, '#': B.OBSIDIAN });
 
   for (const [, mat, tier] of PLANK_LIKE) {

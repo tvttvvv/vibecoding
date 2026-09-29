@@ -58,6 +58,8 @@
       if (d.wire) WIREL[i] = 1;
       // what redstone dust reaches out and joins up with
       if (d.wire || d.rsTorch || d.lever || d.button || d.plate || d.rsBlock) RSC[i] = 1;
+      // repeaters and comparators join only along their length
+      if (d.repeater || d.comparator) RSC[i] = d.facing % 2 ? 4 : 2;
       if (d.fluid) {
         FLUIDK[i] = d.fluid === 'water' ? 1 : 2;
         LAVAF[i] = d.fluid === 'lava' ? 1 : 0;
@@ -673,7 +675,7 @@
     const offs = [-SZ, 1, SZ, -1];
     for (let d = 0; d < 4; d++) {
       const o = p + offs[d];
-      if (RSC[pad[o]] || (WIREL[pad[o - SY]] && !OPAQUE[pad[o]]) || (WIREL[pad[o + SY]] && !OPAQUE[pad[p + SY]])) m |= 1 << d;
+      if ((RSC[pad[o]] & (d % 2 ? 5 : 3)) || (WIREL[pad[o - SY]] && !OPAQUE[pad[o]]) || (WIREL[pad[o + SY]] && !OPAQUE[pad[p + SY]])) m |= 1 << d;
     }
     return m;
   }

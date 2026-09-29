@@ -230,7 +230,12 @@
     this.inventory = new Inventory();
     this.inventory.onChange = () => {
       UI.renderHotbar();
-      if (UI.screen && UI.screen.kind === 'chest') this.syncChest(UI.screen.entity);
+      if (UI.screen && UI.screen.kind === 'chest') {
+        const e = UI.screen.entity;
+        this.syncChest(e);
+        // a comparator may be reading it
+        if (e) Redstone.touch(this.world, e.x, e.y, e.z);
+      }
     };
     this.bedSpawn = null;
 
@@ -511,6 +516,16 @@
       return below !== B.AIR && B.byId[below].solid && !B.byId[below].door && !!(above && above.door && above.door.upper);
     }
     if (def.portal) return this.portalHeld(x, y, z, def);
+    // a piston's head and its body hold each other up
+    if (def.pistonHead || (def.piston && def.extended)) {
+      const o = B.D6[def.facing6], k = def.pistonHead ? -1 : 1;
+      const n = B.byId[this.world.getBlock(x + o[0] * k, y + o[1] * k, z + o[2] * k)];
+      return def.pistonHead ? !!(n.piston && n.extended && n.facing6 === def.facing6) : !!(n.pistonHead && n.facing6 === def.facing6);
+    }
+    if (def.repeater || def.comparator) {
+      const b = B.byId[this.world.getBlock(x, y - 1, z)];
+      return !!(b && b.solid && b.opaque);
+    }
     // levers, buttons and plates hang on the block behind or under them
     if (def.attach !== undefined) {
       const s = Redstone.support(def, x, y, z);
@@ -1374,6 +1389,18 @@
       if (targetDef.interactive === 'door') { this.toggleDoor(hit.x, hit.y, hit.z); return; }
       if (targetDef.interactive === 'lever') { this.useLever(hit.x, hit.y, hit.z); return; }
       if (targetDef.interactive === 'button') { this.useButton(hit.x, hit.y, hit.z); return; }
+      if (targetDef.interactive === 'repeater') {
+        // a tap sets the delay, one to four ticks
+        const d = targetDef;
+        this.changeBlock(hit.x, hit.y, hit.z, d.family + d.facing * 8 + ((d.delay + 1) % 4) * 2 + (d.on ? 1 : 0));
+        Sound.click(); Hand.swing();
+        return;
+      }
+      if (targetDef.interactive === 'comparator') {
+        this.changeBlock(hit.x, hit.y, hit.z, targetDef.id ^ 2);
+        Sound.click(); Hand.swing();
+        return;
+      }
       if (targetDef.interactive === 'enchant') {
         UI.openScreen('enchant', { type: 'enchant', item: [null], lapis: [null], shelves: this.shelvesAround(hit.x, hit.y, hit.z) });
         return;
@@ -1769,6 +1796,30 @@
     if (!Items.isBlock(id)) return false;
     const def = B.byId[id];
 
+    // pistons face you; observers look the way you look
+    if (def.piston || def.observer) {
+      if (!this.freeCell(x, y, z) || this.intersectsPlayer(x, y, z)) return true;
+      const pitch = this.player.pitch;
+      const look = this.facing();
+      let f;
+      if (pitch < -0.75) f = def.piston ? 0 : 1;
+      else if (pitch > 0.75) f = def.piston ? 1 : 0;
+      else f = 2 + (def.piston ? (look + 2) % 4 : look);
+      const pid = def.family + f * 2;
+      this.changeBlock(x, y, z, pid);
+      this.placed(pid);
+      return true;
+    }
+    // repeaters and comparators send their signal the way you face
+    if (def.repeater || def.comparator) {
+      if (!this.freeCell(x, y, z)) return true;
+      const pid = def.family + this.facing() * (def.repeater ? 8 : 4);
+      if (!this.isSupported(x, y, z, pid)) return true;
+      this.changeBlock(x, y, z, pid);
+      this.placed(pid);
+      return true;
+    }
+
     // levers and buttons go on the face you touched, floor or wall
     if (def.lever || def.button) {
       if (hit.ny === -1 || !this.freeCell(x, y, z)) return true;
@@ -1854,6 +1905,36 @@
     Redstone.press(x, y, z);
     Sound.click();
     Hand.swing();
+  };
+
+  // several blocks changed at once (a piston's move): all are set before any
+  // of them is checked for support, then each is recorded and sent
+  Game.setBlocks = function (cells) {
+    const w = this.world;
+    const done = [];
+    for (const [x, y, z, id] of cells) if (w.setBlock(x, y, z, id)) done.push([x, y, z, id]);
+    for (const [x, y, z, id] of done) {
+      this.registerEdit(x, y, z, id);
+      Net.sendEdit(x, y, z, id, this.dimension);
+      Fluids.touch(w, x, y, z);
+      Redstone.touch(w, x, y, z);
+    }
+    for (const [x, y, z] of done) this.blockUpdate(x, y, z);
+  };
+
+  // players and mobs in cells a piston just filled are shoved along with it
+  Game.pushEntities = function (cells, o) {
+    const hit = (x0, y0, z0, x1, y1, z1) => cells.some(([x, y, z]) =>
+      x0 < x + 1 && x1 > x && y0 < y + 1 && y1 > y && z0 < z + 1 && z1 > z);
+    const p = this.player;
+    if (hit(p.pos.x - 0.3, p.pos.y, p.pos.z - 0.3, p.pos.x + 0.3, p.pos.y + 1.8, p.pos.z + 0.3)) {
+      p.pos.x += o[0]; p.pos.y += o[1]; p.pos.z += o[2];
+      if (o[1] > 0) { p.vel.y = Math.max(p.vel.y, 0); p.fallStartY = p.pos.y; }
+    }
+    for (const m of Mobs.list) {
+      const hw = m.def.hw || 0.3;
+      if (hit(m.x - hw, m.y, m.z - hw, m.x + hw, m.y + m.def.h, m.z + hw)) { m.x += o[0]; m.y += o[1]; m.z += o[2]; }
+    }
   };
 
   // lit TNT jumps out of its block and goes off a few seconds later

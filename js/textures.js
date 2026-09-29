@@ -501,6 +501,88 @@
     for (let i = 0; i < 8; i++) { api.put(7 + (i >> 1), 10 - i, '#8b6a3f'); api.put(8 + (i >> 1), 10 - i, '#6b4a2a'); }
   });
 
+  // ---- pistons, repeaters, comparators, observers ------------------------------
+  define('piston_top', (api) => {
+    speckle(api, '#a8875a', ['#9c7b4a', '#b8966a', '#8b6a3f'], 0.4);
+    for (let i = 0; i < TILE; i++) { api.put(i, 0, '#6b4a2a'); api.put(i, 15, '#6b4a2a'); api.put(0, i, '#6b4a2a'); api.put(15, i, '#6b4a2a'); }
+    for (let x = 1; x < 15; x++) { api.put(x, 5, '#7d5a34'); api.put(x, 10, '#7d5a34'); }
+  });
+  define('sticky_top', (api) => {
+    speckle(api, '#a8875a', ['#9c7b4a', '#b8966a'], 0.4);
+    for (let x = 2; x < 14; x++) for (let y = 2; y < 14; y++) api.put(x, y, pick(['#6fbf4a', '#7fd05a', '#5aa83a', '#8ee06a']));
+    for (let i = 0; i < TILE; i++) { api.put(i, 0, '#6b4a2a'); api.put(i, 15, '#6b4a2a'); api.put(0, i, '#6b4a2a'); api.put(15, i, '#6b4a2a'); }
+  });
+  define('piston_side', (api) => {
+    speckle(api, '#7a7a7a', ['#6a6a6a', '#8a8a8a', '#747474'], 0.5);
+    for (let x = 0; x < TILE; x++) for (let y = 0; y < 4; y++) api.put(x, y, pick(['#a8875a', '#9c7b4a', '#b8966a']));
+    for (let y = 4; y < 14; y++) { api.put(7, y, '#5a5a5a'); api.put(8, y, '#9a9a9a'); }
+  });
+  define('piston_bottom', (api) => {
+    speckle(api, '#6f6f6f', ['#626262', '#7c7c7c', '#6a6a6a'], 0.5);
+    rectOn(api, 6, 6, 4, 4, '#4a4a4a');
+  });
+  define('piston_inner', (api) => {
+    speckle(api, '#6f6f6f', ['#626262', '#7c7c7c'], 0.5);
+    rectOn(api, 6, 6, 4, 4, '#9c7b4a'); rectOn(api, 7, 7, 2, 2, '#b8966a');
+  });
+  function diodeTop(vertical, comparator) {
+    return (api) => {
+      speckle(api, '#a4a4a4', ['#9a9a9a', '#b0b0b0', '#a0a0a0'], 0.35);
+      for (let i = 0; i < TILE; i++) { api.put(i, 0, '#7d7d7d'); api.put(i, 15, '#7d7d7d'); api.put(0, i, '#7d7d7d'); api.put(15, i, '#7d7d7d'); }
+      for (let i = 2; i < 14; i++) {
+        if (vertical) api.put(comparator ? 4 : 8, i, '#8a1010'); else api.put(i, comparator ? 4 : 8, '#8a1010');
+        if (comparator) { if (vertical) api.put(11, i, '#8a1010'); else api.put(i, 11, '#8a1010'); }
+      }
+    };
+  }
+  define('repeater_ns', diodeTop(true, false));
+  define('repeater_ew', diodeTop(false, false));
+  define('comparator_ns', diodeTop(true, true));
+  define('comparator_ew', diodeTop(false, true));
+  define('smooth_stone', (api) => {
+    speckle(api, '#a4a4a4', ['#9a9a9a', '#b0b0b0'], 0.3);
+    for (let i = 0; i < TILE; i++) { api.put(i, 0, '#7d7d7d'); api.put(i, 15, '#7d7d7d'); }
+  });
+  define('observer_front', (api) => {
+    speckle(api, '#5a5a5a', ['#4e4e4e', '#666666'], 0.4);
+    rectOn(api, 2, 4, 5, 4, '#2a2a2a'); rectOn(api, 9, 4, 5, 4, '#2a2a2a');
+    rectOn(api, 3, 5, 3, 2, '#1a1a1a'); rectOn(api, 10, 5, 3, 2, '#1a1a1a');
+    for (let x = 2; x < 14; x++) api.put(x, 11, '#3a3a3a');
+  });
+  function observerBack(on) {
+    return (api) => {
+      speckle(api, '#5a5a5a', ['#4e4e4e', '#666666'], 0.4);
+      rectOn(api, 6, 6, 4, 4, '#2a2a2a'); rectOn(api, 7, 7, 2, 2, on ? '#ff3a2a' : '#5a1010');
+    };
+  }
+  define('observer_back', observerBack(false));
+  define('observer_back_on', observerBack(true));
+  define('observer_side', (api) => {
+    speckle(api, '#5a5a5a', ['#4e4e4e', '#666666'], 0.4);
+    for (let y = 0; y < TILE; y += 3) for (let x = 0; x < TILE; x++) api.put(x, y, '#444444');
+    for (let y = 2; y < 14; y++) api.put(8, y, '#8a8a8a');
+  });
+  define('item_slime_ball', (api) => {
+    api.clear();
+    rectOn(api, 5, 4, 6, 8, '#6fbf4a'); rectOn(api, 4, 5, 8, 6, '#6fbf4a');
+    rectOn(api, 6, 5, 2, 2, '#b8f098'); rectOn(api, 10, 9, 1, 2, '#4a8a2a'); rectOn(api, 6, 11, 4, 1, '#4a8a2a');
+  });
+  define('item_repeater', (api) => {
+    api.clear();
+    rectOn(api, 1, 10, 14, 4, '#a4a4a4'); rectOn(api, 1, 13, 14, 1, '#7d7d7d');
+    rectOn(api, 3, 5, 2, 5, '#8b6a3f'); rectOn(api, 3, 3, 2, 2, '#ff2a1a');
+    rectOn(api, 11, 5, 2, 5, '#8b6a3f'); rectOn(api, 11, 3, 2, 2, '#ff2a1a');
+    rectOn(api, 5, 11, 6, 1, '#b01414');
+  });
+  define('item_comparator', (api) => {
+    api.clear();
+    rectOn(api, 1, 10, 14, 4, '#a4a4a4'); rectOn(api, 1, 13, 14, 1, '#7d7d7d');
+    rectOn(api, 2, 6, 2, 4, '#8b6a3f'); rectOn(api, 2, 4, 2, 2, '#ff2a1a');
+    rectOn(api, 12, 6, 2, 4, '#8b6a3f'); rectOn(api, 12, 4, 2, 2, '#ff2a1a');
+    rectOn(api, 7, 5, 2, 5, '#8b6a3f'); rectOn(api, 7, 3, 2, 2, '#5a1010');
+  });
+  define('slime', (api) => speckle(api, '#6fbf4a', ['#7fd05a', '#5aa83a', '#8ee06a'], 0.5));
+
   define('chest_top', (api) => {
     speckle(api, '#a0712f', ['#8b5f24', '#b58239', '#946826'], 0.5);
     for (let i = 0; i < TILE; i++) { api.put(i, 0, '#4a3312'); api.put(i, 15, '#4a3312'); api.put(0, i, '#4a3312'); api.put(15, i, '#4a3312'); }
