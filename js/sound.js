@@ -192,6 +192,12 @@
     noise({ freq: 3000, q: 0.5, dur: 0.35, gain: 0.2, delay: 0.05 });
   };
 
+  Sound.portal = function () {
+    tone({ from: 110, to: 330, dur: 1.4, gain: 0.25, wave: 'sine' });
+    tone({ from: 160, to: 120, dur: 1.6, gain: 0.18, wave: 'triangle', delay: 0.1 });
+    noise({ freq: 700, q: 0.4, dur: 1.2, gain: 0.15, type: 'lowpass' });
+  };
+
   Sound.fizz = function (dist) {
     noise({ freq: 5200, q: 0.4, dur: 0.6, gain: 0.35, type: 'highpass', dist });
   };
@@ -244,6 +250,14 @@
       case 'villager':
         tone({ from: 260, to: 200, dur: 0.18, gain: 0.25, wave: 'sawtooth', dist: d });
         tone({ from: 230, to: 300, dur: 0.16, gain: 0.2, wave: 'sawtooth', delay: 0.17, dist: d });
+        break;
+      case 'ghast':
+        tone({ from: kind === 'shoot' ? 700 : 520, to: kind === 'shoot' ? 300 : 460, dur: 0.9, gain: 0.3, wave: 'sine', dist: d * 0.5 });
+        tone({ from: 780, to: 700, dur: 0.8, gain: 0.12, wave: 'triangle', delay: 0.05, dist: d * 0.5 });
+        break;
+      case 'zpiglin':
+        tone({ from: 180, to: 120, dur: 0.3, gain: 0.3, wave: 'sawtooth', dist: d });
+        tone({ from: 150, to: 90, dur: 0.25, gain: 0.2, wave: 'square', delay: 0.2, dist: d });
         break;
       case 'chicken':
         tone({ from: 1400, to: 900, dur: 0.08, gain: 0.18, wave: 'square', dist: d });

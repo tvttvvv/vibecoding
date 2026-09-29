@@ -341,6 +341,76 @@
     }
   }
 
+  // ---------------------------------------------------------------- nether
+  // One big cave: netherrack wherever a 3D noise is high, more of it near the
+  // bedrock floor and roof, a lava sea below y 24, glowstone hanging from the
+  // roof, soul sand along the shores and quartz in the rock.
+  const NETHER_LAVA = 24;
+  const nl = new Float32Array(LNX * LNX * LNY);
+  function generateNether(chunk, seed) {
+    const baseX = chunk.cx * CHUNK_SIZE, baseZ = chunk.cz * CHUNK_SIZE;
+    for (let iy = 0; iy < LNY; iy++) {
+      for (let iz = 0; iz < LNX; iz++) {
+        for (let ix = 0; ix < LNX; ix++) {
+          nl[(iy * LNX + iz) * LNX + ix] = Noise.fbm3((baseX + ix * LG) * 0.028, iy * LG * 0.05, (baseZ + iz * LG) * 0.028, seed + 301, 3);
+        }
+      }
+    }
+    const H = WORLD_HEIGHT;
+    for (let y = 0; y < H; y++) {
+      // solid near the floor and the roof, open caverns in between
+      const edge = y < 14 ? (14 - y) / 14 : y > H - 16 ? (y - (H - 16)) / 14 : 0;
+      for (let lz = 0; lz < CHUNK_SIZE; lz++) {
+        for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+          const wx = baseX + lx, wz = baseZ + lz;
+          let id;
+          if (y === 0 || y === H - 1 || (y <= 2 && Noise.hash3(wx, y, wz, seed + 302) < 0.5) ||
+              (y >= H - 3 && Noise.hash3(wx, y, wz, seed + 303) < 0.5)) {
+            id = B.BEDROCK;
+          } else {
+            const fx = lx / LG, fy = y / LG, fz = lz / LG;
+            const ix = Math.min(LNX - 2, fx | 0), iy = Math.min(LNY - 2, fy | 0), iz = Math.min(LNX - 2, fz | 0);
+            const tx = fx - ix, ty = fy - iy, tz = fz - iz;
+            const at = (a, b, c) => nl[(b * LNX + c) * LNX + a];
+            const c0 = (at(ix, iy, iz) * (1 - tx) + at(ix + 1, iy, iz) * tx) * (1 - ty) + (at(ix, iy + 1, iz) * (1 - tx) + at(ix + 1, iy + 1, iz) * tx) * ty;
+            const c1 = (at(ix, iy, iz + 1) * (1 - tx) + at(ix + 1, iy, iz + 1) * tx) * (1 - ty) + (at(ix, iy + 1, iz + 1) * (1 - tx) + at(ix + 1, iy + 1, iz + 1) * tx) * ty;
+            const d = c0 * (1 - tz) + c1 * tz + edge * 0.6;
+            if (d > 0.5) {
+              id = Noise.hash3(wx, y, wz, seed + 304) < 0.012 ? B.QUARTZ_ORE : B.NETHERRACK;
+            } else {
+              id = y <= NETHER_LAVA ? B.LAVA : B.AIR;
+            }
+          }
+          if (id !== B.AIR) chunk.data[(y * CHUNK_SIZE + lz) * CHUNK_SIZE + lx] = id;
+        }
+      }
+    }
+    chunk.maxY = H - 1;
+    chunk.hasLight = true;
+    // glowstone under the roof, soul sand along the lava shore
+    for (let lz = 0; lz < CHUNK_SIZE; lz++) {
+      for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+        const wx = baseX + lx, wz = baseZ + lz;
+        for (let y = 40; y < H - 3; y++) {
+          const i = (y * CHUNK_SIZE + lz) * CHUNK_SIZE + lx;
+          if (chunk.data[i] === B.AIR && chunk.data[i + CHUNK_SIZE * CHUNK_SIZE] === B.NETHERRACK &&
+              Noise.hash2(wx * 3 + y, wz, seed + 305) < 0.02) {
+            const len = 1 + Math.floor(Noise.hash2(wx, wz + y, seed + 306) * 3);
+            for (let k = 0; k < len && y - k > NETHER_LAVA; k++) chunk.data[i - k * CHUNK_SIZE * CHUNK_SIZE] = B.GLOWSTONE;
+          }
+        }
+        for (let y = NETHER_LAVA; y < NETHER_LAVA + 7; y++) {
+          const i = (y * CHUNK_SIZE + lz) * CHUNK_SIZE + lx;
+          if (chunk.data[i] === B.NETHERRACK && chunk.data[i + CHUNK_SIZE * CHUNK_SIZE] === B.AIR &&
+              Noise.fbm2(wx * 0.08, wz * 0.08, seed + 307, 2) > 0.55) {
+            chunk.data[i] = B.SOUL_SAND;
+          }
+        }
+      }
+    }
+    chunk.generated = true;
+  }
+
   function growFeatures(chunk, seed) {
     const baseX = chunk.cx * CHUNK_SIZE;
     const baseZ = chunk.cz * CHUNK_SIZE;
@@ -386,8 +456,9 @@
   }
 
   // ---------------------------------------------------------------- world
-  function World(seed) {
+  function World(seed, dim) {
     this.seed = seed | 0;
+    this.dim = dim || 'overworld';
     this.chunks = new Map();
     this.group = new THREE.Group();
     this.renderDistance = 4;
@@ -466,7 +537,7 @@
       this._lastKey = '';
     }
     if (!c.generated) {
-      generateChunk(c, this.seed);
+      (this.dim === 'nether' ? generateNether : generateChunk)(c, this.seed);
       // edits made by anyone outlive chunk unload, so replay them on rebuild
       if (this.onChunkReady) this.onChunkReady(c);
     }
@@ -632,12 +703,24 @@
     return { top: Math.min(WORLD_HEIGHT - 1, top + 2), anyLight };
   };
 
-  function lightRegion(top, anyLight) {
+  function lightRegion(top, anyLight, noSky) {
     const yLim = top;                        // world y; everything above is open sky
     const limIdx = (yLim + 3) * SY;
     skyL.fill(0, 0, limIdx);
-    skyL.fill(15, limIdx, RSIZE);
+    skyL.fill(noSky ? 0 : 15, limIdx, RSIZE);
     blkL.fill(0);
+    // the nether has a roof and no sky: only its lava and glowstone light it
+    if (noSky) {
+      if (!anyLight) return;
+      let qt = 0;
+      const end = (yLim + 3) * SY;
+      for (let i = 2 * SY; i < end; i++) {
+        const e = EMIT[region[i]];
+        if (e) { blkL[i] = e; queue[qt++] = i; }
+      }
+      if (qt) spread(blkL, 0, qt, yLim);
+      return;
+    }
 
     // straight down from the sky, dimmed by water and leaves
     for (let z = 0; z < RW; z++) {
@@ -755,7 +838,7 @@
     const yTop = Math.min(WORLD_HEIGHT - 1, chunk.maxY + 1);
 
     const info = this.fillRegion(chunk);
-    lightRegion(Math.max(info.top, yTop + 1), info.anyLight);
+    lightRegion(Math.max(info.top, yTop + 1), info.anyLight, this.dim === 'nether');
 
     // keep this chunk's own light for later questions about it
     if (!chunk.sky) {

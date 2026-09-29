@@ -190,6 +190,7 @@
     else if (this.inLava) speed = SWIM_SPEED * 0.45;
     else if (this.inWater) speed = SWIM_SPEED;
     else if (this.sneaking) speed = SNEAK_SPEED;
+    else if (B.byId[world.getBlock(bx, Math.floor(this.pos.y - 0.2), bz)].slow) speed = WALK_SPEED * B.byId[world.getBlock(bx, Math.floor(this.pos.y - 0.2), bz)].slow;
     else speed = this.sprinting ? SPRINT_SPEED : WALK_SPEED;
 
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);

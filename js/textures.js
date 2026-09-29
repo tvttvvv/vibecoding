@@ -409,6 +409,29 @@
     for (const [x, y] of [[1, 5], [14, 5], [2, 6], [13, 6]]) api.put(x, y, '#4aedd9');
   });
 
+  // ---- the nether ----------------------------------------------------------
+  define('netherrack', (api) => {
+    speckle(api, '#6b2626', ['#7d2e2e', '#5a1e1e', '#8a3a36', '#4d1818'], 0.65);
+  });
+  define('soul_sand', (api) => {
+    speckle(api, '#4d3a2c', ['#5a4535', '#3f2f24', '#614b3a'], 0.6);
+    for (const [x, y] of [[3, 4], [10, 3], [6, 10], [12, 11]]) {
+      api.put(x, y, '#2a1e16'); api.put(x + 1, y, '#2a1e16'); api.put(x, y + 1, '#2a1e16'); api.put(x + 1, y + 1, '#2a1e16');
+    }
+  });
+  define('glowstone', (api) => {
+    speckle(api, '#c89a4a', ['#f2d27a', '#ffe9a8', '#a8793a', '#e8b85a'], 0.7);
+  });
+  oreTile('quartz_ore', ['#e8e2d8', '#f4f0e8', '#d0c8b8'], '#ffffff');
+  define('portal', (api) => {
+    for (let y = 0; y < TILE; y++) {
+      for (let x = 0; x < TILE; x++) {
+        const w = Math.sin((x + y * 0.7) * 0.9) + Math.cos((x * 0.6 - y) * 0.8);
+        api.put(x, y, w > 0.6 ? '#b36cff' : w > -0.2 ? '#7a2ad8' : '#4a1498');
+      }
+    }
+  });
+
   define('chest_top', (api) => {
     speckle(api, '#a0712f', ['#8b5f24', '#b58239', '#946826'], 0.5);
     for (let i = 0; i < TILE; i++) { api.put(i, 0, '#4a3312'); api.put(i, 15, '#4a3312'); api.put(0, i, '#4a3312'); api.put(15, i, '#4a3312'); }
@@ -742,6 +765,18 @@
     rectOn(api, 4, 4, 8, 8, '#17b84a'); rectOn(api, 5, 12, 6, 1, '#0f8a36'); rectOn(api, 6, 13, 4, 1, '#0f8a36');
     rectOn(api, 5, 5, 2, 5, '#5fe68a'); api.put(7, 4, '#9ff7b8');
     rectOn(api, 11, 5, 1, 6, '#0f8a36');
+  });
+
+  define('item_flint_and_steel', (api) => {
+    api.clear();
+    rectOn(api, 3, 8, 5, 5, '#3a3a3a'); rectOn(api, 4, 9, 2, 2, '#5a5a5a');
+    for (let i = 0; i < 6; i++) { api.put(8 + i, 7 - i, '#c8c8c8'); api.put(9 + i, 7 - i, '#8a8a8a'); }
+    rectOn(api, 12, 1, 3, 2, '#a8a8a8');
+  });
+  define('item_quartz', (api) => {
+    api.clear();
+    rectOn(api, 5, 4, 6, 8, '#ece6dc'); rectOn(api, 6, 3, 4, 1, '#fffaf2'); rectOn(api, 11, 5, 1, 6, '#c8c0b0');
+    rectOn(api, 6, 12, 4, 1, '#c8c0b0'); api.put(6, 5, '#ffffff');
   });
 
   define('item_seeds', (api) => {

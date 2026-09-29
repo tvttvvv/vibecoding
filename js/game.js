@@ -123,7 +123,7 @@
     const l = this.world.lightAt(fx, fy, fz);
     const day = World.lightUniforms.uDaylight.value;
     const curve = (f) => f / (2.3 - 1.3 * f);
-    return Math.max(curve(l.sky / 15 * day), curve(l.blk / 15), 0.08);
+    return Math.max(curve(l.sky / 15 * day), curve(l.blk / 15), World.lightUniforms.uMinLight.value + 0.02);
   };
 
   // how bright it is where the player's head is: used for held items and drops
@@ -200,12 +200,6 @@
     }
     this.clearDrops();
     Entities.clear();
-    this.crops = new Set();
-    this.lootGiven = new Set();
-    this.blockEntities = new Map();
-    this.editsByChunk = {};
-    this.editMap = new Map();
-    this.lightSources = new Set();
     // one save slot per world: a room is shared by code, a solo world by seed
     this.roomCode = (opts && opts.room) || null;
     this.worldKey = this.roomCode ? 'r:' + this.roomCode : 's:' + seed;
@@ -213,10 +207,22 @@
     this._worldDirty = false;
     this._saveTimer = 0;
     this._worldTimer = 0;
+    // each dimension keeps its own edits, chests and save slot
+    this.dimData = {};
+    this.useDim('overworld');
+    this.dimData.overworld.loaded = true;
     if (opts && opts.edits) this.loadEdits(opts.edits);
     this._pendingEntities = (opts && opts.entities) || null;
+    if (opts && opts.netherEdits) {
+      this.withDim('nether', () => this.loadEdits(opts.netherEdits));
+      this.dimData.nether.loaded = true;
+      this.dimData.nether.entityRows = opts.netherEntities || [];
+    }
+    // come back in the dimension you left from
+    const me = Store.ok ? Store.loadPlayer(this.worldKey) : null;
+    const startDim = me && me.dim === 'nether' ? 'nether' : 'overworld';
 
-    this.world = new World(seed);
+    this.world = new World(seed, startDim);
     this.world.onChunkReady = (chunk) => this.applyChunkEdits(chunk);
     this.scene.add(this.world.group);
     Mobs.attach(this.scene);
@@ -242,8 +248,17 @@
       this.loadEntities(this._pendingEntities);
       this._pendingEntities = null;
     }
-    this.spawnPlayer();
+    if (startDim === 'nether') {
+      this.spawnPoint = null;
+      this.loadDim('nether');
+      this.useDim('nether');
+      this.enterDimEntities();
+    } else {
+      this.spawnPlayer();
+    }
     this.restoreMe();
+    this.portalTime = 0;
+    this.portalCooldown = true;
     UI.setFlyButtons(mode, this.player.flying);
     UI.renderHotbar();
     UI.renderStats(this.player);
@@ -264,6 +279,83 @@
     Fluids.clear();
     UI.renderXp(this.player);
     UI.setSneak(false);
+  };
+
+  // ---------------------------------------------------------------- dimensions
+  function freshDim() {
+    return {
+      editMap: new Map(), editsByChunk: {}, lightSources: new Set(), crops: new Set(),
+      blockEntities: new Map(), lootGiven: new Set(), dirty: false, loaded: false, entityRows: null
+    };
+  }
+
+  Game.useDim = function (dim) {
+    if (!this.dimData[dim]) this.dimData[dim] = freshDim();
+    const d = this.dimData[dim];
+    this.dimension = dim;
+    this.editMap = d.editMap;
+    this.editsByChunk = d.editsByChunk;
+    this.lightSources = d.lightSources;
+    this.crops = d.crops;
+    this.blockEntities = d.blockEntities;
+    this.lootGiven = d.lootGiven;
+  };
+
+  Game.withDim = function (dim, fn) {
+    const prev = this.dimension;
+    this.useDim(dim);
+    try { return fn(); } finally { this.useDim(prev); }
+  };
+
+  Game.dimKey = function (dim) {
+    return dim === 'nether' ? this.worldKey + ':nether' : this.worldKey;
+  };
+
+  // a dimension's saved edits are read the first time it is needed
+  Game.loadDim = function (dim) {
+    if (!this.dimData[dim]) this.dimData[dim] = freshDim();
+    const d = this.dimData[dim];
+    if (d.loaded) return;
+    d.loaded = true;
+    const saved = Store.ok && !(Net.active && !Net.isHost) ? Store.loadWorld(this.dimKey(dim)) : null;
+    if (!saved) return;
+    this.withDim(dim, () => {
+      this.loadEdits(saved.edits);
+      d.dirty = false;
+    });
+    d.entityRows = saved.entities || [];
+  };
+
+  // everything built in a dimension, for a guest who has just joined
+  Game.dimSnapshot = function (dim) {
+    this.loadDim(dim);
+    if (dim === this.dimension) return { edits: this.editList(), entities: this.entityList() };
+    const d = this.dimData[dim];
+    return this.withDim(dim, () => ({
+      edits: this.editList(),
+      entities: (d.entityRows || []).concat(this.entityList(true)).concat(d.boatRows || [])
+    }));
+  };
+
+  // chests, furnaces and boats of the dimension now in front of the player
+  Game.enterDimEntities = function () {
+    const d = this.dimData[this.dimension];
+    if (d.entityRows) {
+      this.loadEntities(d.entityRows);
+      d.entityRows = null;
+    }
+    if (d.boatRows) {
+      for (const r of d.boatRows) Entities.placeBoat(r[1], r[2], r[3], r[4], r[5], true);
+      d.boatRows = null;
+    }
+    if (d.dropRows) {
+      for (const [x, y, z, id, count, extra, age] of d.dropRows) {
+        this.spawnDrop(x, y, z, id, count, extra);
+        const o = this.drops[this.drops.length - 1];
+        o.vy = 0; o.age = age;
+      }
+      d.dropRows = null;
+    }
   };
 
   // Single player: an empty seed box means "carry on with the world I was in",
@@ -316,6 +408,7 @@
     }
     this.editMap.set(key, id);
     this._worldDirty = true;
+    if (this.dimData && this.dimData[this.dimension]) this.dimData[this.dimension].dirty = true;
   };
 
   Game.applyChunkEdits = function (chunk) {
@@ -368,13 +461,19 @@
   Game.changeBlock = function (x, y, z, id) {
     if (!this.world.setBlock(x, y, z, id)) return false;
     this.registerEdit(x, y, z, id);
-    Net.sendEdit(x, y, z, id);
+    Net.sendEdit(x, y, z, id, this.dimension);
     this.blockUpdate(x, y, z);
     Fluids.touch(this.world, x, y, z);
     return true;
   };
 
   Game.applyRemoteEdit = function (msg) {
+    const dim = msg.dim || 'overworld';
+    if (dim !== this.dimension) {
+      this.loadDim(dim);
+      this.withDim(dim, () => this.registerEdit(msg.x, msg.y, msg.z, msg.id));
+      return;
+    }
     this.registerEdit(msg.x, msg.y, msg.z, msg.id);
     this.world.setBlock(msg.x, msg.y, msg.z, msg.id);
     const key = this.entityKey(msg.x, msg.y, msg.z);
@@ -405,6 +504,7 @@
       const above = B.byId[this.world.getBlock(x, y + 1, z)];
       return below !== B.AIR && B.byId[below].solid && !B.byId[below].door && !!(above && above.door && above.door.upper);
     }
+    if (def.portal) return this.portalHeld(x, y, z, def);
     if (def.ladder !== undefined) {
       const dir = [[0, -1], [1, 0], [0, 1], [-1, 0]][def.ladder];
       const wall = this.world.getBlock(x + dir[0], y, z + dir[1]);
@@ -616,6 +716,19 @@
 
   Game.onEntity = function (msg) {
     if (!msg || !msg.data || msg.data.type !== 'chest') return;
+    const dim = msg.dim || 'overworld';
+    if (dim !== this.dimension) {
+      this.loadDim(dim);
+      this.withDim(dim, () => {
+        const p = String(msg.key).split(',');
+        const chest = this.chestAt(+p[0], +p[1], +p[2]);
+        chest.slots = msg.data.slots.map(unpackStack);
+        while (chest.slots.length < 27) chest.slots.push(null);
+        chest._sent = JSON.stringify(msg.data.slots);
+        this.dimData[dim].dirty = true;
+      });
+      return;
+    }
     const p = String(msg.key).split(',');
     const chest = this.chestAt(+p[0], +p[1], +p[2]);
     chest.slots = msg.data.slots.map(unpackStack);
@@ -697,6 +810,8 @@
       air: p.air,
       xp: p.xp || 0,
       enchSeed: p.enchSeed || 0,
+      dim: this.dimension,
+      worldSpawn: this.worldSpawn || null,
       spawn: this.bedSpawn || null,
       x: +p.pos.x.toFixed(2), y: +p.pos.y.toFixed(2), z: +p.pos.z.toFixed(2),
       yaw: +p.yaw.toFixed(2), pitch: +p.pitch.toFixed(2)
@@ -710,9 +825,21 @@
 
   Game.saveWorld = function (force) {
     if (!this.started || !Store.ok || this.loading) return;
+    for (const dim in this.dimData) {
+      if (dim === this.dimension) continue;
+      const d = this.dimData[dim];
+      if (!d.dirty) continue;
+      d.dirty = false;
+      this.withDim(dim, () => {
+        const prev = Store.loadWorld(this.dimKey(dim));
+        const rows = this.entityList(true).concat(d.boatRows || (prev ? (prev.entities || []).filter((r) => r[0] === 'b') : []));
+        Store.saveWorld(this.dimKey(dim), this.seed, this.editList(), rows);
+      });
+    }
     if (!this._worldDirty && !force) return;
     this._worldDirty = false;
-    if (Store.saveWorld(this.worldKey, this.seed, this.editList(), this.entityList())) {
+    if (this.dimData[this.dimension]) this.dimData[this.dimension].dirty = false;
+    if (Store.saveWorld(this.dimKey(this.dimension), this.seed, this.editList(), this.entityList())) {
       this.worldSavedAt = Date.now();
     } else if (!this._saveWarned) {
       this._saveWarned = true;
@@ -726,7 +853,7 @@
   };
 
   // furnaces keep what is inside them, so leaving mid-smelt is not a loss
-  Game.entityList = function () {
+  Game.entityList = function (noBoats) {
     const out = [];
     if (!this.blockEntities) return out;
     const pack = Inventory.pack;
@@ -741,7 +868,7 @@
         +f.burn.toFixed(1), +f.burnMax.toFixed(1), +f.cook.toFixed(1)]);
     }
     if (this.lootGiven) for (const k of this.lootGiven) out.push(['L', k]);
-    return out.concat(Entities.snapshotBoats());
+    return noBoats ? out : out.concat(Entities.snapshotBoats());
   };
 
   Game.loadEntities = function (rows) {
@@ -782,6 +909,10 @@
     if (typeof saved.air === 'number') p.air = saved.air;
     if (typeof saved.xp === 'number') p.xp = saved.xp;
     if (saved.enchSeed) p.enchSeed = saved.enchSeed;
+    if (saved.worldSpawn && typeof saved.worldSpawn.x === 'number') {
+      this.worldSpawn = saved.worldSpawn;
+      if (!this.spawnPoint) this.spawnPoint = { x: saved.worldSpawn.x, y: saved.worldSpawn.y, z: saved.worldSpawn.z };
+    }
     if (saved.spawn && typeof saved.spawn.x === 'number') {
       this.bedSpawn = saved.spawn;
       this.spawnPoint = { x: saved.spawn.x, y: saved.spawn.y, z: saved.spawn.z };
@@ -827,7 +958,7 @@
   };
 
   Game.onRestore = function (fromId, msg) {
-    if (!Net.isHost || this.editMap.size > 0) return;
+    if (!Net.isHost || this.dimension !== 'overworld' || this.editMap.size > 0) return;
     if (!msg.edits || !msg.edits.length) return;
     if ((msg.savedAt || 0) <= (this.worldSavedAt || 0)) return;
     const who = Net.players[fromId] ? Net.players[fromId].name : '누군가';
@@ -840,6 +971,11 @@
 
   Game.onBulk = function (edits, by) {
     if (!edits || !edits.length) return;
+    if (this.dimension !== 'overworld') {
+      this.withDim('overworld', () => this.loadEdits(edits));
+      this.dimData.overworld.dirty = true;
+      return;
+    }
     this.applyEditBatch(edits);
     this._worldDirty = true;
     if (by) UI.toast(by + ' 님의 기록으로 세계가 복원됐어요', 3200);
@@ -914,6 +1050,11 @@
     for (const id in Net.players) {
       const p = Net.players[id];
       let a = this.avatars[id];
+      // someone on the other side of a portal is not here to be seen
+      if ((p.dim || 'overworld') !== this.dimension) {
+        if (a) { this.scene.remove(a.group); delete this.avatars[id]; }
+        continue;
+      }
       if (!a || a.name !== p.name) {
         if (a) this.scene.remove(a.group);
         const group = this.makeAvatar(p.name);
@@ -944,10 +1085,15 @@
     return {
       getDayTime: () => this.dayTime,
       getSpawn: () => this.spawnPoint,
-      getEdits: () => this.editList(),
-      getEntities: () => this.entityList(),
-      onBoat: (msg) => Entities.applyRemoteBoat(msg),
-      onArrow: (msg) => Entities.shootArrow(msg.x, msg.y, msg.z, msg.vx, msg.vy, msg.vz, { visual: true, damage: 0 }),
+      getEdits: () => this.dimSnapshot('overworld').edits,
+      getEntities: () => this.dimSnapshot('overworld').entities,
+      getDim: () => this.dimension || 'overworld',
+      getDimData: (dim) => this.dimSnapshot(dim),
+      onBoat: (msg) => { if ((msg.dim || 'overworld') === this.dimension) Entities.applyRemoteBoat(msg); },
+      onArrow: (msg) => {
+        if ((msg.dim || 'overworld') !== this.dimension) return;
+        Entities.shootArrow(msg.x, msg.y, msg.z, msg.vx, msg.vy, msg.vz, { visual: true, damage: 0 });
+      },
       onMobFeed: (msg) => { const m = Mobs.byId(msg.mobId); if (m) Mobs.feed(m); },
       onEntity: (msg) => this.onEntity(msg),
       getSavedAt: () => this.worldSavedAt || 0,
@@ -958,7 +1104,8 @@
       onChat: (from, text, sys) => UI.addChat(from, text, sys),
       onHit: (msg) => this.takeHit(msg),
       onMobHit: (msg) => this.onMobHit(msg),
-      onMobs: (rows) => Mobs.applyRemote(rows),
+      // the host only runs the mobs of the dimension it is in
+      onMobs: (rows, dim) => Mobs.applyRemote(dim === this.dimension ? rows : []),
       onTime: (t) => { this.dayTime = t; },
       onSleep: (id) => {
         if (!Net.isHost) return;
@@ -1074,7 +1221,9 @@
   Game.onWelcome = function (msg, code) {
     this.start(msg.mode, '', {
       seed: msg.seed, edits: msg.edits, dayTime: msg.dayTime,
-      room: code, savedAt: msg.savedAt, entities: msg.entities
+      room: code, savedAt: msg.savedAt, entities: msg.entities,
+      netherEdits: msg.nether ? msg.nether.edits : [],
+      netherEntities: msg.nether ? msg.nether.entities : []
     });
     if (msg.spawn) {
       this.spawnPoint = this.bedSpawn || msg.spawn;
@@ -1140,6 +1289,7 @@
     this.player.vel.x = this.player.vel.y = this.player.vel.z = 0;
     this.player.fallStartY = this.player.pos.y;
     this.spawnPoint = { x: sx + 0.5, y: sy + 1.2, z: sz + 0.5 };
+    this.worldSpawn = { x: this.spawnPoint.x, y: this.spawnPoint.y, z: this.spawnPoint.z };
   };
 
   Game.toggleFly = function () {
@@ -1218,6 +1368,13 @@
     if (hit && this.tryFarm(hit, stack)) return;
     // food works anywhere, not only when you are pointing at a block
     if (this.tryEat(stack)) return;
+    if (stack.id === Items.FLINT_AND_STEEL) {
+      if (hit && this.tryLightPortal(hit)) {
+        if (this.mode === 'survival') this.inventory.damageSelected(1);
+      }
+      Sound.fizz(0); Hand.swing();
+      return;
+    }
     if (stack.id === Items.BOAT) { this.useBoat(sx, sy); return; }
     if (Items.get(stack.id) && Items.get(stack.id).bow) return;      // a bow is drawn by holding
     if (stack.id === Items.BUCKET || stack.id === Items.WATER_BUCKET || stack.id === Items.LAVA_BUCKET) {
@@ -1299,6 +1456,201 @@
     Sound.hit(this.distTo(mob.x, mob.y, mob.z));
     if (Net.active && !Net.isHost) { Net.sendMobHit(mob.id, damage, kx, kz); mob.hurtFlash = 0.3; return; }
     this.damageMob(mob, damage, kx, kz);
+  };
+
+  // ------------------------------------------------------------------ portals
+  // An obsidian frame, 2 to 21 wide inside and 3 to 21 tall, lit by flint and
+  // steel from inside. Returns the inside cells, or null if it is no frame.
+  Game.portalFrame = function (x, y, z, axis) {
+    const w = this.world, O = B.OBSIDIAN;
+    const at = (a, b) => (axis === 'x' ? w.getBlock(a, b, z) : w.getBlock(x, b, a));
+    const air = (a, b) => {
+      const d = B.byId[at(a, b)];
+      return d.id === B.AIR || (d.replaceable && !d.fluid);
+    };
+    const start = axis === 'x' ? x : z;
+    let a0 = start, b0 = y;
+    if (!air(a0, b0)) return null;
+    while (air(a0, b0 - 1) && y - b0 < 21) b0--;
+    if (at(a0, b0 - 1) !== O) return null;
+    while (air(a0 - 1, b0) && start - a0 < 21) a0--;
+    if (at(a0 - 1, b0) !== O) return null;
+    let width = 0, height = 0;
+    while (air(a0 + width, b0) && width < 22) width++;
+    while (air(a0, b0 + height) && height < 22) height++;
+    if (width < 2 || width > 21 || height < 3 || height > 21) return null;
+    for (let i = 0; i < width; i++) {
+      if (at(a0 + i, b0 - 1) !== O || at(a0 + i, b0 + height) !== O) return null;
+      for (let j = 0; j < height; j++) if (!air(a0 + i, b0 + j)) return null;
+    }
+    for (let j = 0; j < height; j++) {
+      if (at(a0 - 1, b0 + j) !== O || at(a0 + width, b0 + j) !== O) return null;
+    }
+    const cells = [];
+    for (let i = 0; i < width; i++) {
+      for (let j = 0; j < height; j++) cells.push(axis === 'x' ? [a0 + i, b0 + j, z] : [x, b0 + j, a0 + i]);
+    }
+    return cells;
+  };
+
+  Game.tryLightPortal = function (hit) {
+    const x = hit.x + hit.nx, y = hit.y + hit.ny, z = hit.z + hit.nz;
+    for (const axis of ['x', 'z']) {
+      const cells = this.portalFrame(x, y, z, axis);
+      if (!cells) continue;
+      const id = axis === 'x' ? B.PORTAL_X : B.PORTAL_Z;
+      // set every cell before any of them is checked for support
+      for (const [cx, cy, cz] of cells) this.world.setBlock(cx, cy, cz, id);
+      for (const [cx, cy, cz] of cells) { this.registerEdit(cx, cy, cz, id); Net.sendEdit(cx, cy, cz, id, this.dimension); }
+      Sound.portal();
+      return true;
+    }
+    return false;
+  };
+
+  // a portal sheet holds while its frame and its neighbours in the sheet do
+  Game.portalHeld = function (x, y, z, def) {
+    const w = this.world;
+    const ok = (id) => id === B.OBSIDIAN || id === B.PORTAL_X || id === B.PORTAL_Z;
+    const side = def.portal === 'x'
+      ? [w.getBlock(x - 1, y, z), w.getBlock(x + 1, y, z)]
+      : [w.getBlock(x, y, z - 1), w.getBlock(x, y, z + 1)];
+    return ok(w.getBlock(x, y - 1, z)) && ok(w.getBlock(x, y + 1, z)) && ok(side[0]) && ok(side[1]);
+  };
+
+  Game.inPortal = function () {
+    const p = this.player;
+    const x = Math.floor(p.pos.x), z = Math.floor(p.pos.z);
+    for (const dy of [0.2, 1.2]) {
+      const d = B.byId[this.world.getBlock(x, Math.floor(p.pos.y + dy), z)];
+      if (d && d.portal) return true;
+    }
+    return false;
+  };
+
+  // standing in a portal for a few seconds carries you through
+  Game.updatePortal = function (dt) {
+    const inside = this.inPortal();
+    if (!inside) { this.portalTime = 0; this.portalCooldown = false; return; }
+    if (this.portalCooldown) return;
+    this.portalTime += dt;
+    const need = this.mode === 'creative' ? 0.6 : 3.5;
+    if (this.portalTime >= need) {
+      this.portalTime = 0;
+      this.travel();
+    }
+  };
+
+  Game.travel = function () {
+    const p = this.player;
+    const to = this.dimension === 'overworld' ? 'nether' : 'overworld';
+    const scale = to === 'nether' ? 1 / 8 : 8;
+    const tx = Math.floor(p.pos.x * scale), tz = Math.floor(p.pos.z * scale);
+    this.switchDimension(to, { x: tx, z: tz });
+    Sound.portal();
+  };
+
+  // Leave this dimension's world behind (saved) and stand up in the other.
+  // With a target, arrive at the nearest portal there or build one.
+  Game.switchDimension = function (to, target) {
+    const p = this.player;
+    this.saveNow(true);
+    const d = this.dimData[this.dimension];
+    if (Entities.riding) Entities.dismount();
+    d.boatRows = Entities.snapshotBoats();
+    // items on the ground wait where they fell, like a death pile in the nether
+    d.dropRows = this.drops.map((o) => [o.x, o.y, o.z, o.id, o.count, o.extra, o.age]);
+    Mobs.clear();
+    Entities.clear();
+    this.clearDrops();
+    Fluids.clear();
+    if (UI.screen) UI.closeScreen();
+
+    this.scene.remove(this.world.group);
+    for (const c of this.world.chunks.values()) {
+      if (c.solidMesh) c.solidMesh.geometry.dispose();
+      if (c.liquidMesh) c.liquidMesh.geometry.dispose();
+    }
+    this.loadDim(to);
+    this.useDim(to);
+    this.world = new World(this.seed, to);
+    this.world.onChunkReady = (chunk) => this.applyChunkEdits(chunk);
+    this.scene.add(this.world.group);
+    Mobs.attach(this.scene);
+    this.enterDimEntities();
+
+    if (target) {
+      const spot = this.findOrMakePortal(target.x, target.z);
+      p.pos.x = spot.x; p.pos.y = spot.y; p.pos.z = spot.z;
+    } else if (this.spawnPoint) {
+      p.pos.x = this.spawnPoint.x; p.pos.y = this.spawnPoint.y; p.pos.z = this.spawnPoint.z;
+    }
+    p.vel.x = p.vel.y = p.vel.z = 0;
+    p.fallStartY = p.pos.y;
+    this._restoredPos = true;
+    this.portalCooldown = true;
+    this.portalTime = 0;
+    this.loading = true;
+    this._eyeSky = undefined;
+    this._fogFar = undefined;
+    UI.setLoading(true, to === 'nether' ? '네더로 가는 중...' : '오버월드로 돌아가는 중...');
+    this._worldDirty = true;
+  };
+
+  Game.findOrMakePortal = function (tx, tz) {
+    const w = this.world;
+    const R = 20, CS = WorldConst.CHUNK_SIZE;
+    for (let cx = Math.floor((tx - R) / CS); cx <= Math.floor((tx + R) / CS); cx++) {
+      for (let cz = Math.floor((tz - R) / CS); cz <= Math.floor((tz + R) / CS); cz++) w.ensureChunk(cx, cz);
+    }
+    // an existing portal nearby links to this one
+    let best = null, bd = Infinity;
+    for (let x = tx - R; x <= tx + R; x++) {
+      for (let z = tz - R; z <= tz + R; z++) {
+        for (let y = 1; y < WorldConst.WORLD_HEIGHT - 1; y++) {
+          const id = w.getBlock(x, y, z);
+          if (id !== B.PORTAL_X && id !== B.PORTAL_Z) continue;
+          if (B.byId[w.getBlock(x, y - 1, z)].portal) continue;
+          const dd = (x - tx) * (x - tx) + (z - tz) * (z - tz);
+          if (dd < bd) { bd = dd; best = { x: x + 0.5, y, z: z + 0.5 }; }
+        }
+      }
+    }
+    if (best) return best;
+
+    // otherwise build one: on the ground in the overworld, on a ledge (or a
+    // platform in the air) in the nether
+    let y;
+    if (this.dimension === 'nether') {
+      y = -1;
+      for (let yy = 28; yy < 64 && y < 0; yy++) {
+        let ok = B.byId[w.getBlock(tx, yy - 1, tz)].solid;
+        for (let k = 0; k < 4 && ok; k++) if (w.getBlock(tx, yy + k, tz) !== B.AIR || w.getBlock(tx + 1, yy + k, tz) !== B.AIR) ok = false;
+        if (ok) y = yy;
+      }
+      if (y < 0) y = 34;
+    } else {
+      const g = w.groundY(tx, tz);
+      y = Math.max(g, WorldConst.SEA_LEVEL) + 1;
+    }
+    const cells = [];
+    // an obsidian floor to stand on, a cleared pocket, then the frame
+    for (let x = tx - 1; x <= tx + 2; x++) {
+      for (let z = tz - 1; z <= tz + 1; z++) {
+        cells.push([x, y - 1, z, B.OBSIDIAN]);
+        for (let yy = y; yy < y + 4; yy++) cells.push([x, yy, z, B.AIR]);
+      }
+    }
+    for (let yy = y - 1; yy <= y + 3; yy++) { cells.push([tx - 1, yy, tz, B.OBSIDIAN]); cells.push([tx + 2, yy, tz, B.OBSIDIAN]); }
+    cells.push([tx, y + 3, tz, B.OBSIDIAN]); cells.push([tx + 1, y + 3, tz, B.OBSIDIAN]);
+    for (let x = tx; x <= tx + 1; x++) for (let yy = y; yy < y + 3; yy++) cells.push([x, yy, tz, B.PORTAL_X]);
+    for (const [x, yy, z, id] of cells) w.setBlock(x, yy, z, id);
+    for (const [x, yy, z] of cells) {
+      const id = w.getBlock(x, yy, z);
+      this.registerEdit(x, yy, z, id);
+      Net.sendEdit(x, yy, z, id, this.dimension);
+    }
+    return { x: tx + 0.5, y, z: tz + 0.5 };
   };
 
   // ---------------------------------------------------------------- enchanting
@@ -1445,7 +1797,7 @@
     // registered after both halves flip, so neither half sees the other missing
     for (const yy of [lowY, lowY + 1]) {
       const id = this.world.getBlock(x, yy, z);
-      if (B.byId[id].door) { this.registerEdit(x, yy, z, id); Net.sendEdit(x, yy, z, id); }
+      if (B.byId[id].door) { this.registerEdit(x, yy, z, id); Net.sendEdit(x, yy, z, id, this.dimension); }
     }
     Sound.door();
     Hand.swing();
@@ -1476,6 +1828,14 @@
     if (hd.fluid || hd.replaceable) { x = hit.x; y = hit.y; z = hit.z; }
     if (!this.freeCell(x, y, z)) return;
     const lava = stack.id === Items.LAVA_BUCKET;
+    // water boils away in the nether
+    if (!lava && this.dimension === 'nether') {
+      Sound.fizz(0);
+      Entities.burst(x + 0.5, y + 0.5, z + 0.5, B.SNOW, 10, 0.5);
+      if (this.mode === 'survival') this.inventory.slots[this.inventory.selected] = { id: Items.BUCKET, count: 1 };
+      this.inventory.changed();
+      return;
+    }
     this.changeBlock(x, y, z, lava ? B.LAVA : B.WATER);
     give(Items.BUCKET);
     Sound.bucket(lava);
@@ -1641,16 +2001,21 @@
   Game.damageMob = function (mob, damage, kx, kz) {
     if (!mob || mob.dead) return;
     mob.hurt(damage);
+    if (mob.def.neutral) {
+      for (const o of Mobs.list) {
+        if (o.type === mob.type && Math.hypot(o.x - mob.x, o.z - mob.z) < 16) o.angry = 40;
+      }
+    }
     mob.x += kx * 0.45;
     mob.z += kz * 0.45;
     if (mob.onGround) mob.vy = 5.2;
     // animals bolt when hit
-    if (!mob.def.hostile) { mob.panic = 3; mob.wanderYaw = Math.atan2(kx, kz); }
+    if (!mob.def.hostile && !mob.def.neutral) { mob.panic = 3; mob.wanderYaw = Math.atan2(kx, kz); }
     Sound.mob(mob.type, 'hurt', this.distTo(mob.x, mob.y, mob.z));
     if (mob.dead) {
       Mobs.dropLoot(mob, this);
       if (this.mode === 'survival') {
-        Entities.dropXp(mob.x, mob.y + 0.5, mob.z, mob.def.hostile ? 5 : 1 + Math.random() * 2);
+        Entities.dropXp(mob.x, mob.y + 0.5, mob.z, mob.def.hostile || mob.def.neutral ? 5 : 1 + Math.random() * 2);
       }
       Entities.burst(mob.x, mob.y + mob.def.h * 0.5, mob.z, B.SNOW, 10, 0.4);
       Mobs.remove(mob);
@@ -1766,6 +2131,12 @@
   Game.useBed = function (x, y, z) {
     const p = this.player;
     if (Math.hypot(p.pos.x - (x + 0.5), p.pos.z - (z + 0.5)) > 4) return;
+    // a bed in the nether goes off like a creeper, as it does in Minecraft
+    if (this.dimension === 'nether') {
+      this.changeBlock(x, y, z, B.AIR);
+      Mobs.explode({ x: x + 0.5, y, z: z + 0.5, def: { drops: [] }, size: 1 }, this.world, p, this);
+      return;
+    }
     this.spawnPoint = { x: x + 0.5, y: y + 1.2, z: z + 0.5 };
     this.bedSpawn = { x: x + 0.5, y: y + 1.2, z: z + 0.5 };
     if (this.dayTime > 0.22 && this.dayTime < 0.78) {
@@ -2090,8 +2461,32 @@
   };
 
   // ------------------------------------------------------------ environment
+  // the nether: no sky, a dull red haze and a little light everywhere
+  const NETHER_FOG = new THREE.Color(0x330806);
+  Game.updateNetherSky = function (dt) {
+    const L = World.lightUniforms;
+    L.uDaylight.value = 0;
+    L.uMinLight.value = 0.2;
+    L.uSkyTint.value.setRGB(1, 0.85, 0.8);
+    this.scene.background = NETHER_FOG;
+    this.fog.color.copy(NETHER_FOG);
+    const base = this.world.renderDistance * WorldConst.CHUNK_SIZE - 8;
+    const edge = this.world.meshedRadius;
+    const want = Math.min(base * 0.8, isFinite(edge) ? Math.max(14, edge - 1) : base * 0.8);
+    if (this._fogFar === undefined) this._fogFar = want;
+    this._fogFar += (want - this._fogFar) * Math.min(1, dt * (want < this._fogFar ? 10 : 1.5));
+    this.fog.far = this._fogFar;
+    this.fog.near = this._fogFar * 0.3;
+    Sky.setVisible(false);
+    const here = Math.min(1, this.lightHere(0.3) + 0.1);
+    this.itemMaterial.color.setScalar(here);
+    Entities.boatMat.color.setScalar(here);
+  };
+
   Game.updateSky = function (dt) {
     this.dayTime = (this.dayTime + dt / DAY_LENGTH) % 1;
+    if (this.dimension === 'nether') { this.updateNetherSky(dt); return; }
+    World.lightUniforms.uMinLight.value = 0.06;
     const t = this.dayTime;
     const sunAngle = t * Math.PI * 2 - Math.PI / 2;
     const height = Math.sin(sunAngle);
@@ -2143,6 +2538,8 @@
 
   Game.respawn = function (mode) {
     if (Net.active) mode = this.mode;
+    if (this.dimension !== 'overworld') this.switchDimension('overworld', null);
+    if (!this.spawnPoint) this.spawnPlayer();
     if (mode && mode !== this.mode) {
       this.mode = mode;
       this.player.mode = mode;
@@ -2230,8 +2627,10 @@
         UI.toast(this.mode === 'survival'
           ? '블록을 꾹 누르면 그 블록을 캐고, 톡 누르면 그 자리에 블록을 놓습니다'
           : '크리에이티브: 비행 버튼으로 날 수 있어요. 블록을 눌러 캐고 놓으세요', 4600);
-        const sg = this.world.groundY(Math.floor(this.spawnPoint.x), Math.floor(this.spawnPoint.z));
-        if (sg >= 0 && !this.bedSpawn) this.spawnPoint.y = sg + 1.2;
+        if (this.spawnPoint && this.dimension === 'overworld') {
+          const sg = this.world.groundY(Math.floor(this.spawnPoint.x), Math.floor(this.spawnPoint.z));
+          if (sg >= 0 && !this.bedSpawn) this.spawnPoint.y = sg + 1.2;
+        }
         // a restored position is kept unless the world moved under it
         if (!this._restoredPos || this.blockedAt(p.pos)) {
           const g = this.world.groundY(Math.floor(p.pos.x), Math.floor(p.pos.z));
@@ -2290,7 +2689,8 @@
       this.updateEating(dt);
       this.updateDrops(dt);
       this.updateCrops(dt);
-      this.updateVillages(dt);
+      if (this.dimension === 'overworld') this.updateVillages(dt);
+      this.updatePortal(dt);
       Fluids.update(dt, this);
       Entities.update(dt, input);
     } else {
@@ -2327,6 +2727,7 @@
     UI.renderStats(p);
     UI.setOverlay('damageOverlay', p.hurtFlash > 0 ? p.hurtFlash * 0.9 : 0);
     UI.setOverlay('waterOverlay', p.headInWater && !p.headInLava ? 0.35 : 0);
+    UI.setOverlay('portalOverlay', this.portalTime > 0 ? Math.min(0.85, this.portalTime / 3.5) : 0);
     UI.setOverlay('lavaOverlay', p.headInLava ? 0.85 : (p.burning > 0 ? 0.25 + Math.sin(performance.now() / 60) * 0.08 : 0));
     if (this.debugVisible()) {
       const l = this.world.lightAt(Math.floor(p.pos.x), Math.floor(p.pos.y + 0.5), Math.floor(p.pos.z));

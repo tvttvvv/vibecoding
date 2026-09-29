@@ -89,6 +89,7 @@
   shaped(I.BOW, 1, [' #|', '# |', ' #|'], { '#': I.STICK, '|': I.STRING });
   shaped(I.ARROW, 4, ['F', '|', 'E'], { F: I.FLINT, '|': I.STICK, E: I.FEATHER });
   shaped(I.PAPER, 3, ['###'], { '#': B.SUGAR_CANE });
+  shapeless(I.FLINT_AND_STEEL, 1, [I.IRON_INGOT, I.FLINT]);
   shapeless(I.BOOK, 1, [I.PAPER, I.PAPER, I.PAPER, I.LEATHER]);
   shaped(B.BOOKSHELF, 1, ['###', 'BBB', '###'], { '#': B.PLANKS, B: I.BOOK });
   shaped(B.ENCHANTING_TABLE, 1, [' B ', 'D#D', '###'], { B: I.BOOK, D: I.DIAMOND, '#': B.OBSIDIAN });

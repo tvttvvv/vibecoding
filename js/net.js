@@ -120,8 +120,15 @@
     return out;
   };
 
-  Net.recordEdit = function (x, y, z, id) {
+  Net.recordEdit = function (x, y, z, id, dim) {
+    if (dim && dim !== 'overworld') return;
     this.edits[x + ',' + y + ',' + z] = id;
+  };
+
+  // which dimension this player is standing in; every message about the
+  // world carries it so the other side can tell whose world it is
+  Net.dim = function () {
+    return this.handlers && this.handlers.getDim ? this.handlers.getDim() : 'overworld';
   };
 
   // ------------------------------------------------------------------ host
@@ -182,6 +189,7 @@
         edits: this.handlers.getEdits ? this.handlers.getEdits() : this.editList(),
         savedAt: this.handlers.getSavedAt ? this.handlers.getSavedAt() : 0,
         entities: this.handlers.getEntities ? this.handlers.getEntities() : [],
+        nether: this.handlers.getDimData ? this.handlers.getDimData('nether') : null,
         roster: this.roster(),
         host: this.name
       });
@@ -195,14 +203,15 @@
       if (p) {
         p.x = msg.x; p.y = msg.y; p.z = msg.z;
         p.yaw = msg.yaw; p.pitch = msg.pitch;
+        p.dim = msg.dim || 'overworld';
       }
-      this._broadcast({ t: 'pos', id: conn.id, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch }, conn.id);
+      this._broadcast({ t: 'pos', id: conn.id, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch, dim: msg.dim }, conn.id);
       return;
     }
 
     if (msg.t === 'edit') {
-      this.recordEdit(msg.x, msg.y, msg.z, msg.id);
-      this._broadcast({ t: 'edit', x: msg.x, y: msg.y, z: msg.z, id: msg.id }, conn.id);
+      this.recordEdit(msg.x, msg.y, msg.z, msg.id, msg.dim);
+      this._broadcast({ t: 'edit', x: msg.x, y: msg.y, z: msg.z, id: msg.id, dim: msg.dim }, conn.id);
       if (this.handlers.onEdit) this.handlers.onEdit(msg);
       return;
     }
@@ -243,7 +252,7 @@
 
     // a chest changed: the host keeps it and passes it on to everyone else
     if (msg.t === 'ent') {
-      this._broadcast({ t: 'ent', key: msg.key, data: msg.data }, conn.id);
+      this._broadcast({ t: 'ent', key: msg.key, data: msg.data, dim: msg.dim }, conn.id);
       if (this.handlers.onEntity) this.handlers.onEntity(msg);
       return;
     }
@@ -346,6 +355,7 @@
       }
       p.x = msg.x; p.y = msg.y; p.z = msg.z;
       p.yaw = msg.yaw; p.pitch = msg.pitch;
+      p.dim = msg.dim || 'overworld';
       return;
     }
 
@@ -370,7 +380,7 @@
     }
 
     if (msg.t === 'mobs') {
-      if (this.handlers.onMobs) this.handlers.onMobs(msg.m);
+      if (this.handlers.onMobs) this.handlers.onMobs(msg.m, msg.dim || 'overworld');
       return;
     }
 
@@ -418,7 +428,8 @@
       y: +player.pos.y.toFixed(2),
       z: +player.pos.z.toFixed(2),
       yaw: +player.yaw.toFixed(2),
-      pitch: +player.pitch.toFixed(2)
+      pitch: +player.pitch.toFixed(2),
+      dim: this.dim()
     };
     if (this.isHost) {
       msg.id = 'host';
@@ -428,10 +439,11 @@
     }
   };
 
-  Net.sendEdit = function (x, y, z, id) {
+  Net.sendEdit = function (x, y, z, id, dim) {
     if (!this.active) return;
-    this.recordEdit(x, y, z, id);
-    const msg = { t: 'edit', x, y, z, id };
+    dim = dim || 'overworld';
+    this.recordEdit(x, y, z, id, dim);
+    const msg = { t: 'edit', x, y, z, id, dim };
     if (this.isHost) this._broadcast(msg);
     else if (this.hostConn) this.hostConn.send(msg);
   };
@@ -463,7 +475,7 @@
     const now = performance.now();
     if (now - (this._lastMobs || 0) < MOB_INTERVAL) return;
     this._lastMobs = now;
-    this._broadcast({ t: 'mobs', m: rows });
+    this._broadcast({ t: 'mobs', m: rows, dim: this.dim() });
   };
 
   Net.sendMobHit = function (mobId, dmg, kx, kz) {
@@ -474,6 +486,7 @@
   Net.sendArrow = function (msg) {
     if (!this.active) return;
     msg.t = 'arrow';
+    msg.dim = this.dim();
     if (this.isHost) this._broadcast(msg);
     else if (this.hostConn) this.hostConn.send(msg);
   };
@@ -486,13 +499,14 @@
   Net.sendBoat = function (msg) {
     if (!this.active) return;
     msg.t = 'boat';
+    msg.dim = this.dim();
     if (this.isHost) this._broadcast(msg);
     else if (this.hostConn) this.hostConn.send(msg);
   };
 
   Net.sendEntity = function (key, data) {
     if (!this.active) return;
-    const msg = { t: 'ent', key, data };
+    const msg = { t: 'ent', key, data, dim: this.dim() };
     if (this.isHost) this._broadcast(msg);
     else if (this.hostConn) this.hostConn.send(msg);
   };

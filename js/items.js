@@ -105,6 +105,8 @@
   const PAPER = def(188, '종이', T.item_paper);
   const BOOK = def(189, '책', T.item_book);
   const EMERALD = def(190, '에메랄드', T.item_emerald);
+  const QUARTZ = def(191, '네더 석영', T.item_quartz);
+  const FLINT_AND_STEEL = def(192, '부싯돌과 부시', T.item_flint_and_steel, { stackMax: 1, durability: 64 });
 
   // ---- unified block/item access -------------------------------------------
   function isBlock(id) { return id < ITEM_BASE; }
@@ -150,7 +152,7 @@
     STICK, COAL, IRON_INGOT, GOLD_INGOT, DIAMOND,
     APPLE, BREAD, COOKED_BEEF, COOKED_PORK, COOKED_CHICKEN, COOKED_MUTTON, BONE, STRING, GUNPOWDER,
     SEEDS, WHEAT, BOAT, OAK_DOOR, BUCKET, WATER_BUCKET, LAVA_BUCKET,
-    BOW, ARROW, FLINT, FEATHER, LEATHER, CARROT, LAPIS, PAPER, BOOK, EMERALD,
+    BOW, ARROW, FLINT, FEATHER, LEATHER, CARROT, LAPIS, PAPER, BOOK, EMERALD, QUARTZ, FLINT_AND_STEEL,
     tools.wood_pickaxe, tools.wood_axe, tools.wood_shovel, tools.wood_sword, tools.wood_hoe,
     tools.stone_pickaxe, tools.stone_axe, tools.stone_shovel, tools.stone_sword, tools.stone_hoe,
     tools.iron_pickaxe, tools.iron_axe, tools.iron_shovel, tools.iron_sword, tools.iron_hoe,
@@ -173,7 +175,7 @@
     RAW_CHICKEN, COOKED_CHICKEN, RAW_MUTTON, COOKED_MUTTON,
     ROTTEN_FLESH, BONE, STRING, GUNPOWDER, SEEDS, WHEAT, BREAD, BOAT,
     OAK_DOOR, BUCKET, WATER_BUCKET, LAVA_BUCKET, BOW, ARROW, FLINT, FEATHER, LEATHER, CARROT,
-    LAPIS, PAPER, BOOK, EMERALD,
+    LAPIS, PAPER, BOOK, EMERALD, QUARTZ, FLINT_AND_STEEL,
     PIECE_ORDER, creativeItems,
     isBlock, get, name, tileOf, icon, stackMax, maxDurability, fuelSeconds, foodOf
   };

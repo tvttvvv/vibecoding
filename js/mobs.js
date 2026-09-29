@@ -125,6 +125,37 @@
     }
   };
 
+  // ---- the nether's own
+  TYPES.zpiglin = {
+    name: '좀비 피글린', hp: 20, hw: 0.3, h: 1.9, speed: 2.3, hostile: false, neutral: true, nether: true,
+    damage: 5, reach: 1.7, drops: [[I.ROTTEN_FLESH, 0, 1]], rare: [[I.GOLD_INGOT, 0.1]], noSpawn: true,
+    parts: [
+      [0.5, 0.75, 0.28, 0x6b8a4a, 0, 1.05, 0],
+      [0.22, 0.72, 0.22, 0x8a6a4a, -0.13, 0.36, 0],
+      [0.22, 0.72, 0.22, 0xe0a090, 0.13, 0.36, 0],
+      [0.18, 0.6, 0.18, 0xe0a090, -0.34, 1.2, -0.1],
+      [0.18, 0.6, 0.18, 0x7aa05a, 0.34, 1.2, -0.2],
+      [0.06, 0.7, 0.1, 0xf0c635, 0.34, 1.1, -0.55],
+      [0.52, 0.46, 0.46, 0xe0a090, 0, 1.66, 0, 'head'],
+      [0.24, 0.16, 0.08, 0xd08a7a, 0, 1.58, -0.26, 'head'],
+      [0.2, 0.12, 0.3, 0x5a8a3a, 0.18, 1.82, 0.05, 'head'],
+      [0.07, 0.07, 0.03, 0x1a1a1a, -0.13, 1.72, -0.24, 'head'],
+      [0.07, 0.07, 0.03, 0x1a1a1a, 0.13, 1.72, -0.24, 'head']
+    ]
+  };
+  TYPES.ghast = {
+    name: '가스트', hp: 10, hw: 2, h: 4.2, speed: 1.4, hostile: true, nether: true, flying: true,
+    ranged: 'fireball', drops: [[I.GUNPOWDER, 0, 2]], noSpawn: true,
+    parts: [
+      [4, 4, 4, 0xf2f2f2, 0, 2.5, 0],
+      [0.3, 1.4, 0.3, 0xe4e4e4, -1.3, 0.1, -1.3], [0.3, 1.8, 0.3, 0xe4e4e4, 0, -0.1, -1.3], [0.3, 1.2, 0.3, 0xe4e4e4, 1.3, 0.2, -1.3],
+      [0.3, 1.6, 0.3, 0xe4e4e4, -1.3, 0, 0], [0.3, 1.3, 0.3, 0xe4e4e4, 0, 0.15, 0], [0.3, 1.9, 0.3, 0xe4e4e4, 1.3, -0.15, 0],
+      [0.3, 1.5, 0.3, 0xe4e4e4, -1.3, 0.05, 1.3], [0.3, 1.2, 0.3, 0xe4e4e4, 0, 0.2, 1.3], [0.3, 1.7, 0.3, 0xe4e4e4, 1.3, -0.05, 1.3],
+      [0.6, 0.25, 0.05, 0x505050, -0.8, 3.1, -2.02, 'head'], [0.6, 0.25, 0.05, 0x505050, 0.8, 3.1, -2.02, 'head'],
+      [0.9, 0.5, 0.05, 0x505050, 0, 2.1, -2.02, 'head']
+    ]
+  };
+
   // villagers, dressed by trade; they never spawn on their own
   const ROBES = { farmer: [0x8b6a3f, 0xc9a43a], librarian: [0xe8e2d8, 0x8b3a2b], smith: [0x3a3a3a, 0x6a6a6a], cleric: [0x6b3a8c, 0xc9a43a] };
   for (const prof of Object.keys(ROBES)) {
@@ -148,7 +179,7 @@
 
   const TYPE_NAMES = Object.keys(TYPES);
   const PASSIVE = TYPE_NAMES.filter((t) => !TYPES[t].hostile && !TYPES[t].noSpawn);
-  const HOSTILE = TYPE_NAMES.filter((t) => TYPES[t].hostile);
+  const HOSTILE = TYPE_NAMES.filter((t) => TYPES[t].hostile && !TYPES[t].noSpawn);
 
   let nextId = 1;
 
@@ -381,7 +412,37 @@
     return false;
   };
 
+  // the nether spawns its own: packs of zombified piglins on the rock, and
+  // now and then a ghast out over the open caverns
+  Mobs.trySpawnNether = function (world, player) {
+    if (this.count(true) + this.list.filter((m) => m.type === 'zpiglin').length >= HOSTILE_CAP + 4) return;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
+      const x = Math.floor(player.pos.x + Math.cos(ang) * dist);
+      const z = Math.floor(player.pos.z + Math.sin(ang) * dist);
+      if (Math.random() < 0.25) {
+        if (this.list.filter((m) => m.type === 'ghast').length >= 2) continue;
+        const y = 36 + Math.floor(Math.random() * 20);
+        let open = true;
+        for (let dx = -2; dx <= 2 && open; dx += 2) for (let dy = 0; dy <= 4 && open; dy += 2) for (let dz = -2; dz <= 2 && open; dz += 2) {
+          if (world.getBlock(x + dx, y + dy, z + dz) !== B.AIR) open = false;
+        }
+        if (open) this.spawn('ghast', x + 0.5, y, z + 0.5);
+        continue;
+      }
+      for (let y = 26; y < 70; y++) {
+        const below = B.byId[world.getBlock(x, y - 1, z)];
+        if (!below.solid || world.getBlock(x, y, z) !== B.AIR || world.getBlock(x, y + 1, z) !== B.AIR) continue;
+        const n = 2 + Math.floor(Math.random() * 3);
+        for (let k = 0; k < n; k++) this.spawn('zpiglin', x + 0.5 + (Math.random() - 0.5) * 2, y, z + 0.5 + (Math.random() - 0.5) * 2);
+        break;
+      }
+    }
+  };
+
   Mobs.trySpawn = function (world, player, game) {
+    if (game.dimension === 'nether') { this.trySpawnNether(world, player); return; }
     const night = isNight(game.dayTime);
     for (let attempt = 0; attempt < 6; attempt++) {
       const hostile = attempt < 3;
@@ -488,12 +549,25 @@
     const canSee = game.mode === 'survival' && !player.dead;
     let wantX = 0, wantZ = 0;
 
-    if (def.hostile && canSee && distSq < 18 * 18 && Math.abs(player.pos.y - m.y) < 8) {
+    if (m.angry > 0) m.angry -= dt;
+    const aggressive = def.hostile || (def.neutral && m.angry > 0);
+    const reachY = def.flying ? 40 : 8;
+    const range = def.flying ? 40 : 18;
+    if (aggressive && canSee && distSq < range * range && Math.abs(player.pos.y - m.y) < reachY) {
       const dx = player.pos.x - m.x, dz = player.pos.z - m.z;
       const len = Math.hypot(dx, dz) || 1;
       const dist = Math.sqrt(distSq);
 
-      if (def.ranged) {
+      if (def.ranged === 'fireball') {
+        // a ghast hangs back and lobs fireballs when it can see you
+        if (dist < 12) { wantX = -dx / len; wantZ = -dz / len; }
+        m.attackCooldown -= dt;
+        if (m.attackCooldown <= 0 && dist < 36 && this.canSee(world, m, player)) {
+          m.attackCooldown = 3.2;
+          this.shoot(m, player, true);
+          if (global.Sound) Sound.mob('ghast', 'shoot', dist);
+        }
+      } else if (def.ranged) {
         // skeletons keep their distance and shoot
         if (dist < 5) { wantX = -dx / len; wantZ = -dz / len; }
         else if (dist > 8) { wantX = dx / len; wantZ = dz / len; }
@@ -564,6 +638,16 @@
   Mobs.physics = function (m, dt, world) {
     const speed = m.def.speed;
     m.onGround = false;
+    if (m.def.flying) {
+      // drift toward a height of its own choosing
+      if (m.hoverY === undefined || Math.random() < dt * 0.2) m.hoverY = 34 + Math.random() * 24;
+      m.vy += ((m.hoverY - m.y) * 0.4 - m.vy) * Math.min(1, dt * 2);
+      const bx = m.wantX ? m.moveAxis(world, 'x', m.wantX * speed * dt) : false;
+      const bz = m.wantZ ? m.moveAxis(world, 'z', m.wantZ * speed * dt) : false;
+      if (m.moveAxis(world, 'y', m.vy * dt)) m.hoverY = m.y + (Math.random() - 0.5) * 10;
+      if (bx || bz) { m.wanderYaw += Math.PI * (0.5 + Math.random()); m.wander = 3; }
+      return;
+    }
     m.vy -= GRAVITY * dt;
     if (m.vy < -MAX_FALL) m.vy = -MAX_FALL;
 
@@ -607,35 +691,58 @@
   };
 
   // --------------------------------------------------------------- weapons
-  Mobs.shoot = function (m, player) {
+  Mobs.shoot = function (m, player, fire) {
     const ex = player.pos.x, ey = player.pos.y + 1.2, ez = player.pos.z;
-    const sx = m.x, sy = m.y + m.def.h * 0.85, sz = m.z;
+    const sx = m.x, sy = m.y + m.def.h * (fire ? 0.5 : 0.85), sz = m.z;
     const dx = ex - sx, dy = ey - sy, dz = ez - sz;
     const len = Math.hypot(dx, dy, dz) || 1;
-    const speed = 22;
+    const speed = fire ? 11 : 22;
     const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(0.08, 0.08, 0.7),
-      new THREE.MeshBasicMaterial({ color: 0xbfae8e })
+      fire ? new THREE.BoxGeometry(0.6, 0.6, 0.6) : new THREE.BoxGeometry(0.08, 0.08, 0.7),
+      new THREE.MeshBasicMaterial({ color: fire ? 0xff7a1a : 0xbfae8e, fog: !fire })
     );
+    const off = fire ? 2.4 : 0;
     mesh.position.set(sx, sy, sz);
     this._group.add(mesh);
     this.arrows.push({
-      mesh, x: sx, y: sy, z: sz,
-      vx: dx / len * speed, vy: dy / len * speed + 1.6, vz: dz / len * speed,
-      age: 0
+      mesh, x: sx + dx / len * off, y: sy + dy / len * off, z: sz + dz / len * off,
+      vx: dx / len * speed, vy: dy / len * speed + (fire ? 0 : 1.6), vz: dz / len * speed,
+      age: 0, fire: !!fire
     });
+  };
+
+  // a clear line from the mob's eyes to the player's
+  Mobs.canSee = function (world, m, player) {
+    const sx = m.x, sy = m.y + m.def.h * 0.6, sz = m.z;
+    const ex = player.pos.x, ey = player.pos.y + 1.5, ez = player.pos.z;
+    const d = Math.hypot(ex - sx, ey - sy, ez - sz);
+    const n = Math.ceil(d * 2);
+    for (let i = 2; i < n; i++) {
+      const t = i / n;
+      if (solidAt(world, sx + (ex - sx) * t, sy + (ey - sy) * t, sz + (ez - sz) * t)) return false;
+    }
+    return true;
   };
 
   Mobs.updateArrows = function (dt, world, player, game) {
     for (let i = this.arrows.length - 1; i >= 0; i--) {
       const a = this.arrows[i];
       a.age += dt;
-      a.vy -= 9 * dt;
+      if (!a.fire) a.vy -= 9 * dt;
       a.x += a.vx * dt; a.y += a.vy * dt; a.z += a.vz * dt;
 
       const hitBlock = solidAt(world, a.x, a.y, a.z);
       const dx = a.x - player.pos.x, dy = a.y - (player.pos.y + 0.9), dz = a.z - player.pos.z;
-      const hitPlayer = dx * dx + dy * dy + dz * dz < 0.7 * 0.7;
+      const hitPlayer = dx * dx + dy * dy + dz * dz < (a.fire ? 1.1 : 0.7) * (a.fire ? 1.1 : 0.7);
+
+      // a fireball bursts on whatever it touches
+      if (a.fire && (hitBlock || hitPlayer)) {
+        this.explode({ x: a.x, y: a.y - 0.5, z: a.z, def: { drops: [] }, size: 1 }, world, player, game, 1.6);
+        this._group.remove(a.mesh);
+        this.arrows.splice(i, 1);
+        continue;
+      }
+      if (a.fire) a.mesh.rotation.x += dt * 4;
 
       if (hitPlayer) {
         const len = Math.hypot(a.vx, a.vz) || 1;
@@ -655,28 +762,30 @@
     for (const a of this.arrows) a.mesh.position.set(a.x, a.y, a.z);
   };
 
-  Mobs.explode = function (m, world, player, game) {
-    const R = 3;
+  Mobs.explode = function (m, world, player, game, radius) {
+    const R = radius || 3;
     if (global.Sound) Sound.explode(Math.hypot(player.pos.x - m.x, player.pos.z - m.z));
     if (global.Entities) {
       Entities.burst(m.x, m.y + 1, m.z, B.SNOW, 24, 1.6);
       Entities.burst(m.x, m.y + 1, m.z, B.GRAVEL, 16, 1.4);
     }
     const cx = Math.floor(m.x), cy = Math.floor(m.y + 0.5), cz = Math.floor(m.z);
-    for (let x = -R; x <= R; x++) {
-      for (let y = -R; y <= R; y++) {
-        for (let z = -R; z <= R; z++) {
+    const Ri = Math.ceil(R);
+    for (let x = -Ri; x <= Ri; x++) {
+      for (let y = -Ri; y <= Ri; y++) {
+        for (let z = -Ri; z <= Ri; z++) {
           if (x * x + y * y + z * z > R * R) continue;
           const id = world.getBlock(cx + x, cy + y, cz + z);
-          if (id === B.AIR || !isFinite(B.byId[id].hardness)) continue;
+          if (id === B.AIR || !isFinite(B.byId[id].hardness) || B.byId[id].hardness >= 50) continue;
           game.changeBlock(cx + x, cy + y, cz + z, B.AIR);
         }
       }
     }
     const dx = player.pos.x - m.x, dy = player.pos.y - m.y, dz = player.pos.z - m.z;
     const dist = Math.hypot(dx, dy, dz);
-    if (dist < 7) {
-      const dmg = Math.max(1, Math.round((1 - dist / 7) * 22));
+    const reach = R * 2.3;
+    if (dist < reach) {
+      const dmg = Math.max(1, Math.round((1 - dist / reach) * 22 * R / 3));
       const len = Math.hypot(dx, dz) || 1;
       game.mobAttack(m, dmg, dx / len, dz / len);
     }

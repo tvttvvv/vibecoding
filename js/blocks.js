@@ -212,6 +212,21 @@
     opaque: false, height: 0.75, hardness: 5, tool: 'pickaxe', tier: 1, interactive: 'enchant', light: 7
   });
 
+  // ---- the nether ----------------------------------------------------------
+  const NETHERRACK = simple(94, '네더랙', T.netherrack, { hardness: 0.4, tool: 'pickaxe', tier: 1 });
+  const SOUL_SAND = simple(95, '영혼 모래', T.soul_sand, { hardness: 0.5, tool: 'shovel', slow: 0.45 });
+  const GLOWSTONE = simple(96, '발광석', T.glowstone, { hardness: 0.3, light: 15 });
+  const QUARTZ_ORE = simple(97, '네더 석영 광석', T.quartz_ore, { hardness: 3, tool: 'pickaxe', tier: 1, drop: 191 });
+  // a portal is a thin sheet across its frame: 98 spans x, 99 spans z
+  const PORTAL_X = def(98, '네더 차원문', {
+    top: T.portal, side: T.portal, bottom: T.portal, opaque: false, solid: false, hardness: Infinity,
+    render: 'boxes', boxes: [[0, 0, 0.375, 1, 1, 0.625]], light: 11, drop: 0, portal: 'x', needsGround: true
+  });
+  const PORTAL_Z = def(99, '네더 차원문', {
+    top: T.portal, side: T.portal, bottom: T.portal, opaque: false, solid: false, hardness: Infinity,
+    render: 'boxes', boxes: [[0.375, 0, 0, 0.625, 1, 1]], light: 11, drop: 0, portal: 'z', needsGround: true
+  });
+
   const CARROTS = 84;
   for (let s = 0; s < 4; s++) {
     simple(CARROTS + s, '당근', T['carrots_' + s], Object.assign({}, PLANT, { replaceable: false, crop: s, cropKind: 'carrot', drop: 0 }));
@@ -267,7 +282,8 @@
     CRAFTING_TABLE, FURNACE, CHEST, TORCH, WOOL, BED, FARMLAND,
     TALL_GRASS, DANDELION, POPPY,
     SLABS[0], SLABS[1], SLABS[2], STAIRS[0], STAIRS[1], LADDER, OBSIDIAN,
-    LAPIS_ORE, SUGAR_CANE, BOOKSHELF, ENCHANTING_TABLE, BEDROCK
+    LAPIS_ORE, SUGAR_CANE, BOOKSHELF, ENCHANTING_TABLE,
+    NETHERRACK, SOUL_SAND, GLOWSTONE, QUARTZ_ORE, BEDROCK
   ];
 
   global.Blocks = {
@@ -278,6 +294,7 @@
     TALL_GRASS, DANDELION, POPPY, FARMLAND, WHEAT_0, WHEAT_1, WHEAT_2, WHEAT_3, CHEST,
     SLABS, STAIRS, DOOR, LADDER, WATER_FLOW, LAVA, OBSIDIAN, CARROTS,
     LAPIS_ORE, SUGAR_CANE, BOOKSHELF, ENCHANTING_TABLE,
+    NETHERRACK, SOUL_SAND, GLOWSTONE, QUARTZ_ORE, PORTAL_X, PORTAL_Z,
     byId, tileFor, isOpaque, isSolid, isLiquid, mineTime, canHarvest, iconFor, creativeList
   };
 })(window);
