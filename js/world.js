@@ -159,9 +159,18 @@
     return c > CHEESE || (Math.abs(a - 0.5) < w && Math.abs(b - 0.5) < w);
   }
   const _cv = new Float32Array(3);
-  function caveAt(wx, y, wz, seed) {
-    caveNoise(wx, y, wz, seed, _cv, 0);
-    return isCave(_cv[0], _cv[1], _cv[2], y);
+  // Near the surface only the narrow tunnels break through, and where one
+  // does the whole top of that column is opened up, as a cave mouth. Big
+  // caves keep a roof at least ROOF blocks thick, so no thin layer of ground
+  // is ever left hanging in the air.
+  const ROOF = 4;
+  // (one look, two blocks down, a shade wider than a tunnel: the tunnel noise
+  // hardly changes over a few blocks, and this runs for every column)
+  function surfaceOpen(wx, wz, surfaceY, seed) {
+    if (surfaceY < SEA_LEVEL + 2) return false;
+    const y = surfaceY - 2, w = SPAGHETTI * 1.15;
+    if (Math.abs(Noise.fbm3(wx * 0.018, y * 0.036, wz * 0.018, seed + 12, 2) - 0.5) >= w) return false;
+    return Math.abs(Noise.fbm3(wx * 0.018, y * 0.036, wz * 0.018, seed + 13, 2) - 0.5) < w;
   }
 
   // The noise is sampled on a coarse 4x4x4 lattice and blended in between,
@@ -263,6 +272,7 @@
         const surfaceY = Math.floor(hf);
         const biome = biomeAt(wx, wz, seed);
         const top = Math.min(WORLD_HEIGHT - 1, Math.max(surfaceY, SEA_LEVEL));
+        const open = surfaceOpen(wx, wz, surfaceY, seed);
 
         for (let y = 0; y <= top; y++) {
           let id = B.AIR;
@@ -291,7 +301,8 @@
             // ceiling of water that has nowhere to go
             const wet = surfaceY < SEA_LEVEL + 2 && depth < 6;
             // the deepest caves have lava floors, as Minecraft's do
-            if (y > 3 && depth > 0 && !wet && caveSample(lx, y, lz)) id = y <= 7 ? B.LAVA : B.AIR;
+            if (depth < ROOF) { if (open) id = B.AIR; }
+            else if (y > 3 && !wet && caveSample(lx, y, lz)) id = y <= 7 ? B.LAVA : B.AIR;
           }
 
           if (y === 0) id = B.BEDROCK;
@@ -499,7 +510,7 @@
 
         const surfaceY = Math.floor(columnHeight(wx, wz, seed));
         if (surfaceY <= SEA_LEVEL + 1 || surfaceY > WORLD_HEIGHT - 12) continue;
-        if (caveAt(wx, surfaceY, wz, seed)) continue;
+        if (surfaceOpen(wx, wz, surfaceY, seed)) continue;
 
         const r = Noise.hash2(wx, wz, seed + 32);
         if (biome === 'desert') {
