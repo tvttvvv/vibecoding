@@ -373,6 +373,39 @@
     for (let x = 7; x < 9; x++) for (let y = 4; y < 8; y++) api.put(x, y, y === 4 ? '#8a8a8a' : '#c8c8c8');
   });
 
+  // ---- building ----------------------------------------------------------
+  function doorHalf(api, upper) {
+    speckle(api, '#9c7b4a', ['#8b6a3f', '#a8875a', '#8f7043'], 0.4);
+    for (let y = 0; y < TILE; y++) { api.put(0, y, '#6b4a2a'); api.put(15, y, '#6b4a2a'); }
+    for (let x = 0; x < TILE; x++) { api.put(x, upper ? 0 : 15, '#6b4a2a'); }
+    if (upper) {
+      // two small windows
+      for (let x = 3; x < 7; x++) for (let y = 3; y < 8; y++) api.put(x, y, '#c9e4f0');
+      for (let x = 9; x < 13; x++) for (let y = 3; y < 8; y++) api.put(x, y, '#c9e4f0');
+      for (let x = 2; x < 14; x++) { api.put(x, 10, '#6b4a2a'); }
+    } else {
+      for (let x = 2; x < 14; x++) { api.put(x, 4, '#6b4a2a'); api.put(x, 11, '#6b4a2a'); }
+      api.put(12, 1, '#3b3b3b'); api.put(12, 2, '#3b3b3b');
+    }
+  }
+  define('door_lower', (api) => doorHalf(api, false));
+  define('door_upper', (api) => doorHalf(api, true));
+
+  define('ladder', (api) => {
+    api.clear();
+    for (let y = 0; y < TILE; y++) { api.put(2, y, '#8b6a3f'); api.put(3, y, '#6b4a2a'); api.put(12, y, '#8b6a3f'); api.put(13, y, '#6b4a2a'); }
+    for (const y of [1, 5, 9, 13]) for (let x = 2; x < 14; x++) { api.put(x, y, '#9c7b4a'); api.put(x, y + 1, '#6b4a2a'); }
+  });
+
+  define('lava', (api) => {
+    speckle(api, '#d4580f', ['#e9731a', '#f39a2a', '#c2410b', '#ffb13b'], 0.7);
+    for (let i = 0; i < 10; i++) api.put(Math.floor(rnd() * TILE), Math.floor(rnd() * TILE), '#ffd46a');
+  });
+
+  define('obsidian', (api) => {
+    speckle(api, '#15101f', ['#1f1830', '#2a2140', '#0d0a14', '#3a2c55'], 0.55);
+  });
+
   // ---------------------------------------------------------------- items
   const MAT = {
     wood: { a: '#9c7b4a', b: '#6f5531', c: '#b79262' },
@@ -570,6 +603,30 @@
       api.put(x, y, pick(['#4a4a4a', '#2f2f2f', '#6a6a6a', '#3d3d3d']));
     }
   });
+
+  define('item_oak_door', (api) => {
+    api.clear();
+    rectOn(api, 4, 1, 8, 14, '#9c7b4a');
+    for (let y = 1; y < 15; y++) { api.put(4, y, '#6b4a2a'); api.put(11, y, '#6b4a2a'); }
+    rectOn(api, 5, 3, 2, 3, '#c9e4f0'); rectOn(api, 8, 3, 2, 3, '#c9e4f0');
+    rectOn(api, 5, 8, 6, 1, '#6b4a2a');
+    api.put(10, 10, '#3b3b3b');
+  });
+
+  function bucket(name, fill) {
+    define(name, (api) => {
+      api.clear();
+      rectOn(api, 3, 5, 10, 1, '#9a9a9a');
+      rectOn(api, 3, 6, 1, 7, '#b8b8b8'); rectOn(api, 12, 6, 1, 7, '#8a8a8a');
+      rectOn(api, 4, 13, 8, 1, '#8a8a8a');
+      rectOn(api, 4, 6, 8, 7, fill ? fill : '#6a6a6a');
+      if (!fill) rectOn(api, 4, 7, 8, 6, '#555555');
+      for (let x = 4; x < 12; x++) api.put(x, 3 - Math.round(Math.sin((x - 4) / 7 * Math.PI) * 2), '#c8c8c8');
+    });
+  }
+  bucket('item_bucket', null);
+  bucket('item_water_bucket', '#3f6fd8');
+  bucket('item_lava_bucket', '#e9731a');
 
   define('item_seeds', (api) => {
     api.clear();

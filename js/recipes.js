@@ -77,6 +77,15 @@
   shaped(B.CHEST, 1, ['###', '# #', '###'], { '#': B.PLANKS });
   shaped(I.BREAD, 1, ['###'], { '#': I.WHEAT });
   shaped(I.BOAT, 1, ['# #', '###'], { '#': B.PLANKS });
+  // building
+  shaped(B.SLABS[0], 6, ['###'], { '#': B.PLANKS });
+  shaped(B.SLABS[1], 6, ['###'], { '#': B.COBBLESTONE });
+  shaped(B.SLABS[2], 6, ['###'], { '#': B.STONE });
+  shaped(B.STAIRS[0], 4, ['#  ', '## ', '###'], { '#': B.PLANKS });
+  shaped(B.STAIRS[1], 4, ['#  ', '## ', '###'], { '#': B.COBBLESTONE });
+  shaped(I.OAK_DOOR, 3, ['##', '##', '##'], { '#': B.PLANKS });
+  shaped(B.LADDER, 3, ['| |', '|||', '| |'], { '|': I.STICK });
+  shaped(I.BUCKET, 1, ['# #', ' # '], { '#': I.IRON_INGOT });
 
   for (const [, mat, tier] of PLANK_LIKE) {
     const key = { '#': mat, '|': I.STICK };

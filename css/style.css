@@ -28,7 +28,7 @@ img { image-rendering: pixelated; -ms-interpolation-mode: nearest-neighbor; }
 
 #worldZone { position: absolute; inset: 0; z-index: 1; }
 
-#damageOverlay, #waterOverlay {
+#damageOverlay, #waterOverlay, #lavaOverlay {
   position: absolute; inset: 0; pointer-events: none; z-index: 5; opacity: 0;
   transition: opacity 0.12s linear;
 }
@@ -568,3 +568,5 @@ body.keyboardMode #crosshair { display: block; }
 #menuScreen > * { flex-shrink: 0; }
 body.onTitle #hud, body.onTitle #joystickZone, body.onTitle #joyVisual,
 body.onTitle #rightControls, body.onTitle #topRight, body.onTitle #crosshair { display: none !important; }
+
+#lavaOverlay { background: radial-gradient(circle, rgba(255,140,20,0.25) 20%, rgba(220,70,0,0.8) 100%); }

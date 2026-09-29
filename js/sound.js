@@ -192,6 +192,14 @@
     noise({ freq: 3000, q: 0.5, dur: 0.35, gain: 0.2, delay: 0.05 });
   };
 
+  Sound.fizz = function (dist) {
+    noise({ freq: 5200, q: 0.4, dur: 0.6, gain: 0.35, type: 'highpass', dist });
+  };
+
+  Sound.bucket = function (lava) {
+    noise({ freq: lava ? 500 : 1200, q: 0.6, dur: 0.35, gain: 0.35, type: 'lowpass' });
+  };
+
   Sound.door = function () {
     noise({ freq: 380, q: 4, dur: 0.18, gain: 0.5 });
   };

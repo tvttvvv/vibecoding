@@ -260,6 +260,7 @@
     this._cropTimer = 0;
     this._stepDist = 0;
     this.eating = null;
+    Fluids.clear();
     UI.renderXp(this.player);
     UI.setSneak(false);
   };
@@ -368,6 +369,7 @@
     this.registerEdit(x, y, z, id);
     Net.sendEdit(x, y, z, id);
     this.blockUpdate(x, y, z);
+    Fluids.touch(this.world, x, y, z);
     return true;
   };
 
@@ -378,6 +380,8 @@
     if (msg.id === B.AIR && this.blockEntities.has(key)) this.blockEntities.delete(key);
     if (msg.id === B.FURNACE) this.furnaceAt(msg.x, msg.y, msg.z);
     if (msg.id === B.CHEST) this.chestAt(msg.x, msg.y, msg.z);
+    // the host runs the water for everyone, so a guest's change wakes it here
+    if (Net.isHost) Fluids.touch(this.world, msg.x, msg.y, msg.z);
   };
 
   // ------------------------------------------------------------ block updates
@@ -387,6 +391,16 @@
     const def = B.byId[id];
     const below = this.world.getBlock(x, y - 1, z);
     if (def.crop !== undefined) return below === B.FARMLAND;
+    if (def.door) {
+      if (def.door.upper) { const b = B.byId[below]; return !!(b && b.door && !b.door.upper); }
+      const above = B.byId[this.world.getBlock(x, y + 1, z)];
+      return below !== B.AIR && B.byId[below].solid && !B.byId[below].door && !!(above && above.door && above.door.upper);
+    }
+    if (def.ladder !== undefined) {
+      const dir = [[0, -1], [1, 0], [0, 1], [-1, 0]][def.ladder];
+      const wall = this.world.getBlock(x + dir[0], y, z + dir[1]);
+      return wall !== B.AIR && B.byId[wall].opaque;
+    }
     if (below !== B.AIR && B.byId[below].solid) return true;
     if (id === B.TORCH) {
       for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
@@ -399,7 +413,7 @@
 
   Game.blockUpdate = function (x, y, z) {
     const w = this.world;
-    const around = [[x, y + 1, z], [x + 1, y, z], [x - 1, y, z], [x, y, z + 1], [x, y, z - 1]];
+    const around = [[x, y + 1, z], [x + 1, y, z], [x - 1, y, z], [x, y, z + 1], [x, y, z - 1], [x, y - 1, z]];
     for (const [cx, cy, cz] of around) {
       const id = w.getBlock(cx, cy, cz);
       const def = B.byId[id];
@@ -433,6 +447,7 @@
   Game.dropsFor = function (id, toolDef) {
     const out = [];
     const def = B.byId[id];
+    if (def.door) return def.door.upper ? out : [[Items.OAK_DOOR, 1]];
     if (def.crop !== undefined) {
       if (def.crop >= 3) {
         out.push([Items.WHEAT, 1]);
@@ -1077,7 +1092,17 @@
       -(screenY / window.innerHeight) * 2 + 1
     );
     this._caster.setFromCamera(this._ndc, this.camera);
-    return this.world.raycast(this._caster.ray.origin, this._caster.ray.direction, REACH);
+    const o = this._caster.ray.origin, d = this._caster.ray.direction;
+    const hit = this.world.raycast(o, d, REACH);
+    if (hit) { hit.px = o.x + d.x * hit.dist; hit.py = o.y + d.y * hit.dist; hit.pz = o.z + d.z * hit.dist; }
+    return hit;
+  };
+
+  // which way the player is looking, as 0 north, 1 east, 2 south, 3 west
+  Game.facing = function () {
+    const fx = -Math.sin(this.player.yaw), fz = -Math.cos(this.player.yaw);
+    if (Math.abs(fx) > Math.abs(fz)) return fx > 0 ? 1 : 3;
+    return fz < 0 ? 0 : 2;
   };
 
   Game.currentTarget = function () {
@@ -1113,14 +1138,20 @@
         return;
       }
       if (targetDef.interactive === 'bed') { this.useBed(hit.x, hit.y, hit.z); return; }
+      if (targetDef.interactive === 'door') { this.toggleDoor(hit.x, hit.y, hit.z); return; }
     }
 
     if (!stack) { if (hit) UI.toast('손에 든 블록이 없어요', 1200); return; }
     // food works anywhere, not only when you are pointing at a block
     if (this.tryEat(stack)) return;
     if (stack.id === Items.BOAT) { this.useBoat(sx, sy); return; }
+    if (stack.id === Items.BUCKET || stack.id === Items.WATER_BUCKET || stack.id === Items.LAVA_BUCKET) {
+      this.useBucket(sx, sy, stack);
+      return;
+    }
     if (!hit) return;
     if (this.tryFarm(hit, stack)) return;
+    if (this.placeShaped(hit, stack)) return;
     if (!Items.isBlock(stack.id)) { UI.toast(Items.name(stack.id) + '은(는) 설치할 수 없어요', 1400); return; }
 
     // tall grass is simply replaced, like Minecraft
@@ -1146,6 +1177,138 @@
   };
 
   Game.myName = function () { return Net.active ? Net.name : 'me'; };
+
+  // ------------------------------------------------------------ shaped blocks
+  // after something is placed from the hand
+  Game.placed = function (id) {
+    Sound.place(id);
+    Hand.swing();
+    if (this.mode === 'survival') this.inventory.consumeSelected();
+    else UI.renderHotbar();
+  };
+
+  Game.freeCell = function (x, y, z) {
+    const d = B.byId[this.world.getBlock(x, y, z)];
+    return d.id === B.AIR || d.liquid || d.replaceable;
+  };
+
+  Game.placeShaped = function (hit, stack) {
+    const w = this.world;
+    const id = stack.id;
+    const hd = B.byId[hit.id];
+    let x = hit.x + hit.nx, y = hit.y + hit.ny, z = hit.z + hit.nz;
+    if (hd.replaceable && !hd.liquid) { x = hit.x; y = hit.y; z = hit.z; }
+
+    // a door is two blocks tall and opens away from you
+    if (id === Items.OAK_DOOR) {
+      if (!this.freeCell(x, y, z) || !this.freeCell(x, y + 1, z)) return true;
+      const under = B.byId[w.getBlock(x, y - 1, z)];
+      if (!under.solid || under.door) return true;
+      if (this.intersectsPlayer(x, y, z) || this.intersectsPlayer(x, y + 1, z)) return true;
+      const f = this.facing();
+      this.world.setBlock(x, y + 1, z, B.DOOR + 8 + f * 2);   // upper first, so the lower is supported
+      this.changeBlock(x, y, z, B.DOOR + f * 2);
+      this.changeBlock(x, y + 1, z, B.DOOR + 8 + f * 2);
+      this.placed(B.PLANKS);
+      return true;
+    }
+    if (!Items.isBlock(id)) return false;
+    const def = B.byId[id];
+
+    // slabs: top or bottom half by where you aim, two of a kind make a block
+    if (def.slab) {
+      const fam = def.family;
+      if (hd.slab && hd.family === fam &&
+          ((hd.slab === 'bottom' && hit.ny === 1) || (hd.slab === 'top' && hit.ny === -1))) {
+        this.changeBlock(hit.x, hit.y, hit.z, hd.full);
+        this.placed(hd.full);
+        return true;
+      }
+      const td = B.byId[w.getBlock(x, y, z)];
+      if (td.slab && td.family === fam) {
+        this.changeBlock(x, y, z, td.full);
+        this.placed(td.full);
+        return true;
+      }
+      if (!this.freeCell(x, y, z)) return true;
+      let top;
+      if (hit.ny === -1) top = true;
+      else if (hit.ny === 1) top = false;
+      else top = hit.py !== undefined && (hit.py - Math.floor(hit.py)) > 0.5;
+      const sid = top ? fam + 3 : fam;
+      if (this.intersectsPlayer(x, y, z)) return true;
+      this.changeBlock(x, y, z, sid);
+      this.placed(sid);
+      return true;
+    }
+
+    // stairs climb away from you
+    if (def.stairs !== undefined) {
+      if (!this.freeCell(x, y, z) || this.intersectsPlayer(x, y, z)) return true;
+      const sid = def.family + this.facing();
+      this.changeBlock(x, y, z, sid);
+      this.placed(sid);
+      return true;
+    }
+
+    // ladders go on walls, against the face you touched
+    if (def.ladder !== undefined) {
+      if (hit.ny !== 0 || !hd.opaque || !this.freeCell(x, y, z)) return true;
+      const f = hit.nz === 1 ? 0 : hit.nx === -1 ? 1 : hit.nz === -1 ? 2 : 3;
+      this.changeBlock(x, y, z, B.LADDER + f);
+      this.placed(B.LADDER);
+      return true;
+    }
+    return false;
+  };
+
+  Game.toggleDoor = function (x, y, z) {
+    const d = B.byId[this.world.getBlock(x, y, z)];
+    if (!d.door) return;
+    const lowY = d.door.upper ? y - 1 : y;
+    for (const yy of [lowY, lowY + 1]) {
+      const id = this.world.getBlock(x, yy, z);
+      if (B.byId[id].door) this.world.setBlock(x, yy, z, id ^ 1);
+    }
+    // registered after both halves flip, so neither half sees the other missing
+    for (const yy of [lowY, lowY + 1]) {
+      const id = this.world.getBlock(x, yy, z);
+      if (B.byId[id].door) { this.registerEdit(x, yy, z, id); Net.sendEdit(x, yy, z, id); }
+    }
+    Sound.door();
+    Hand.swing();
+  };
+
+  // --------------------------------------------------------------- buckets
+  Game.useBucket = function (sx, sy, stack) {
+    const ray = this.rayFrom(sx, sy).ray;
+    const hit = this.world.raycast(ray.origin, ray.direction, REACH, true);
+    if (!hit) return;
+    const inv = this.inventory;
+    const hd = B.byId[hit.id];
+    const give = (id) => {
+      if (this.mode !== 'survival') return;
+      if (stack.count > 1) { stack.count--; if (inv.add(id, 1) < 1) this.spawnDropAtPlayer(id, 1); }
+      else inv.slots[inv.selected] = { id, count: 1 };
+      inv.changed();
+    };
+    if (stack.id === Items.BUCKET) {
+      if (!hd.fluid || hd.level !== 0) return;
+      this.changeBlock(hit.x, hit.y, hit.z, B.AIR);
+      give(hd.fluid === 'water' ? Items.WATER_BUCKET : Items.LAVA_BUCKET);
+      Sound.bucket(hd.fluid === 'lava');
+      Hand.swing();
+      return;
+    }
+    let x = hit.x + hit.nx, y = hit.y + hit.ny, z = hit.z + hit.nz;
+    if (hd.fluid || hd.replaceable) { x = hit.x; y = hit.y; z = hit.z; }
+    if (!this.freeCell(x, y, z)) return;
+    const lava = stack.id === Items.LAVA_BUCKET;
+    this.changeBlock(x, y, z, lava ? B.LAVA : B.WATER);
+    give(Items.BUCKET);
+    Sound.bucket(lava);
+    Hand.swing();
+  };
 
   Game.mobInside = function (x, y, z) {
     for (const m of Mobs.list) {
@@ -1637,6 +1800,10 @@
     const stack = this.inventory.selectedStack();
     const toolDef = stack ? Items.get(stack.id) : null;
     if (!this.changeBlock(x, y, z, B.AIR)) return;
+    if (B.byId[id].door && B.byId[id].door.upper) {
+      const low = this.world.getBlock(x, y - 1, z);
+      if (B.byId[low].door) this.popBlock(x, y - 1, z, low);
+    }
     Sound.breakBlock(id);
     Entities.burst(x + 0.5, y + 0.5, z + 0.5, id, 14);
 
@@ -1923,6 +2090,7 @@
       this.updateEating(dt);
       this.updateDrops(dt);
       this.updateCrops(dt);
+      Fluids.update(dt, this);
       Entities.update(dt, input);
     } else {
       Entities.updateParticles(dt);
@@ -1957,7 +2125,8 @@
 
     UI.renderStats(p);
     UI.setOverlay('damageOverlay', p.hurtFlash > 0 ? p.hurtFlash * 0.9 : 0);
-    UI.setOverlay('waterOverlay', p.headInWater ? 0.35 : 0);
+    UI.setOverlay('waterOverlay', p.headInWater && !p.headInLava ? 0.35 : 0);
+    UI.setOverlay('lavaOverlay', p.headInLava ? 0.85 : (p.burning > 0 ? 0.25 + Math.sin(performance.now() / 60) * 0.08 : 0));
     if (this.debugVisible()) {
       const l = this.world.lightAt(Math.floor(p.pos.x), Math.floor(p.pos.y + 0.5), Math.floor(p.pos.z));
       UI.setDebug([

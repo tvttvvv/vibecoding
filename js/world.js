@@ -37,13 +37,29 @@
   }
 
   let OPAQUE = null, LIQUID = null, FACE_TILE_OF = null, TILE_UV = null;
-  let CROSS = null, BHEIGHT = null;
+  let CROSS = null, BHEIGHT = null, BOXES = null, LTOP = null, LAVAF = null, FLUIDK = null;
   function buildLookups() {
     const n = B.byId.length;
     OPAQUE = new Uint8Array(n);
     LIQUID = new Uint8Array(n);
     CROSS = new Uint8Array(n);
     BHEIGHT = new Float32Array(n);
+    BOXES = new Array(n).fill(null);
+    LTOP = new Float32Array(n);
+    LAVAF = new Uint8Array(n);
+    FLUIDK = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      const d = B.byId[i];
+      if (!d) continue;
+      if (d.render === 'boxes') BOXES[i] = d.boxes;
+      if (d.fluid) {
+        FLUIDK[i] = d.fluid === 'water' ? 1 : 2;
+        LAVAF[i] = d.fluid === 'lava' ? 1 : 0;
+        // a source stands at 7/8 of a block, each flowing step a little lower
+        const l = d.level || 0;
+        LTOP[i] = l === 0 || l === 8 ? 0.875 : (8 - l) / 8 * 0.875;
+      }
+    }
     FACE_TILE_OF = new Uint16Array(n * 6);
     for (let i = 0; i < n; i++) {
       if (!B.byId[i]) continue;
@@ -63,6 +79,7 @@
     }
   }
 
+  const cornerH = new Float32Array(4);
   let capFaces = 0;
   let sPos = null, sUv = null, sCol = null, sIdx = null;
   let lPos = null, lUv = null, lCol = null, lIdx = null;
@@ -261,7 +278,8 @@
             // no caves right under a lake or the sea: they would sit under a
             // ceiling of water that has nowhere to go
             const wet = surfaceY < SEA_LEVEL + 2 && depth < 6;
-            if (y > 3 && depth > 0 && !wet && caveSample(lx, y, lz)) id = B.AIR;
+            // the deepest caves have lava floors, as Minecraft's do
+            if (y > 3 && depth > 0 && !wet && caveSample(lx, y, lz)) id = y <= 7 ? B.LAVA : B.AIR;
           }
 
           if (y === 0) id = B.BEDROCK;
@@ -469,6 +487,40 @@
   World.prototype.markDirty = function (cx, cz) {
     const c = this.chunks.get(this.key(cx, cz));
     if (c && c.generated) c.dirty = true;
+  };
+
+  // Collision against the true shape of blocks. Given a box already moved
+  // along one axis, returns the face of the nearest obstacle it now overlaps
+  // on that axis (its min when moving +, its max when moving -), or null.
+  const FULL_BOX = [[0, 0, 0, 1, 1, 1]];
+  World.prototype.collideLimit = function (x0, y0, z0, x1, y1, z1, axis, amount) {
+    const E = 1e-6;
+    let limit = null;
+    const cx0 = Math.floor(x0), cx1 = Math.floor(x1);
+    const cy0 = Math.floor(y0), cy1 = Math.floor(y1);
+    const cz0 = Math.floor(z0), cz1 = Math.floor(z1);
+    for (let x = cx0; x <= cx1; x++) {
+      for (let y = cy0; y <= cy1; y++) {
+        for (let z = cz0; z <= cz1; z++) {
+          const id = this.getBlock(x, y, z);
+          if (id === B.AIR) continue;
+          const d = B.byId[id];
+          if (!d.solid) continue;
+          const boxes = d.boxes || FULL_BOX;
+          for (let i = 0; i < boxes.length; i++) {
+            const b = boxes[i];
+            const bx0 = x + b[0], by0 = y + b[1], bz0 = z + b[2];
+            const bx1 = x + b[3], by1 = y + b[4], bz1 = z + b[5];
+            if (x0 >= bx1 - E || x1 <= bx0 + E || y0 >= by1 - E || y1 <= by0 + E || z0 >= bz1 - E || z1 <= bz0 + E) continue;
+            const face = amount > 0
+              ? (axis === 'x' ? bx0 : axis === 'y' ? by0 : bz0)
+              : (axis === 'x' ? bx1 : axis === 'y' ? by1 : bz1);
+            if (limit === null || (amount > 0 ? face < limit : face > limit)) limit = face;
+          }
+        }
+      }
+    }
+    return limit;
   };
 
   World.prototype.surfaceY = function (x, z) {
@@ -713,7 +765,6 @@
 
           const isLiquid = LIQUID[id];
           const pHere = regionIndex(x, y, z);
-          const waterTopDrop = isLiquid && pad[pHere + SY] !== id ? 0.125 : 0;
 
           // torches, grass and flowers: two crossed quads drawn from both sides,
           // lit by the light in their own cell
@@ -751,7 +802,79 @@
             continue;
           }
 
+          // doors, stairs, slabs, ladders: a few boxes, each face textured with
+          // the matching part of the tile so nothing looks stretched
+          if (BOXES[id]) {
+            const boxes = BOXES[id];
+            for (let bi = 0; bi < boxes.length; bi++) {
+              const bx = boxes[bi];
+              for (let f = 0; f < 6; f++) {
+                const f3 = f * 3;
+                const nx = FACE_N[f3], ny = FACE_N[f3 + 1], nz = FACE_N[f3 + 2];
+                const onEdge = (nx === 1 && bx[3] === 1) || (nx === -1 && bx[0] === 0) ||
+                  (ny === 1 && bx[4] === 1) || (ny === -1 && bx[1] === 0) ||
+                  (nz === 1 && bx[5] === 1) || (nz === -1 && bx[2] === 0);
+                const pNb = pHere + ny * SY + nz * SZ + nx;
+                if (onEdge && OPAQUE[pad[pNb]]) continue;
+                if (sVert + 4 > capFaces * 4) ensureScratch(capFaces * 2);
+                const lc = onEdge ? pNb : pHere;
+                const ls = skyL[lc] / 15, lb = blkL[lc] / 15;
+                const tile = FACE_TILE_OF[id * 6 + f] * 4;
+                const u0 = TILE_UV[tile], u1 = TILE_UV[tile + 1];
+                const v0 = TILE_UV[tile + 2], v1 = TILE_UV[tile + 3];
+                const tux = FACE_TU[f3], tuy = FACE_TU[f3 + 1], tuz = FACE_TU[f3 + 2];
+                const tvx = FACE_TV[f3], tvy = FACE_TV[f3 + 1], tvz = FACE_TV[f3 + 2];
+                const vS = sVert;
+                let vp = vS * 3, vu = vS * 2;
+                for (let ci = 0; ci < 4; ci++) {
+                  const c3 = f * 12 + ci * 3;
+                  const px = FACE_CORNER[c3] ? bx[3] : bx[0];
+                  const py = FACE_CORNER[c3 + 1] ? bx[4] : bx[1];
+                  const pz = FACE_CORNER[c3 + 2] ? bx[5] : bx[2];
+                  const uPos = tux * px + tuy * py + tuz * pz;
+                  const vPos = tvx * px + tvy * py + tvz * pz;
+                  const uf = (tux + tuy + tuz) < 0 ? 1 + uPos : uPos;
+                  const vf = (tvx + tvy + tvz) < 0 ? 1 + vPos : vPos;
+                  sPos[vp] = x + px; sPos[vp + 1] = y + py; sPos[vp + 2] = z + pz;
+                  sUv[vu] = u0 + (u1 - u0) * uf;
+                  sUv[vu + 1] = v0 + (v1 - v0) * vf;
+                  sCol[vp] = FACE_SHADE[f]; sCol[vp + 1] = ls; sCol[vp + 2] = lb;
+                  vp += 3; vu += 2;
+                }
+                const ti = sTri * 3;
+                sIdx[ti] = vS; sIdx[ti + 1] = vS + 1; sIdx[ti + 2] = vS + 2;
+                sIdx[ti + 3] = vS + 2; sIdx[ti + 4] = vS + 1; sIdx[ti + 5] = vS + 3;
+                sVert += 4; sTri += 2;
+              }
+            }
+            continue;
+          }
+
           const bh = BHEIGHT[id];
+          // a fluid's surface sits lower the further it has run, and full
+          // height under more of the same fluid
+          const liquidTop = isLiquid ? (FLUIDK[pad[pHere + SY]] === FLUIDK[id] ? 1 : LTOP[id]) : 1;
+          // lava is not see-through: it goes in the opaque mesh
+          const inLiquidMesh = isLiquid && !LAVAF[id];
+          // Minecraft's sloped fluid surface: each top corner is the average
+          // height of the cells of the same fluid that share it
+          if (isLiquid) {
+            const fk = FLUIDK[id];
+            for (let c = 0; c < 4; c++) {
+              const cxo = c & 1, czo = c >> 1;
+              let sum = 0, n = 0, full = false;
+              for (let dz = czo - 1; dz <= czo; dz++) {
+                for (let dx = cxo - 1; dx <= cxo; dx++) {
+                  const pi = pHere + dz * SZ + dx;
+                  if (FLUIDK[pad[pi]] !== fk) continue;
+                  if (FLUIDK[pad[pi + SY]] === fk) { full = true; break; }
+                  sum += LTOP[pad[pi]]; n++;
+                }
+                if (full) break;
+              }
+              cornerH[c] = full ? 1 : (n ? sum / n : liquidTop);
+            }
+          }
 
           for (let f = 0; f < 6; f++) {
             const f3 = f * 3;
@@ -760,14 +883,18 @@
             const nb = pad[pNb];
             // a shortened block only hides its underside behind a neighbour
             if (OPAQUE[nb] && (bh >= 1 || f === 3)) continue;
-            if (isLiquid) { if (LIQUID[nb]) continue; }
+            // between two cells of the same fluid only the step shows: the side
+            // of the higher one, down to where its lower neighbour's surface is
+            // the shared corners make one continuous surface, so faces between
+            // two cells of the same fluid are never seen
+            if (isLiquid && FLUIDK[nb] === FLUIDK[id]) continue;
             else if (nb === id && !OPAQUE[id] && id !== B.LEAVES) continue;
 
-            if ((isLiquid ? lVert : sVert) + 4 > capFaces * 4) ensureScratch(capFaces * 2);
-            const P = isLiquid ? lPos : sPos;
-            const U = isLiquid ? lUv : sUv;
-            const C = isLiquid ? lCol : sCol;
-            const I = isLiquid ? lIdx : sIdx;
+            if ((inLiquidMesh ? lVert : sVert) + 4 > capFaces * 4) ensureScratch(capFaces * 2);
+            const P = inLiquidMesh ? lPos : sPos;
+            const U = inLiquidMesh ? lUv : sUv;
+            const C = inLiquidMesh ? lCol : sCol;
+            const I = inLiquidMesh ? lIdx : sIdx;
 
             const tile = FACE_TILE_OF[id * 6 + f] * 4;
             const u0 = TILE_UV[tile], u1 = TILE_UV[tile + 1];
@@ -781,7 +908,7 @@
 
             // a short block's side faces look sideways from inside its own cell
             const lightCell = (bh < 1 && f !== 3) ? pHere : pNb;
-            const vStart = isLiquid ? lVert : sVert;
+            const vStart = inLiquidMesh ? lVert : sVert;
             let vp = vStart * 3, vu = vStart * 2;
             let ao0 = 0, ao1 = 0, ao2 = 0, ao3 = 0;
 
@@ -806,7 +933,7 @@
               const c3 = f * 12 + ci * 3;
               const cy = FACE_CORNER[c3 + 1];
               P[vp] = x + FACE_CORNER[c3];
-              P[vp + 1] = y + cy * bh - (waterTopDrop && cy === 1 ? waterTopDrop : 0);
+              P[vp + 1] = y + (cy ? (isLiquid ? cornerH[FACE_CORNER[c3] + FACE_CORNER[c3 + 2] * 2] : bh) : 0);
               P[vp + 2] = z + FACE_CORNER[c3 + 2];
 
               U[vu] = (ci === 1 || ci === 3) ? u1 : u0;
@@ -819,7 +946,7 @@
               vp += 3; vu += 2;
             }
 
-            let ti = (isLiquid ? lTri : sTri) * 3;
+            let ti = (inLiquidMesh ? lTri : sTri) * 3;
             if (ao0 + ao3 > ao1 + ao2) {
               I[ti] = vStart; I[ti + 1] = vStart + 1; I[ti + 2] = vStart + 3;
               I[ti + 3] = vStart; I[ti + 4] = vStart + 3; I[ti + 5] = vStart + 2;
@@ -828,7 +955,7 @@
               I[ti + 3] = vStart + 2; I[ti + 4] = vStart + 1; I[ti + 5] = vStart + 3;
             }
 
-            if (isLiquid) { lVert += 4; lTri += 2; } else { sVert += 4; sTri += 2; }
+            if (inLiquidMesh) { lVert += 4; lTri += 2; } else { sVert += 4; sTri += 2; }
           }
         }
       }

@@ -161,28 +161,11 @@
     if (!amount) return false;
     const hw = this.def.hw, h = this.def.h;
     if (axis === 'x') this.x += amount; else if (axis === 'z') this.z += amount; else this.y += amount;
-
-    const x0 = Math.floor(this.x - hw), x1 = Math.floor(this.x + hw);
-    const y0 = Math.floor(this.y + 0.001), y1 = Math.floor(this.y + h - 0.001);
-    const z0 = Math.floor(this.z - hw), z1 = Math.floor(this.z + hw);
-
-    let hit = false, limit = 0;
-    for (let bx = x0; bx <= x1; bx++) {
-      for (let by = y0; by <= y1; by++) {
-        for (let bz = z0; bz <= z1; bz++) {
-          if (!solidAt(world, bx, by, bz)) continue;
-          const cell = axis === 'x' ? bx : axis === 'y' ? by : bz;
-          let bound;
-          if (amount > 0) bound = cell - (axis === 'y' ? h : hw) - 0.001;
-          else bound = cell + 1 + (axis === 'y' ? 0 : hw) + 0.001;
-          if (!hit) limit = bound;
-          else if (amount > 0 ? bound < limit : bound > limit) limit = bound;
-          hit = true;
-        }
-      }
-    }
-    if (!hit) return false;
-    if (axis === 'x') this.x = limit; else if (axis === 'z') this.z = limit; else this.y = limit;
+    const limit = world.collideLimit(this.x - hw, this.y, this.z - hw, this.x + hw, this.y + h, this.z + hw, axis, amount);
+    if (limit === null) return false;
+    const ext = axis === 'y' ? h : hw;
+    const v = amount > 0 ? limit - ext - 0.001 : limit + (axis === 'y' ? 0 : hw) + 0.001;
+    if (axis === 'x') this.x = v; else if (axis === 'z') this.z = v; else this.y = v;
     if (axis === 'y') {
       if (amount < 0) this.onGround = true;
       this.vy = 0;
@@ -408,6 +391,9 @@
         this.remove(m);
         continue;
       }
+
+      // lava burns anything that wanders into it
+      if (B.byId[world.getBlock(Math.floor(m.x), Math.floor(m.y + 0.1), Math.floor(m.z))].fluid === 'lava') m.hurt(dt * 8);
 
       // daylight is fatal to the undead unless they found shade
       if (m.def.burns && day && skyOpen(world, Math.floor(m.x), Math.floor(m.y), Math.floor(m.z))) {

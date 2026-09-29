@@ -97,6 +97,111 @@
   // torches need something to stand on too
   byId[TORCH].needsGround = true;
 
+  // ---- shaped blocks --------------------------------------------------------
+  // Not every block is a cube. These carry a list of boxes (0..1 inside the
+  // cell) that the mesher draws and that the player collides with. Each state
+  // (facing, open, top/bottom) is its own id, since blocks carry no metadata.
+  // Facing: 0 north (-z), 1 east (+x), 2 south (+z), 3 west (-x).
+  const T3 = 3 / 16;
+  function shaped(id, name, tiles, boxes, opts) {
+    def(id, name, Object.assign({
+      top: tiles.top, side: tiles.side, bottom: tiles.bottom || tiles.top,
+      opaque: false, render: 'boxes', boxes
+    }, opts));
+    return id;
+  }
+
+  const SLAB_FAMILIES = [
+    { name: '참나무 반블록', tile: T.planks, full: PLANKS, hardness: 2, tool: 'axe', tier: 0 },
+    { name: '조약돌 반블록', tile: T.cobblestone, full: COBBLESTONE, hardness: 2, tool: 'pickaxe', tier: 1 },
+    { name: '돌 반블록', tile: T.stone, full: STONE, hardness: 2, tool: 'pickaxe', tier: 1 }
+  ];
+  const SLABS = [];
+  SLAB_FAMILIES.forEach((f, i) => {
+    const bottom = 36 + i, top = 39 + i;
+    const base = { hardness: f.hardness, tool: f.tool, tier: f.tier, drop: bottom };
+    shaped(bottom, f.name, { top: f.tile, side: f.tile }, [[0, 0, 0, 1, 0.5, 1]], Object.assign({ slab: 'bottom', family: bottom, full: f.full }, base));
+    shaped(top, f.name, { top: f.tile, side: f.tile }, [[0, 0.5, 0, 1, 1, 1]], Object.assign({ slab: 'top', family: bottom, full: f.full }, base));
+    SLABS.push(bottom);
+  });
+
+  function stairBoxes(f) {
+    const back = [[0, 0.5, 0, 1, 1, 0.5], [0.5, 0.5, 0, 1, 1, 1], [0, 0.5, 0.5, 1, 1, 1], [0, 0.5, 0, 0.5, 1, 1]][f];
+    return [[0, 0, 0, 1, 0.5, 1], back];
+  }
+  const STAIR_FAMILIES = [
+    { name: '참나무 계단', tile: T.planks, hardness: 2, tool: 'axe', tier: 0 },
+    { name: '조약돌 계단', tile: T.cobblestone, hardness: 2, tool: 'pickaxe', tier: 1 }
+  ];
+  const STAIRS = [];
+  STAIR_FAMILIES.forEach((fam, i) => {
+    const first = 42 + i * 4;
+    for (let f = 0; f < 4; f++) {
+      shaped(first + f, fam.name, { top: fam.tile, side: fam.tile }, stairBoxes(f),
+        { hardness: fam.hardness, tool: fam.tool, tier: fam.tier, stairs: f, family: first, drop: first });
+    }
+    STAIRS.push(first);
+  });
+
+  // doors: the closed panel sits on the side nearest whoever placed it, and
+  // opening swings it a quarter turn
+  function panel(f) {
+    return [[0, 0, 1 - T3, 1, 1, 1], [0, 0, 0, T3, 1, 1], [0, 0, 0, 1, 1, T3], [1 - T3, 0, 0, 1, 1, 1]][f];
+  }
+  const DOOR = 50;
+  for (let half = 0; half < 2; half++) {
+    for (let f = 0; f < 4; f++) {
+      for (let open = 0; open < 2; open++) {
+        const id = DOOR + half * 8 + f * 2 + open;
+        const box = panel(open ? (f + 1) % 4 : f);
+        const tile = half ? T.door_upper : T.door_lower;
+        shaped(id, '참나무 문', { top: T.planks, side: tile }, [box], {
+          hardness: 3, tool: 'axe', door: { facing: f, open: !!open, upper: !!half },
+          interactive: 'door', drop: 0, needsGround: true
+        });
+      }
+    }
+  }
+
+  // ladders hang on the wall at their back; you walk through them and climb
+  function ladderBox(f) {
+    const t = 1 / 16;
+    return [[0, 0, 0, 1, 1, t], [1 - t, 0, 0, 1, 1, 1], [0, 0, 1 - t, 1, 1, 1], [0, 0, 0, t, 1, 1]][f];
+  }
+  const LADDER = 66;
+  for (let f = 0; f < 4; f++) {
+    shaped(LADDER + f, '사다리', { top: T.ladder, side: T.ladder }, [ladderBox(f)], {
+      solid: false, hardness: 0.4, tool: 'axe', climbable: true, ladder: f, family: LADDER, drop: LADDER,
+      needsGround: true
+    });
+  }
+
+  // ---- fluids: a source and its flowing levels ------------------------------
+  // Level 1 is next to the source, 7 the thin edge; 8 is water falling straight
+  // down. Lava runs shorter: levels 2, 4 and 6 stand in for its steps.
+  byId[WATER].fluid = 'water';
+  byId[WATER].level = 0;
+  const WATER_FLOW = 70;           // 70..76 levels 1-7, 77 falling
+  for (let l = 1; l <= 8; l++) {
+    simple(WATER_FLOW + l - 1, '물', T.water, {
+      opaque: false, solid: false, liquid: true, hardness: Infinity, drop: 0,
+      fluid: 'water', level: l, replaceable: true
+    });
+  }
+  byId[WATER].replaceable = true;
+  const LAVA = 78;                 // source; 79..81 flowing, 82 falling
+  simple(LAVA, '용암', T.lava, {
+    opaque: false, solid: false, liquid: true, hardness: Infinity, drop: 0,
+    fluid: 'lava', level: 0, light: 15, replaceable: true
+  });
+  [2, 4, 6, 8].forEach((l, i) => {
+    simple(LAVA + 1 + i, '용암', T.lava, {
+      opaque: false, solid: false, liquid: true, hardness: Infinity, drop: 0,
+      fluid: 'lava', level: l, light: 15, replaceable: true
+    });
+  });
+  const OBSIDIAN = simple(83, '흑요석', T.obsidian, { hardness: 50, tool: 'pickaxe', tier: 4 });
+
   byId[STONE].drop = COBBLESTONE;
   byId[GRASS].drop = DIRT;
   byId[LEAVES].drop = 0;
@@ -142,7 +247,8 @@
     LOG, LEAVES, PLANKS, GLASS, SNOW, SNOW_GRASS, CACTUS,
     COAL_ORE, IRON_ORE, GOLD_ORE, DIAMOND_ORE,
     CRAFTING_TABLE, FURNACE, CHEST, TORCH, WOOL, BED, FARMLAND,
-    TALL_GRASS, DANDELION, POPPY, BEDROCK
+    TALL_GRASS, DANDELION, POPPY,
+    SLABS[0], SLABS[1], SLABS[2], STAIRS[0], STAIRS[1], LADDER, OBSIDIAN, BEDROCK
   ];
 
   global.Blocks = {
@@ -151,6 +257,7 @@
     DIAMOND_ORE, WATER, SNOW, SNOW_GRASS, CACTUS, GLASS,
     CRAFTING_TABLE, FURNACE, FURNACE_LIT, TORCH, WOOL, BED,
     TALL_GRASS, DANDELION, POPPY, FARMLAND, WHEAT_0, WHEAT_1, WHEAT_2, WHEAT_3, CHEST,
+    SLABS, STAIRS, DOOR, LADDER, WATER_FLOW, LAVA, OBSIDIAN,
     byId, tileFor, isOpaque, isSolid, isLiquid, mineTime, canHarvest, iconFor, creativeList
   };
 })(window);

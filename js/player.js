@@ -102,32 +102,12 @@
   Player.prototype._moveAxis = function (world, axis, amount) {
     if (!amount) return;
     this.pos[axis] += amount;
-
-    const x0 = Math.floor(this.pos.x - HALF_W), x1 = Math.floor(this.pos.x + HALF_W);
-    const y0 = Math.floor(this.pos.y + EPS), y1 = Math.floor(this.pos.y + HEIGHT - EPS);
-    const z0 = Math.floor(this.pos.z - HALF_W), z1 = Math.floor(this.pos.z + HALF_W);
-
-    let hit = false, limit = 0;
-    for (let x = x0; x <= x1; x++) {
-      for (let y = y0; y <= y1; y++) {
-        for (let z = z0; z <= z1; z++) {
-          if (!solidAt(world, x, y, z)) continue;
-          const cell = axis === 'x' ? x : axis === 'y' ? y : z;
-          let bound;
-          if (amount > 0) {
-            bound = cell - (axis === 'y' ? HEIGHT : HALF_W) - EPS;
-            if (!hit || bound < limit) limit = bound;
-          } else {
-            bound = cell + 1 + (axis === 'y' ? 0 : HALF_W) + EPS;
-            if (!hit || bound > limit) limit = bound;
-          }
-          hit = true;
-        }
-      }
-    }
-
-    if (!hit) return;
-    this.pos[axis] = limit;
+    const limit = world.collideLimit(
+      this.pos.x - HALF_W, this.pos.y, this.pos.z - HALF_W,
+      this.pos.x + HALF_W, this.pos.y + HEIGHT, this.pos.z + HALF_W, axis, amount);
+    if (limit === null) return;
+    const ext = axis === 'y' ? HEIGHT : HALF_W;
+    this.pos[axis] = amount > 0 ? limit - ext - EPS : limit + (axis === 'y' ? 0 : HALF_W) + EPS;
     if (axis === 'y') {
       if (amount < 0) this.onGround = true;
       this.vel.y = 0;
@@ -135,6 +115,49 @@
       this.blocked = true;
       this.vel[axis] = 0;
     }
+  };
+
+  // Walking into a slab or a stair lifts you onto it, as Minecraft's 0.6
+  // block step does; a full block still needs the little auto-jump.
+  const STEP = 0.6;
+  Player.prototype._stepAxis = function (world, axis, amount, canStep) {
+    if (!amount) return;
+    const sx = this.pos.x, sy = this.pos.y, sz = this.pos.z;
+    const vAxis = this.vel[axis], vy = this.vel.y;
+    const wasBlocked = this.blocked;
+    this.blocked = false;
+    this._moveAxis(world, axis, amount);
+    if (!this.blocked || !canStep) { this.blocked = this.blocked || wasBlocked; return; }
+
+    const got1 = Math.abs(this.pos[axis] - (axis === 'x' ? sx : sz));
+    const ex = this.pos.x, ey = this.pos.y, ez = this.pos.z;
+    this.pos.x = sx; this.pos.y = sy; this.pos.z = sz;
+    this.vel[axis] = vAxis;
+    this._moveAxis(world, 'y', STEP);
+    const lifted = this.pos.y - sy;
+    this.blocked = false;
+    this._moveAxis(world, axis, amount);
+    const got2 = Math.abs(this.pos[axis] - (axis === 'x' ? sx : sz));
+    if (lifted > 0.05 && got2 > got1 + 1e-4) {
+      this.onGround = false;
+      this._moveAxis(world, 'y', -lifted - 0.01);
+      this.vel.y = 0;
+      return;
+    }
+    this.pos.x = ex; this.pos.y = ey; this.pos.z = ez;
+    this.vel[axis] = 0;
+    this.vel.y = vy;
+    this.blocked = true;
+  };
+
+  // anything climbable around the body: ladders
+  Player.prototype.onLadder = function (world) {
+    const x = Math.floor(this.pos.x), z = Math.floor(this.pos.z);
+    for (const dy of [0.1, 1.0]) {
+      const d = B.byId[world.getBlock(x, Math.floor(this.pos.y + dy), z)];
+      if (d && d.climbable) return true;
+    }
+    return false;
   };
 
   Player.prototype.update = function (dt, input, world) {
@@ -148,6 +171,8 @@
     // surface for a frame cannot hand back land speed and a land jump
     this.inWater = B.byId[feetBlock].liquid || B.byId[bodyBlock].liquid;
     this.headInWater = B.byId[eyeBlock].liquid;
+    this.inLava = B.byId[feetBlock].fluid === 'lava' || B.byId[bodyBlock].fluid === 'lava';
+    this.headInLava = B.byId[eyeBlock].fluid === 'lava';
 
     // sneaking: slow, crouched, and it will not walk you off an edge
     this.sneaking = !!input.sneak && !this.flying && !this.inWater;
@@ -162,6 +187,7 @@
     if (this.sneaking) this.sprinting = false;
     let speed;
     if (this.flying) speed = FLY_SPEED;
+    else if (this.inLava) speed = SWIM_SPEED * 0.45;
     else if (this.inWater) speed = SWIM_SPEED;
     else if (this.sneaking) speed = SNEAK_SPEED;
     else speed = this.sprinting ? SPRINT_SPEED : WALK_SPEED;
@@ -209,12 +235,23 @@
         if (this.vel.y < -MAX_FALL) this.vel.y = -MAX_FALL;
       }
 
+      // ladders: push against one or hold jump to climb, crouch to hang still,
+      // otherwise slide down slowly and safely
+      this.climbing = this.onLadder(world);
+      if (this.climbing) {
+        this.fallStartY = this.pos.y;
+        if (input.jump || input.move.y > 0.2) this.vel.y = 2.4;
+        else if (this.sneaking) this.vel.y = 0;
+        else this.vel.y = Math.max(this.vel.y, -2.2);
+      }
+
       const edgeGuard = this.sneaking && grounded;
+      const canStep = grounded && !this.inWater;
       const ox = this.pos.x;
-      this._moveAxis(world, 'x', this.vel.x * dt);
+      this._stepAxis(world, 'x', this.vel.x * dt, canStep);
       if (edgeGuard && !this.supported(world, this.pos.x, this.pos.z)) { this.pos.x = ox; this.vel.x = 0; }
       const oz = this.pos.z;
-      this._moveAxis(world, 'z', this.vel.z * dt);
+      this._stepAxis(world, 'z', this.vel.z * dt, canStep);
       if (edgeGuard && !this.supported(world, this.pos.x, this.pos.z)) { this.pos.z = oz; this.vel.z = 0; }
 
       const wasAirborne = this.vel.y < -0.1;
@@ -296,7 +333,22 @@
       return;
     }
 
-    if (this.headInWater) {
+    if (this.inLava) {
+      this._lavaTimer = (this._lavaTimer || 0) + dt;
+      if (this._lavaTimer >= 0.5) { this._lavaTimer = 0; this.hurt(4); }
+      this.burning = 3;
+    } else {
+      this._lavaTimer = 0.5;
+    }
+    // still on fire for a moment after climbing out
+    if (this.burning > 0 && !this.inLava) {
+      this.burning -= dt;
+      if (this.inWater) this.burning = 0;
+      this._fireTimer = (this._fireTimer || 0) + dt;
+      if (this._fireTimer >= 1) { this._fireTimer = 0; this.hurt(1, true); }
+    }
+
+    if (this.headInWater && !this.headInLava) {
       this.air -= dt;
       if (this.air <= 0) {
         this._drownTimer += dt;
