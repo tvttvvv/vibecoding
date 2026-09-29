@@ -7,12 +7,18 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>복셀 크래프트</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23795433'/><rect width='16' height='5' fill='%235d9c3c'/></svg>">
-<link rel="stylesheet" href="css/style.css?v=27">
+<link rel="stylesheet" href="css/style.css?v=28">
 <script>
 // GitHub Pages caches this page for ten minutes, so a new build can sit
 // unseen. Ask an uncached version file and reload once if we are behind.
 (function () {
-  var BUILD = 27;
+  var BUILD = 28;
+  window.VXL_BUILD = BUILD;
+  // the version on the title screen always matches the build that is running
+  document.addEventListener('DOMContentLoaded', function () {
+    var tag = document.getElementById('buildTag');
+    if (tag) tag.textContent = '버전 v' + BUILD;
+  });
   try {
     fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
       .then(function (r) { return r.json(); })
@@ -163,7 +169,7 @@
       <h1 class="gameTitle">복셀 크래프트</h1>
       <span id="splash" class="splash"></span>
     </div>
-    <p class="buildTag">버전 v21</p>
+    <p class="buildTag" id="buildTag">버전 v28</p>
 
     <div id="menuMain" class="menuPage">
       <p>무한 지형, 강과 바다, 숲과 사막, 동굴과 광석. 캐고, 만들고, 살아남으세요.</p>
@@ -211,31 +217,31 @@
 
 <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/store.js?v=27"></script>
-<script src="js/settings.js?v=27"></script>
-<script src="js/noise.js?v=27"></script>
-<script src="js/textures.js?v=27"></script>
-<script src="js/blocks.js?v=27"></script>
-<script src="js/items.js?v=27"></script>
-<script src="js/recipes.js?v=27"></script>
-<script src="js/enchant.js?v=27"></script>
-<script src="js/world.js?v=27"></script>
-<script src="js/villages.js?v=27"></script>
-<script src="js/fortress.js?v=27"></script>
-<script src="js/strongholds.js?v=27"></script>
-<script src="js/brewing.js?v=27"></script>
-<script src="js/player.js?v=27"></script>
-<script src="js/inventory.js?v=27"></script>
-<script src="js/net.js?v=27"></script>
-<script src="js/sound.js?v=27"></script>
-<script src="js/fluids.js?v=27"></script>
-<script src="js/redstone.js?v=27"></script>
-<script src="js/entities.js?v=27"></script>
-<script src="js/sky.js?v=27"></script>
-<script src="js/hand.js?v=27"></script>
-<script src="js/mobs.js?v=27"></script>
-<script src="js/controls.js?v=27"></script>
-<script src="js/ui.js?v=27"></script>
-<script src="js/game.js?v=27"></script>
+<script src="js/store.js?v=28"></script>
+<script src="js/settings.js?v=28"></script>
+<script src="js/noise.js?v=28"></script>
+<script src="js/textures.js?v=28"></script>
+<script src="js/blocks.js?v=28"></script>
+<script src="js/items.js?v=28"></script>
+<script src="js/recipes.js?v=28"></script>
+<script src="js/enchant.js?v=28"></script>
+<script src="js/world.js?v=28"></script>
+<script src="js/villages.js?v=28"></script>
+<script src="js/fortress.js?v=28"></script>
+<script src="js/strongholds.js?v=28"></script>
+<script src="js/brewing.js?v=28"></script>
+<script src="js/player.js?v=28"></script>
+<script src="js/inventory.js?v=28"></script>
+<script src="js/net.js?v=28"></script>
+<script src="js/sound.js?v=28"></script>
+<script src="js/fluids.js?v=28"></script>
+<script src="js/redstone.js?v=28"></script>
+<script src="js/entities.js?v=28"></script>
+<script src="js/sky.js?v=28"></script>
+<script src="js/hand.js?v=28"></script>
+<script src="js/mobs.js?v=28"></script>
+<script src="js/controls.js?v=28"></script>
+<script src="js/ui.js?v=28"></script>
+<script src="js/game.js?v=28"></script>
 </body>
 </html>
