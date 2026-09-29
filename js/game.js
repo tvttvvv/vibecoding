@@ -17,6 +17,9 @@
     survival: { code: 'VXOPEN1', seed: 1120480013, label: '공개 서버 · 서바이벌' },
     creative: { code: 'VXOPEN2', seed: 1734905287, label: '공개 서버 · 크리에이티브' }
   };
+  // rooms opened "on the list" take one of these codes, so the multiplayer
+  // menu can find them without any server of our own
+  const ROOM_SLOTS = ['VXROOM1', 'VXROOM2', 'VXROOM3', 'VXROOM4', 'VXROOM5', 'VXROOM6'];
 
   const SKY_DAY = new THREE.Color(0x88c6ff);
   const SKY_NIGHT = new THREE.Color(0x070b1c);
@@ -1189,8 +1192,14 @@
       },
       onPlayerJoin: (id, p) => { UI.addChat(null, p.name + ' 님이 참여했어요', true); UI.renderRoom(); },
       onPlayerLeave: (id, p) => { UI.addChat(null, (p ? p.name : '플레이어') + ' 님이 나갔어요', true); UI.renderRoom(); },
-      onDisconnect: () => { UI.toast('방 연결이 끊어졌어요', 4000); this.clearAvatars(); UI.renderRoom(); },
-      onHostClosed: () => { UI.toast('방장이 방을 닫았어요', 4000); this.clearAvatars(); UI.renderRoom(); }
+      // the host went away (closed the page, lost signal): come back to the
+      // room, and if nobody is holding it any more, carry it on as its host
+      onDisconnect: () => this.rejoinRoom(Net.code || this.roomCode, '방장과 연결이 끊어졌어요'),
+      onHostClosed: () => {
+        const code = Net.code || this.roomCode;
+        if (this.publicRoom(code) || this.isListedRoom(code)) { this.rejoinRoom(code, '방장이 나갔어요'); return; }
+        UI.toast('방장이 방을 닫았어요', 4000); this.clearAvatars(); UI.renderRoom();
+      }
     };
   };
 
@@ -1219,6 +1228,67 @@
       savedAt: saved ? saved.savedAt : 0
     });
     if (saved) UI.toast('저장해 둔 이 방의 세계를 불러왔어요', 3000);
+  };
+
+  Game.isListedRoom = function (code) { return ROOM_SLOTS.indexOf(code) !== -1; };
+
+  Game.rejoinRoom = function (code, why) {
+    this.clearAvatars();
+    UI.renderRoom();
+    if (!code || !this.started || this._rejoining) return;
+    this._rejoining = true;
+    const name = UI.playerName();
+    const mode = this.mode, seed = this.seed;
+    let tries = 0;
+    const fail = () => {
+      this._rejoining = false;
+      UI.toast('방에 다시 연결하지 못했어요. 혼자 계속할 수 있어요.', 4500);
+      UI.renderRoom();
+    };
+    const takeOver = () => {
+      const handlers = this.netHandlers();
+      handlers.onReady = () => {
+        this._rejoining = false;
+        UI.toast('방장이 없어서 내가 방을 이어서 열었어요. 다른 사람들도 곧 다시 들어와요.', 4500);
+        UI.renderRoom();
+      };
+      // someone else took it over a moment earlier: join theirs
+      handlers.onError = () => { if (tries < 6) setTimeout(attempt, 600 + Math.random() * 1200); else fail(); };
+      Net.createRoom(code, name, { seed, mode }, handlers);
+    };
+    const attempt = () => {
+      if (!this.started) { this._rejoining = false; return; }
+      tries++;
+      const handlers = this.netHandlers();
+      handlers.onWelcome = (msg) => { this._rejoining = false; this.onWelcome(msg, code); };
+      handlers.onError = (err) => {
+        if (err === 'peer-unavailable' || err === 'timeout') takeOver();
+        else if (tries < 6) setTimeout(attempt, 1200 + Math.random() * 1500);
+        else fail();
+      };
+      Net.joinRoom(code, name, handlers);
+    };
+    UI.toast((why || '연결이 끊어졌어요') + ' · 다시 연결하는 중...', 3000);
+    // everyone left behind tries at a slightly different moment, so one of
+    // them opens the room and the rest find it
+    setTimeout(attempt, 300 + Math.random() * 2700);
+  };
+
+  // what the multiplayer menu shows: the public servers and listed rooms that are open
+  Game.scanServers = function (cb) {
+    const codes = Object.keys(PUBLIC_ROOMS).map((m) => PUBLIC_ROOMS[m].code).concat(ROOM_SLOTS);
+    Net.probe(codes, cb);
+  };
+
+  // open a room on the list: the first free slot
+  Game.hostListedRoom = function (mode, seedText, name) {
+    UI.setNetStatus('빈 자리를 찾는 중...');
+    Net.probe(ROOM_SLOTS, (found) => {
+      const code = ROOM_SLOTS.find((c) => !found[c]);
+      if (!code) { UI.setNetStatus('목록에 자리가 없어요. 비공개 방으로 만들어 보세요.'); return; }
+      UI.setNetStatus('방을 여는 중...');
+      this.hostRoom(mode, seedText, code, name);
+    });
   };
 
   Game.publicRoom = function (code) {
@@ -3538,6 +3608,7 @@
   };
 
   Game.PUBLIC_ROOMS = PUBLIC_ROOMS;
+  Game.ROOM_SLOTS = ROOM_SLOTS;
 
   global.Game = Game;
   window.addEventListener('load', () => Game.boot());

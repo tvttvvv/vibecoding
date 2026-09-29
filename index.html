@@ -46,12 +46,12 @@
 }
 </script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23795433'/><rect width='16' height='5' fill='%235d9c3c'/></svg>">
-<link rel="stylesheet" href="css/style.css?v=28">
+<link rel="stylesheet" href="css/style.css?v=29">
 <script>
 // GitHub Pages caches this page for ten minutes, so a new build can sit
 // unseen. Ask an uncached version file and reload once if we are behind.
 (function () {
-  var BUILD = 28;
+  var BUILD = 29;
   window.VXL_BUILD = BUILD;
   // the version on the title screen always matches the build that is running
   document.addEventListener('DOMContentLoaded', function () {
@@ -215,7 +215,7 @@
       <h1 class="gameTitle">복셀 크래프트</h1>
       <span id="splash" class="splash"></span>
     </div>
-    <p class="buildTag"><span class="maker">tvttvvv 복셀 크래프트</span> · <span id="buildTag">버전 v28</span></p>
+    <p class="buildTag"><span class="maker">tvttvvv 복셀 크래프트</span> · <span id="buildTag">버전 v29</span></p>
 
     <div id="menuMain" class="menuPage">
       <p>무한 지형, 강과 바다, 숲과 사막, 동굴과 광석. 캐고, 만들고, 살아남으세요.</p>
@@ -230,21 +230,23 @@
 
     <div id="menuMulti" class="menuPage hidden">
       <input id="nameInput" type="text" placeholder="닉네임" maxlength="12" autocomplete="off">
-      <button class="bigBtn" data-public-mode="survival">공개 서버 입장 · 서바이벌</button>
-      <button class="bigBtn alt" data-public-mode="creative">공개 서버 입장 · 크리에이티브</button>
-      <p>공개 서버는 코드 없이 누구나 들어올 수 있고, 서로 PVP도 됩니다. 아무도 없으면 내가 방장이 됩니다.</p>
+      <p class="listHead">지금 열려 있는 서버</p>
+      <div id="serverList"></div>
+      <button id="btnRefreshServers" class="bigBtn ghost">서버 목록 새로고침</button>
+      <p>공개 서버는 코드 없이 누구나 들어올 수 있고, 서로 PVP도 됩니다. 아무도 없으면 내가 방장이 되고, 방장이 나가도 남은 사람이 이어서 엽니다.</p>
       <p class="menuNote">내 인벤토리와 내가 본 세계는 이 기기에 저장돼서, 나갔다가 다시 들어오면 이어서 할 수 있습니다. 서버가 없으므로 방을 먼저 연 사람의 기록이 그 방의 세계가 됩니다.</p>
       <div class="menuDivider"></div>
-      <button id="btnGoCreate" class="bigBtn ghost">비공개 방 만들기</button>
+      <button id="btnGoCreate" class="bigBtn ghost">방 만들기</button>
       <button id="btnGoJoin" class="bigBtn ghost">코드로 참여하기</button>
       <button id="btnWipeRooms" class="bigBtn ghost hidden">방 저장 기록 지우기</button>
       <button class="bigBtn ghost" data-menu-back="menuMain">뒤로</button>
     </div>
 
     <div id="menuCreate" class="menuPage hidden">
-      <p>이 코드를 친구에게 알려주면 참여할 수 있어요. 직접 바꿔도 됩니다.</p>
+      <p>목록에 보이게 하면 누구나 멀티플레이 목록에서 들어올 수 있어요. 끄면 아래 코드를 아는 친구만 들어와요.</p>
       <input id="roomCodeInput" type="text" maxlength="8" autocomplete="off" autocapitalize="characters">
       <input id="mpSeedInput" type="text" placeholder="시드 (비우면 랜덤)" autocomplete="off">
+      <label class="checkRow"><input id="listRoomCheck" type="checkbox" checked> 멀티플레이 서버 목록에 이 방 보이기</label>
       <button class="bigBtn" data-create-mode="survival">서바이벌로 방 만들기</button>
       <button class="bigBtn alt" data-create-mode="creative">크리에이티브로 방 만들기</button>
       <button class="bigBtn ghost" data-menu-back="menuMulti">뒤로</button>
@@ -263,31 +265,31 @@
 
 <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/store.js?v=28"></script>
-<script src="js/settings.js?v=28"></script>
-<script src="js/noise.js?v=28"></script>
-<script src="js/textures.js?v=28"></script>
-<script src="js/blocks.js?v=28"></script>
-<script src="js/items.js?v=28"></script>
-<script src="js/recipes.js?v=28"></script>
-<script src="js/enchant.js?v=28"></script>
-<script src="js/world.js?v=28"></script>
-<script src="js/villages.js?v=28"></script>
-<script src="js/fortress.js?v=28"></script>
-<script src="js/strongholds.js?v=28"></script>
-<script src="js/brewing.js?v=28"></script>
-<script src="js/player.js?v=28"></script>
-<script src="js/inventory.js?v=28"></script>
-<script src="js/net.js?v=28"></script>
-<script src="js/sound.js?v=28"></script>
-<script src="js/fluids.js?v=28"></script>
-<script src="js/redstone.js?v=28"></script>
-<script src="js/entities.js?v=28"></script>
-<script src="js/sky.js?v=28"></script>
-<script src="js/hand.js?v=28"></script>
-<script src="js/mobs.js?v=28"></script>
-<script src="js/controls.js?v=28"></script>
-<script src="js/ui.js?v=28"></script>
-<script src="js/game.js?v=28"></script>
+<script src="js/store.js?v=29"></script>
+<script src="js/settings.js?v=29"></script>
+<script src="js/noise.js?v=29"></script>
+<script src="js/textures.js?v=29"></script>
+<script src="js/blocks.js?v=29"></script>
+<script src="js/items.js?v=29"></script>
+<script src="js/recipes.js?v=29"></script>
+<script src="js/enchant.js?v=29"></script>
+<script src="js/world.js?v=29"></script>
+<script src="js/villages.js?v=29"></script>
+<script src="js/fortress.js?v=29"></script>
+<script src="js/strongholds.js?v=29"></script>
+<script src="js/brewing.js?v=29"></script>
+<script src="js/player.js?v=29"></script>
+<script src="js/inventory.js?v=29"></script>
+<script src="js/net.js?v=29"></script>
+<script src="js/sound.js?v=29"></script>
+<script src="js/fluids.js?v=29"></script>
+<script src="js/redstone.js?v=29"></script>
+<script src="js/entities.js?v=29"></script>
+<script src="js/sky.js?v=29"></script>
+<script src="js/hand.js?v=29"></script>
+<script src="js/mobs.js?v=29"></script>
+<script src="js/controls.js?v=29"></script>
+<script src="js/ui.js?v=29"></script>
+<script src="js/game.js?v=29"></script>
 </body>
 </html>

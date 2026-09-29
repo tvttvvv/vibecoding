@@ -235,7 +235,9 @@
     Controls.bindTap(el('btnMulti'), () => {
       if (!el('nameInput').value) el('nameInput').value = '플레이어' + (100 + Math.floor(Math.random() * 900));
       this.showMenuPage('menuMulti');
+      this.refreshServers();
     });
+    Controls.bindTap(el('btnRefreshServers'), () => this.refreshServers());
     for (const btn of document.querySelectorAll('[data-menu-back]')) {
       Controls.bindTap(btn, () => this.showMenuPage(btn.dataset.menuBack));
     }
@@ -258,12 +260,14 @@
       this.toast(n + '개의 방 기록을 지웠어요', 2600);
     });
 
-    for (const btn of document.querySelectorAll('[data-public-mode]')) {
-      Controls.bindTap(btn, () => game.enterPublic(btn.dataset.publicMode));
-    }
+    this.renderServers(null);
 
     for (const btn of document.querySelectorAll('[data-create-mode]')) {
       Controls.bindTap(btn, () => {
+        if (el('listRoomCheck').checked) {
+          game.hostListedRoom(btn.dataset.createMode, el('mpSeedInput').value, this.playerName());
+          return;
+        }
         const code = Net.normalizeCode(el('roomCodeInput').value);
         if (code.length < 4) { this.setNetStatus('방 코드는 4자 이상이어야 해요'); return; }
         this.setNetStatus('방을 여는 중...');
@@ -316,6 +320,67 @@
     return map[err] || ('연결에 실패했어요 (' + err + ')');
   };
 
+  // ------------------------------------------------------------ server list
+  // Asks every public server and listed room who is on it, then shows them.
+  UI.refreshServers = function () {
+    if (this._scanning) return;
+    this._scanning = true;
+    this.renderServers(null);
+    this.game.scanServers((found) => {
+      this._scanning = false;
+      if (!el('menuMulti').classList.contains('hidden')) this.renderServers(found);
+    });
+  };
+
+  UI.renderServers = function (found) {
+    const game = this.game;
+    const box = el('serverList');
+    box.innerHTML = '';
+    const who = (info) => {
+      if (!info) return '';
+      if (info.old || !info.names) return '접속 중';
+      const names = info.names.slice(0, 4).join(', ') + (info.names.length > 4 ? ' 외 ' + (info.names.length - 4) + '명' : '');
+      return info.players + '명 접속 중 · ' + names;
+    };
+    const entry = (title, status, live, onTap, alt) => {
+      const b = document.createElement('button');
+      b.className = 'bigBtn serverBtn' + (alt ? ' alt' : '');
+      const t = document.createElement('span');
+      t.className = 'serverTitle';
+      t.textContent = (live ? '● ' : '') + title;
+      const s = document.createElement('span');
+      s.className = 'serverStatus' + (live ? ' live' : '');
+      s.textContent = status;
+      b.appendChild(t);
+      b.appendChild(s);
+      Controls.bindTap(b, onTap);
+      box.appendChild(b);
+    };
+    const pub = game.PUBLIC_ROOMS;
+    ['survival', 'creative'].forEach((mode, i) => {
+      const info = found ? found[pub[mode].code] : undefined;
+      const status = found === null ? '확인하는 중...'
+        : info ? who(info) : '비어 있음 · 들어가면 내가 서버를 열어요';
+      entry(pub[mode].label, status, !!info, () => game.enterPublic(mode), i === 1);
+    });
+    if (!found) return;
+    let listed = 0;
+    for (const code of game.ROOM_SLOTS) {
+      const info = found[code];
+      if (!info) continue;
+      listed++;
+      const modeName = info.mode === 'creative' ? '크리에이티브' : info.mode === 'survival' ? '서바이벌' : '';
+      entry((info.host ? info.host + '의 방' : '친구의 방') + (modeName ? ' · ' + modeName : ''), who(info), true,
+        () => { this.setNetStatus('방에 접속하는 중...'); game.joinRoom(code, this.playerName()); }, true);
+    }
+    if (!listed) {
+      const p = document.createElement('p');
+      p.className = 'menuNote';
+      p.textContent = '목록에 공개된 친구의 방은 아직 없어요. "방 만들기"에서 목록에 보이게 방을 열 수 있어요.';
+      box.appendChild(p);
+    }
+  };
+
   UI.renderRoom = function () {
     const on = Net.active;
     el('btnRoom').classList.toggle('hidden', !on);
@@ -332,6 +397,8 @@
     el('roomCodeBig').classList.toggle('publicTag', !!pub);
     el('roomHostNote').textContent = pub
       ? pub.label + ' · 코드 없이 누구나 들어올 수 있어요' + (Net.isHost ? ' (내가 방장)' : '')
+      : this.game.isListedRoom(Net.code)
+      ? '멀티플레이 서버 목록에 보이는 방이에요' + (Net.isHost ? ' (내가 방장)' : '')
       : (Net.isHost
         ? '내가 방장입니다. 이 코드를 친구에게 알려주세요.'
         : '방장의 세계에 참여 중입니다.');

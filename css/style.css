@@ -638,3 +638,13 @@ body.onTitle #rightControls, body.onTitle #topRight, body.onTitle #crosshair { d
 #bossName { color: #fff; font-size: 13px; text-shadow: 1px 1px 0 #3a3a3a; margin-bottom: 3px; }
 #bossTrack { height: 7px; background: #3a1040; border: 1px solid #000; }
 #bossFill { height: 100%; width: 100%; background: #d050e0; }
+
+/* ---- server list ---- */
+.listHead { font-weight: 700; margin: 4px 0 2px; }
+#serverList { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; }
+.serverBtn { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 18px; }
+.serverTitle { font-size: 17px; }
+.serverStatus { font-size: 12px; font-weight: 400; color: #d8dde6; }
+.serverStatus.live { color: #b8ffb0; }
+.checkRow { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #fff; margin: 4px 0; }
+.checkRow input { width: 20px; height: 20px; }

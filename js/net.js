@@ -64,6 +64,52 @@
         cb.error(err && err.type ? err.type : String(err));
       });
       return { close: () => { try { peer.destroy(); } catch (e) { /* noop */ } } };
+    },
+
+    // Who is hosting which of these rooms right now? Each open room answers
+    // with its players; a code nobody holds comes back null.
+    probe(codes, cb) {
+      if (typeof Peer === 'undefined' || !codes.length) { cb({}); return; }
+      const peer = new Peer({ debug: 0 });
+      const out = {};
+      let left = codes.length, done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        for (const c of codes) if (out[c] === undefined) out[c] = null;
+        setTimeout(() => { try { peer.destroy(); } catch (e) { /* noop */ } }, 200);
+        cb(out);
+      };
+      const settle = (code, info) => {
+        if (done || out[code] !== undefined) return;
+        out[code] = info;
+        if (--left <= 0) finish();
+      };
+      const timer = setTimeout(finish, 8000);
+      peer.on('open', () => {
+        for (const code of codes) {
+          const conn = peer.connect(ID_PREFIX + code, { reliable: true });
+          conn.on('open', () => {
+            conn.send({ t: 'info' });
+            // an older host does not answer, but it is there
+            setTimeout(() => settle(code, { players: 0, old: true }), 3000);
+          });
+          conn.on('data', (d) => {
+            if (!d || d.t !== 'info') return;
+            settle(code, d);
+            setTimeout(() => { try { conn.close(); } catch (e) { /* noop */ } }, 100);
+          });
+        }
+      });
+      peer.on('error', (err) => {
+        if (err && err.type === 'peer-unavailable') {
+          const m = /vxlcraft-([A-Z0-9]+)/.exec(err.message || '');
+          if (m) settle(m[1], null);
+          return;
+        }
+        finish();
+      });
     }
   };
 
@@ -84,9 +130,17 @@
   };
 
   Net.randomCode = randomCode;
+
+  // look up several rooms at once: cb({ CODE: info or null })
+  Net.probe = function (codes, cb) {
+    if (!this.transport.probe) { cb({}); return; }
+    this.transport.probe(codes.map(normalizeCode), cb);
+  };
   Net.normalizeCode = normalizeCode;
 
   Net.reset = function () {
+    // closing our own connections is not the other side going away
+    this.handlers = {};
     for (const id in this.conns) this.conns[id].close();
     if (this.hostConn) this.hostConn.close();
     if (this._socket) this._socket.close();
@@ -160,6 +214,8 @@
     conn.onClose = () => {
       const gone = this.players[conn.id];
       delete this.conns[conn.id];
+      // someone who only asked who is here, not a player
+      if (!gone) return;
       delete this.players[conn.id];
       this._broadcast({ t: 'roster', roster: this.roster(), host: this.name });
       if (this.handlers.onPlayerLeave) this.handlers.onPlayerLeave(conn.id, gone);
@@ -168,6 +224,13 @@
 
   Net._hostMessage = function (conn, msg) {
     if (!msg || !msg.t) return;
+    // the multiplayer menu asking who is on this server
+    if (msg.t === 'info') {
+      const names = [this.name];
+      for (const id in this.players) names.push(this.players[id].name);
+      conn.send({ t: 'info', players: names.length, max: MAX_GUESTS + 1, names, mode: this.info ? this.info.mode : '', host: this.name });
+      return;
+    }
     if (msg.t === 'hello') {
       // the host relays for everyone, so keep a public room to a sane size
       if (Object.keys(this.players).length >= MAX_GUESTS) {
