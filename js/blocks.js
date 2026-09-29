@@ -472,6 +472,26 @@
       [5 * P, 10 * P, 5 * P, 11 * P, 13 * P, 11 * P], [6 * P, 13 * P, 6 * P, 10 * P, 15 * P, 10 * P]]
   });
 
+  // ---- underground structures ----------------------------------------------
+  const MOSSY_COBBLESTONE = simple(390, '이끼 낀 조약돌', T.mossy_cobblestone, { hardness: 2, tool: 'pickaxe', tier: 1 });
+  // a monster spawner: a cage you can see through, that cannot be taken
+  const SPAWNER = simple(391, '몬스터 생성기', T.spawner, { opaque: false, hardness: 5, tool: 'pickaxe', tier: 1, drop: 0, spawner: true });
+  const COBWEB = simple(392, '거미줄', T.cobweb, {
+    opaque: false, solid: false, hardness: 4, render: 'cross', drop: 0, cobweb: true, tool: 'sword'
+  });
+  const RAIL = 393;                // 393 north-south, 394 east-west
+  for (let f = 0; f < 2; f++) {
+    const t = f ? T.rail_ew : T.rail_ns;
+    def(RAIL + f, '레일', { top: t, side: t, bottom: t, opaque: false, solid: false, hardness: 0.7, render: 'boxes',
+      boxes: [[0, 0, 0, 1, 1 / 16, 1]], needsGround: true, drop: RAIL, family: RAIL, rail: f, icon: T.rail_ns, flatItem: true });
+  }
+  const AMETHYST_BLOCK = simple(395, '자수정 블록', T.amethyst_block, { hardness: 1.5, tool: 'pickaxe', tier: 1 });
+  const AMETHYST_CLUSTER = simple(396, '자수정 군집', T.amethyst_cluster, {
+    opaque: false, solid: false, hardness: 1.5, render: 'cross', light: 5, drop: 0, tool: 'pickaxe', cluster: true
+  });
+  const CALCITE = simple(397, '방해석', T.calcite, { hardness: 0.75, tool: 'pickaxe', tier: 1 });
+  const SMOOTH_BASALT = simple(398, '매끄러운 현무암', T.smooth_basalt, { hardness: 1.25, tool: 'pickaxe', tier: 1 });
+
   byId[RS_TORCH].litId = byId[RS_TORCH_OFF].litId = RS_TORCH;
   byId[RS_TORCH].offId = byId[RS_TORCH_OFF].offId = RS_TORCH_OFF;
 
@@ -537,7 +557,8 @@
     REDSTONE_ORE, RS_TORCH, LEVER, BUTTON, PLATE, LAMP, REDSTONE_BLOCK, TNT,
     REPEATER, COMPARATOR, PISTON, STICKY_PISTON, OBSERVER,
     NETHER_BRICKS, NETHER_FENCE, OAK_FENCE, BREWING_STAND, MELON,
-    END_STONE, STONE_BRICKS, MOSSY_STONE_BRICKS, END_FRAME, DRAGON_EGG
+    END_STONE, STONE_BRICKS, MOSSY_STONE_BRICKS, END_FRAME, DRAGON_EGG,
+    MOSSY_COBBLESTONE, SPAWNER, COBWEB, RAIL, AMETHYST_BLOCK, AMETHYST_CLUSTER, CALCITE, SMOOTH_BASALT
   ];
 
   global.Blocks = {
@@ -554,6 +575,7 @@
     REPEATER, COMPARATOR, PISTON, STICKY_PISTON, PISTON_HEAD, OBSERVER, D6, OPP6,
     NETHER_BRICKS, NETHER_FENCE, OAK_FENCE, NETHER_WART, BREWING_STAND, MELON,
     END_STONE, STONE_BRICKS, MOSSY_STONE_BRICKS, END_FRAME, END_FRAME_EYE, END_PORTAL, DRAGON_EGG,
+    MOSSY_COBBLESTONE, SPAWNER, COBWEB, RAIL, AMETHYST_BLOCK, AMETHYST_CLUSTER, CALCITE, SMOOTH_BASALT,
     byId, tileFor, isOpaque, isSolid, isLiquid, mineTime, canHarvest, iconFor, creativeList
   };
 })(window);

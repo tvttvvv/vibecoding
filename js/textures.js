@@ -737,6 +737,55 @@
     rectOn(api, 5, 4, 6, 8, '#2a8a6a'); rectOn(api, 4, 5, 8, 6, '#2a8a6a'); rectOn(api, 6, 6, 4, 4, '#9ff0d0'); rectOn(api, 7, 7, 2, 2, '#0a2a1f');
   });
 
+  // ---- underground: dungeons, mineshafts, geodes -----------------------------
+  define('mossy_cobblestone', (api) => {
+    api.fill('#6f6f6f');
+    const stones = [[0, 0, 6, 5], [7, 0, 5, 4], [13, 0, 3, 6], [0, 6, 4, 5], [5, 5, 6, 5], [12, 7, 4, 4], [0, 12, 7, 4], [8, 11, 4, 5], [13, 12, 3, 4]];
+    for (const [sx, sy, w, h] of stones) {
+      const shade = pick(['#8f8f8f', '#9d9d9d', '#848484']);
+      for (let x = sx; x < Math.min(TILE, sx + w); x++) for (let y = sy; y < Math.min(TILE, sy + h); y++) api.put(x, y, rnd() < 0.35 ? pick(['#4f7a36', '#5d8a3f', '#44692e']) : shade);
+    }
+  });
+  define('spawner', (api) => {
+    api.clear();
+    for (let i = 0; i < TILE; i++) {
+      for (const k of [0, 5, 10, 15]) { api.put(i, k, '#2a2f3a'); api.put(k, i, '#2a2f3a'); }
+    }
+    for (const k of [0, 15]) for (let i = 0; i < TILE; i++) { api.put(i, k, '#4a5262'); api.put(k, i, '#4a5262'); }
+    rectOn(api, 6, 6, 4, 4, 'rgba(40,40,60,0.6)');
+  });
+  define('cobweb', (api) => {
+    api.clear();
+    const c = 'rgba(235,235,235,0.9)';
+    for (let i = 1; i < 15; i++) { api.put(i, i, c); api.put(15 - i, i, c); api.put(8, i, c); api.put(i, 8, c); }
+    for (const r of [3, 6]) for (let a = 0; a < 20; a++) api.put(Math.round(8 + Math.cos(a / 20 * 6.28) * r), Math.round(8 + Math.sin(a / 20 * 6.28) * r), c);
+  });
+  function railTile(vertical) {
+    return (api) => {
+      api.clear();
+      for (let t = 1; t < 16; t += 3) for (let u = 1; u < 15; u++) { if (vertical) api.put(u, t, '#6b4a2a'); else api.put(t, u, '#6b4a2a'); }
+      for (let i = 0; i < TILE; i++) {
+        if (vertical) { api.put(3, i, '#a8a8a8'); api.put(4, i, '#7a7a7a'); api.put(11, i, '#a8a8a8'); api.put(12, i, '#7a7a7a'); }
+        else { api.put(i, 3, '#a8a8a8'); api.put(i, 4, '#7a7a7a'); api.put(i, 11, '#a8a8a8'); api.put(i, 12, '#7a7a7a'); }
+      }
+    };
+  }
+  define('rail_ns', railTile(true));
+  define('rail_ew', railTile(false));
+  define('amethyst_block', (api) => speckle(api, '#8a5ac8', ['#a67ae0', '#7248b0', '#b890ee', '#6a3ea6'], 0.7));
+  define('amethyst_cluster', (api) => {
+    api.clear();
+    for (const [x, h] of [[4, 8], [7, 12], [10, 9], [12, 6], [2, 5]]) {
+      for (let y = 15; y > 15 - h; y--) { api.put(x, y, '#a67ae0'); api.put(x + 1, y, y < 15 - h + 3 ? '#e0c8ff' : '#8a5ac8'); }
+    }
+  });
+  define('calcite', (api) => speckle(api, '#e2e4df', ['#d4d6d0', '#eceee8', '#c8cac4'], 0.5));
+  define('smooth_basalt', (api) => speckle(api, '#3a3a40', ['#34343a', '#424248', '#2e2e34'], 0.5));
+  define('item_amethyst_shard', (api) => {
+    api.clear();
+    for (let i = 0; i < 9; i++) { api.put(4 + i, 12 - i, '#a67ae0'); api.put(5 + i, 12 - i, '#7248b0'); api.put(4 + i, 11 - i, '#e0c8ff'); }
+  });
+
   define('chest_top', (api) => {
     speckle(api, '#a0712f', ['#8b5f24', '#b58239', '#946826'], 0.5);
     for (let i = 0; i < TILE; i++) { api.put(i, 0, '#4a3312'); api.put(i, 15, '#4a3312'); api.put(0, i, '#4a3312'); api.put(15, i, '#4a3312'); }

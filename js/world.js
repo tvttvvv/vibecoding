@@ -166,8 +166,22 @@
   const ROOF = 4;
   // (one look, two blocks down, a shade wider than a tunnel: the tunnel noise
   // hardly changes over a few blocks, and this runs for every column)
+  // Ravines: long winding cuts with steep walls, down near the bottom of the
+  // world, found in some regions and not others. 0 where there is none,
+  // rising to 1 along the middle of one.
+  function ravineAt(wx, wz, seed) {
+    const m = Noise.fbm2(wx * 0.0035, wz * 0.0035, seed + 501, 2);
+    if (m < 0.6) return 0;
+    const r = Noise.fbm2(wx * 0.011, wz * 0.011, seed + 502, 2);
+    const width = RAVINE_W * (0.35 + 0.65 * Math.min(1, (m - 0.6) / 0.15));
+    const d = Math.abs(r - 0.5);
+    return d >= width ? 0 : 1 - d / width;
+  }
+  const RAVINE_W = 0.025;
+
   function surfaceOpen(wx, wz, surfaceY, seed) {
     if (surfaceY < SEA_LEVEL + 2) return false;
+    if (ravineAt(wx, wz, seed) > 0) return true;
     const y = surfaceY - 2, w = SPAGHETTI * 1.15;
     if (Math.abs(Noise.fbm3(wx * 0.018, y * 0.036, wz * 0.018, seed + 12, 2) - 0.5) >= w) return false;
     return Math.abs(Noise.fbm3(wx * 0.018, y * 0.036, wz * 0.018, seed + 13, 2) - 0.5) < w;
@@ -273,6 +287,8 @@
         const biome = biomeAt(wx, wz, seed);
         const top = Math.min(WORLD_HEIGHT - 1, Math.max(surfaceY, SEA_LEVEL));
         const open = surfaceOpen(wx, wz, surfaceY, seed);
+        const rv = surfaceY >= SEA_LEVEL + 2 ? ravineAt(wx, wz, seed) : 0;
+        const ravineFloor = rv > 0 ? Math.floor(8 + (1 - Math.pow(rv, 0.35)) * (surfaceY - 8)) : WORLD_HEIGHT;
 
         for (let y = 0; y <= top; y++) {
           let id = B.AIR;
@@ -301,7 +317,8 @@
             // ceiling of water that has nowhere to go
             const wet = surfaceY < SEA_LEVEL + 2 && depth < 6;
             // the deepest caves have lava floors, as Minecraft's do
-            if (depth < ROOF) { if (open) id = B.AIR; }
+            if (y >= ravineFloor) id = B.AIR;
+            else if (depth < ROOF) { if (open) id = B.AIR; }
             else if (y > 3 && !wet && caveSample(lx, y, lz)) id = y <= 7 ? B.LAVA : B.AIR;
           }
 
@@ -316,6 +333,7 @@
       }
     }
 
+    if (global.Underground) Underground.stamp(chunk, seed, columnHeight);
     growPlants(chunk, seed);
     if (global.Villages) Villages.stamp(chunk, seed, columnHeight);
     if (global.Strongholds) Strongholds.stamp(chunk, seed);
@@ -1372,5 +1390,5 @@
   global.World = World;
   global.WorldConst = { CHUNK_SIZE, WORLD_HEIGHT, SEA_LEVEL };
   // for structures that lay themselves over the terrain (villages)
-  global.WorldGen = { columnHeight, biomeAt, END_PORTAL_Y, PILLARS };
+  global.WorldGen = { columnHeight, biomeAt, END_PORTAL_Y, PILLARS, ravineAt };
 })(window);

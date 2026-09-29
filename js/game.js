@@ -593,6 +593,8 @@
     const out = [];
     const def = B.byId[id];
     if (def.door) return def.door.upper ? out : [[Items.OAK_DOOR, 1]];
+    if (def.cluster) return toolDef && toolDef.tool && toolDef.tool.type === 'pickaxe' ? [[Items.AMETHYST_SHARD, 2 + Math.floor(Math.random() * 3)]] : out;
+    if (def.cobweb) return toolDef && toolDef.tool && toolDef.tool.type === 'sword' ? [[Items.STRING, 1]] : out;
     if (def.cropKind === 'wart') return [[Items.NETHER_WART, def.crop >= 2 ? 2 + Math.floor(Math.random() * 3) : 1]];
     if (id === B.MELON) return [[Items.MELON_SLICE, 3 + Math.floor(Math.random() * 5)]];
     if (def.cropKind === 'carrot') {
@@ -692,6 +694,11 @@
       if (!this.lootGiven.has(k) && this.dimension === 'overworld' && Villages.isLootChest(x, y, z, this.seed)) {
         this.lootGiven.add(k);
         Villages.loot(x, y, z, this.seed).forEach((s, i) => { c.slots[(i * 5) % 27] = s; });
+        this._worldDirty = true;
+      }
+      if (!this.lootGiven.has(k) && this.dimension === 'overworld' && Underground.isLootChest(x, y, z, this.seed)) {
+        this.lootGiven.add(k);
+        Underground.loot(x, y, z, this.seed).forEach((s, i) => { c.slots[(i * 3) % 27] = s; });
         this._worldDirty = true;
       }
       if (!this.lootGiven.has(k) && this.dimension === 'overworld' && Strongholds.isLootChest(x, y, z, this.seed)) {
@@ -1962,6 +1969,15 @@
       return true;
     }
 
+    // rails run the way you face
+    if (def.rail !== undefined) {
+      if (!this.freeCell(x, y, z) || !this.isSupported(x, y, z, B.RAIL)) return true;
+      const rid = B.RAIL + (this.facing() % 2);
+      this.changeBlock(x, y, z, rid);
+      this.placed(rid);
+      return true;
+    }
+
     // levers and buttons go on the face you touched, floor or wall
     if (def.lever || def.button) {
       if (hit.ny === -1 || !this.freeCell(x, y, z)) return true;
@@ -2136,6 +2152,49 @@
       const s = Math.max(0, Math.ceil(e.t));
       return (EFFECT_NAMES[k] || k) + (e.lvl > 1 ? ' II' : '') + ' ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
     });
+  };
+
+  // --------------------------------------------------------------- spawners
+  // A dungeon's spawner wakes when a player comes within sixteen blocks and
+  // lets out a few of its monsters every so often, unless torchlight is on it
+  // or enough of them are about already. The host runs them in a room.
+  Game.updateSpawners = function (dt) {
+    if (this.dimension !== 'overworld' || (Net.active && !Net.isHost) || this.mode !== 'survival') return;
+    this._spawnerT = (this._spawnerT || 0) + dt;
+    if (this._spawnerT < 1) return;
+    this._spawnerT = 0;
+    const w = this.world;
+    const targets = this.mobTargets();
+    if (!this._spawnerTimers) this._spawnerTimers = new Map();
+    const spawners = Underground.of(this.seed).spawners;
+    for (const [k, type] of spawners) {
+      const [x, y, z] = k.split(',').map(Number);
+      const near = targets.some((t) => !t.dead && Math.hypot(t.pos.x - x, t.pos.y - y, t.pos.z - z) < 16);
+      if (!near) continue;
+      if (w.getBlock(x, y, z) !== B.SPAWNER) { spawners.delete(k); continue; }
+      // flames flicker in the cage while it is awake
+      Entities.burst(x + 0.5, y + 0.5, z + 0.5, B.LAVA, 2, 0.35, 0.06);
+      const due = this._spawnerTimers.get(k);
+      if (due === undefined) { this._spawnerTimers.set(k, 2 + Math.random() * 8); continue; }
+      if (due > 0) { this._spawnerTimers.set(k, due - 1); continue; }
+      this._spawnerTimers.set(k, 10 + Math.random() * 30);
+      if (w.lightAt(x, y, z).blk >= 11) continue;
+      const around = Mobs.list.filter((m) => m.type === type && Math.hypot(m.x - x, m.y - y, m.z - z) < 9).length;
+      if (around >= 6) continue;
+      let made = 0;
+      const want = 1 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < 10 && made < want; i++) {
+        const sx = x + Math.floor((Math.random() - 0.5) * 8), sz = z + Math.floor((Math.random() - 0.5) * 8);
+        for (const sy of [y, y - 1, y + 1]) {
+          if (!B.byId[w.getBlock(sx, sy - 1, sz)].solid) continue;
+          if (w.getBlock(sx, sy, sz) !== B.AIR || w.getBlock(sx, sy + 1, sz) !== B.AIR) continue;
+          Mobs.spawn(type, sx + 0.5, sy, sz + 0.5);
+          Entities.burst(sx + 0.5, sy + 0.8, sz + 0.5, B.GRAVEL, 8, 0.4);
+          made++;
+          break;
+        }
+      }
+    }
   };
 
   // ------------------------------------------------------------------ the End
@@ -3381,6 +3440,7 @@
     }
     if (this.started && !this.loading) this.updateFurnaces(dt);
     if (this.started && !this.paused) this.updateEffects(dt);
+    if (this.started && !this.paused && !this.loading) this.updateSpawners(dt);
 
     // checked every frame so any damage source, not just Player.update, ends the run
     if (p.dead && !this._deathHandled) {

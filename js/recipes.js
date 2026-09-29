@@ -123,6 +123,10 @@
   // the End
   shapeless(I.ENDER_EYE, 1, [I.ENDER_PEARL, I.BLAZE_POWDER]);
   shaped(B.STONE_BRICKS, 4, ['##', '##'], { '#': B.STONE });
+  // underground
+  shaped(B.RAIL, 16, ['I I', 'I|I', 'I I'], { I: I.IRON_INGOT, '|': I.STICK });
+  shaped(B.AMETHYST_BLOCK, 1, ['##', '##'], { '#': I.AMETHYST_SHARD });
+  shapeless(B.MOSSY_COBBLESTONE, 1, [B.COBBLESTONE, B.LEAVES]);
   shaped(B.ENCHANTING_TABLE, 1, [' B ', 'D#D', '###'], { B: I.BOOK, D: I.DIAMOND, '#': B.OBSIDIAN });
 
   for (const [, mat, tier] of PLANK_LIKE) {

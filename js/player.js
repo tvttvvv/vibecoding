@@ -173,6 +173,8 @@
     this.headInWater = B.byId[eyeBlock].liquid;
     this.inLava = B.byId[feetBlock].fluid === 'lava' || B.byId[bodyBlock].fluid === 'lava';
     this.headInLava = B.byId[eyeBlock].fluid === 'lava';
+    // cobwebs catch you: a crawl, and you sink through them slowly
+    this.inWeb = !!(B.byId[feetBlock].cobweb || B.byId[bodyBlock].cobweb);
 
     // sneaking: slow, crouched, and it will not walk you off an edge
     this.sneaking = !!input.sneak && !this.flying && !this.inWater;
@@ -193,6 +195,7 @@
     else if (B.byId[world.getBlock(bx, Math.floor(this.pos.y - 0.2), bz)].slow) speed = WALK_SPEED * B.byId[world.getBlock(bx, Math.floor(this.pos.y - 0.2), bz)].slow;
     else speed = this.sprinting ? SPRINT_SPEED : WALK_SPEED;
     if (!this.flying && this.speedMul) speed *= this.speedMul;
+    if (this.inWeb) speed *= 0.18;
 
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
     const fx = -sin, fz = -cos;
@@ -235,6 +238,7 @@
       } else {
         this.vel.y -= GRAVITY * dt;
         if (this.vel.y < -MAX_FALL) this.vel.y = -MAX_FALL;
+        if (this.inWeb) { this.vel.y = Math.max(-0.8, Math.min(this.vel.y, 1)); this.fallStartY = this.pos.y; }
       }
 
       // ladders: push against one or hold jump to climb, crouch to hang still,
