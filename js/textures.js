@@ -736,6 +736,14 @@
     rectOn(api, 7, 6, 4, 1, '#c9a43a');
   });
 
+  define('item_emerald', (api) => {
+    api.clear();
+    rectOn(api, 6, 2, 4, 1, '#7ff0a0'); rectOn(api, 5, 3, 6, 1, '#3fd46a');
+    rectOn(api, 4, 4, 8, 8, '#17b84a'); rectOn(api, 5, 12, 6, 1, '#0f8a36'); rectOn(api, 6, 13, 4, 1, '#0f8a36');
+    rectOn(api, 5, 5, 2, 5, '#5fe68a'); api.put(7, 4, '#9ff7b8');
+    rectOn(api, 11, 5, 1, 6, '#0f8a36');
+  });
+
   define('item_seeds', (api) => {
     api.clear();
     const pts = [[5, 5], [9, 4], [7, 7], [4, 9], [10, 8], [6, 11], [9, 11], [12, 6], [3, 6]];

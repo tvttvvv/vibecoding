@@ -125,8 +125,29 @@
     }
   };
 
+  // villagers, dressed by trade; they never spawn on their own
+  const ROBES = { farmer: [0x8b6a3f, 0xc9a43a], librarian: [0xe8e2d8, 0x8b3a2b], smith: [0x3a3a3a, 0x6a6a6a], cleric: [0x6b3a8c, 0xc9a43a] };
+  for (const prof of Object.keys(ROBES)) {
+    const [robe, trim] = ROBES[prof];
+    TYPES['villager_' + prof] = {
+      name: '주민', hp: 20, hw: 0.3, h: 1.9, speed: 1.1, hostile: false,
+      drops: [], villager: true, prof, noSpawn: true,
+      parts: [
+        [0.5, 0.95, 0.3, robe, 0, 0.95, 0],
+        [0.52, 0.08, 0.32, trim, 0, 0.55, 0],
+        [0.5, 0.2, 0.3, robe, 0, 0.12, 0],
+        [0.56, 0.18, 0.34, trim, 0, 1.12, -0.12],
+        [0.46, 0.52, 0.46, 0xc99b7c, 0, 1.68, 0, 'head'],
+        [0.1, 0.2, 0.1, 0xb07e60, 0, 1.58, -0.27, 'head'],
+        [0.08, 0.05, 0.02, 0x2f6b3f, -0.11, 1.76, -0.235, 'head'],
+        [0.08, 0.05, 0.02, 0x2f6b3f, 0.11, 1.76, -0.235, 'head'],
+        [0.48, 0.1, 0.48, 0x3b2a1c, 0, 1.97, 0, 'head']
+      ]
+    };
+  }
+
   const TYPE_NAMES = Object.keys(TYPES);
-  const PASSIVE = TYPE_NAMES.filter((t) => !TYPES[t].hostile);
+  const PASSIVE = TYPE_NAMES.filter((t) => !TYPES[t].hostile && !TYPES[t].noSpawn);
   const HOSTILE = TYPE_NAMES.filter((t) => TYPES[t].hostile);
 
   let nextId = 1;
@@ -454,7 +475,7 @@
 
       this.think(m, dt, world, player, game, distSq);
       // every so often a mob makes its noise
-      if (Math.random() < dt / 9 && global.Sound) Sound.mob(m.type, 'idle', Math.sqrt(distSq));
+      if (Math.random() < dt / 9 && global.Sound) Sound.mob(m.def.villager ? 'villager' : m.type, 'idle', Math.sqrt(distSq));
       this.physics(m, dt, world);
       this.sync(m);
     }
@@ -507,6 +528,10 @@
         m.wander = 2 + Math.random() * 4;
         m.moving = Math.random() < 0.6;
         m.wanderYaw = Math.random() * Math.PI * 2;
+      }
+      // villagers keep to their village
+      if (m.home && Math.hypot(m.x - m.home.x, m.z - m.home.z) > 14) {
+        m.moving = true; m.wanderYaw = Math.atan2(m.home.x - m.x, m.home.z - m.z); m.wander = 1.5;
       }
       // in love: head for a partner, and breed once close enough
       if (m.love > 0 && !(m.panic > 0)) {

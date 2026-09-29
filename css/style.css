@@ -596,3 +596,17 @@ body.onTitle #rightControls, body.onTitle #topRight, body.onTitle #crosshair { d
   mix-blend-mode: screen;
 }
 @keyframes glint { from { background-position: 150% 0; } to { background-position: -100% 0; } }
+
+/* villager trading */
+.tradeList { display: flex; flex-direction: column; gap: 5px; margin-bottom: 8px; }
+.tradeRow {
+  display: flex; align-items: center; gap: 6px; padding: 5px 8px;
+  background: #8b8b8b; border: 2px solid #373737; color: #fff;
+  box-shadow: inset 2px 2px 0 #b0b0b0, inset -2px -2px 0 #555;
+}
+.tradeRow:disabled { opacity: 0.45; }
+.tradeItem { position: relative; width: 32px; height: 32px; }
+.tradeItem img { width: 32px; height: 32px; image-rendering: pixelated; }
+.tradeItem b { position: absolute; right: -2px; bottom: -3px; font-size: 12px; text-shadow: 1px 1px 0 #222; }
+.tradeArrow { font-size: 18px; margin: 0 4px; }
+.tradeName { margin-left: 6px; font-size: 12px; color: #f4f4f4; text-shadow: 1px 1px 0 #333; }

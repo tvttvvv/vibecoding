@@ -241,6 +241,10 @@
       case 'sheep':
         for (let i = 0; i < 5; i++) tone({ from: 480, to: 440, dur: 0.08, gain: 0.18, wave: 'sawtooth', delay: i * 0.08, dist: d });
         break;
+      case 'villager':
+        tone({ from: 260, to: 200, dur: 0.18, gain: 0.25, wave: 'sawtooth', dist: d });
+        tone({ from: 230, to: 300, dur: 0.16, gain: 0.2, wave: 'sawtooth', delay: 0.17, dist: d });
+        break;
       case 'chicken':
         tone({ from: 1400, to: 900, dur: 0.08, gain: 0.18, wave: 'square', dist: d });
         tone({ from: 1300, to: 800, dur: 0.1, gain: 0.15, wave: 'square', delay: 0.12, dist: d });

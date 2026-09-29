@@ -201,6 +201,7 @@
     this.clearDrops();
     Entities.clear();
     this.crops = new Set();
+    this.lootGiven = new Set();
     this.blockEntities = new Map();
     this.editsByChunk = {};
     this.editMap = new Map();
@@ -539,8 +540,65 @@
     if (!c) {
       c = { type: 'chest', x, y, z, slots: new Array(27).fill(null) };
       this.blockEntities.set(k, c);
+      if (!this.lootGiven) this.lootGiven = new Set();
+      if (!this.lootGiven.has(k) && Villages.isLootChest(x, y, z, this.seed)) {
+        this.lootGiven.add(k);
+        Villages.loot(x, y, z, this.seed).forEach((s, i) => { c.slots[(i * 5) % 27] = s; });
+        this._worldDirty = true;
+      }
     }
     return c;
+  };
+
+  // ------------------------------------------------------------------ villages
+  // A village fills with its villagers when you come near; they wander off
+  // with the chunk when you leave, and are back when you return.
+  Game.updateVillages = function (dt) {
+    if (Net.active && !Net.isHost) return;
+    this._villageTimer = (this._villageTimer || 0) + dt;
+    if (this._villageTimer < 1) return;
+    this._villageTimer = 0;
+    const p = this.player;
+    const plan = Villages.near(p.pos.x, p.pos.z, this.seed, 40);
+    if (!plan) return;
+    const CS = WorldConst.CHUNK_SIZE;
+    const chunk = this.world.getChunk(Math.floor(plan.cx / CS), Math.floor(plan.cz / CS));
+    if (!chunk || !chunk.built) return;
+    if (Mobs.list.some((m) => m.village === plan.key)) return;
+    Villages.PROFESSIONS.forEach((prof, i) => {
+      const a = i * Math.PI / 2 + 0.6;
+      const x = plan.cx + 0.5 + Math.cos(a) * 3.5, z = plan.cz + 0.5 + Math.sin(a) * 3.5;
+      let y = plan.baseY + 3;
+      while (y > 1 && !B.byId[this.world.getBlock(Math.floor(x), y - 1, Math.floor(z))].solid) y--;
+      const m = Mobs.spawn('villager_' + prof, x, y, z);
+      m.village = plan.key;
+      m.home = { x: plan.cx, z: plan.cz };
+    });
+  };
+
+  Game.openTrade = function (mob) {
+    UI.openScreen('trade', { type: 'trade', prof: mob.def.prof, trades: Villages.trades(mob.def.prof) });
+    Sound.mob('villager', 'idle', 1);
+  };
+
+  Game.canAfford = function (trade) {
+    if (this.mode !== 'survival') return true;
+    return trade.cost.every(([id, n]) => this.inventory.count(id) >= n);
+  };
+
+  Game.doTrade = function (i) {
+    const s = UI.screen;
+    if (!s || s.kind !== 'trade') return;
+    const t = s.entity.trades[i];
+    if (!t || !this.canAfford(t)) return;
+    if (this.mode === 'survival') for (const [id, n] of t.cost) this.inventory.takeFromSlots(id, n);
+    const [rid, rn] = t.result;
+    const got = this.inventory.add(rid, rn);
+    if (got < rn) this.spawnDropAtPlayer(rid, rn - got);
+    if (this.mode === 'survival') Entities.dropXp(this.player.pos.x, this.player.pos.y + 1, this.player.pos.z, 1 + Math.random() * 2);
+    Sound.pop();
+    this.inventory.changed();
+    UI.renderScreen();
   };
 
   const packStack = Inventory.pack;
@@ -682,6 +740,7 @@
       out.push([f.x, f.y, f.z, pack(f.input[0]), pack(f.fuel[0]), pack(f.output[0]),
         +f.burn.toFixed(1), +f.burnMax.toFixed(1), +f.cook.toFixed(1)]);
     }
+    if (this.lootGiven) for (const k of this.lootGiven) out.push(['L', k]);
     return out.concat(Entities.snapshotBoats());
   };
 
@@ -696,6 +755,7 @@
         continue;
       }
       if (r[0] === 'b') { Entities.placeBoat(r[1], r[2], r[3], r[4], r[5], true); continue; }
+      if (r[0] === 'L') { (this.lootGiven || (this.lootGiven = new Set())).add(r[1]); continue; }
       const f = this.furnaceAt(r[0], r[1], r[2]);
       f.input[0] = unpack(r[3]);
       f.fuel[0] = unpack(r[4]);
@@ -1535,6 +1595,7 @@
     if (block && block.dist < target.distance) return false;
 
     const mob = target.mob;
+    if (mob.def.villager) { this.openTrade(mob); return true; }
     const stack = this.inventory.selectedStack();
     // an animal's favourite food puts it in the mood instead of hurting it
     if (stack && mob.def.breedWith === stack.id) {
@@ -1942,7 +2003,7 @@
     Sound.breakBlock(id);
     Entities.burst(x + 0.5, y + 0.5, z + 0.5, id, 14);
 
-    const entity = this.blockEntities.get(this.entityKey(x, y, z));
+    const entity = id === B.CHEST ? this.chestAt(x, y, z) : this.blockEntities.get(this.entityKey(x, y, z));
     if (entity) {
       this.blockEntities.delete(this.entityKey(x, y, z));
       if (this.mode === 'survival') {
@@ -2229,6 +2290,7 @@
       this.updateEating(dt);
       this.updateDrops(dt);
       this.updateCrops(dt);
+      this.updateVillages(dt);
       Fluids.update(dt, this);
       Entities.update(dt, input);
     } else {

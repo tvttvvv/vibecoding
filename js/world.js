@@ -295,6 +295,7 @@
     }
 
     growPlants(chunk, seed);
+    if (global.Villages) Villages.stamp(chunk, seed, columnHeight);
     growFeatures(chunk, seed);
     chunk.generated = true;
   }
@@ -354,6 +355,7 @@
         else if (biome === 'snowy') density = 0.014;
         else if (biome === 'desert') density = 0.008;
         if (Noise.hash2(wx, wz, seed + 31) >= density) continue;
+        if (global.Villages && Villages.near(wx, wz, seed, Villages.RADIUS + 3)) continue;
 
         const surfaceY = Math.floor(columnHeight(wx, wz, seed));
         if (surfaceY <= SEA_LEVEL + 1 || surfaceY > WORLD_HEIGHT - 12) continue;
@@ -1132,4 +1134,6 @@
 
   global.World = World;
   global.WorldConst = { CHUNK_SIZE, WORLD_HEIGHT, SEA_LEVEL };
+  // for structures that lay themselves over the terrain (villages)
+  global.WorldGen = { columnHeight, biomeAt };
 })(window);

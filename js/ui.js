@@ -876,16 +876,17 @@
     const body = el('screenBody');
     body.innerHTML = '';
 
-    const titles = { inventory: '인벤토리', crafting: '제작', furnace: '화로', creative: '크리에이티브', chest: '상자', enchant: '마법 부여' };
+    const titles = { inventory: '인벤토리', crafting: '제작', furnace: '화로', creative: '크리에이티브', chest: '상자', enchant: '마법 부여', trade: '주민 거래' };
     const kind = this.screen.kind;
     el('screenTitle').textContent = titles[kind] || '인벤토리';
-    el('btnRecipeBook').classList.toggle('hidden', kind === 'creative' || kind === 'furnace' || kind === 'chest' || kind === 'enchant');
+    el('btnRecipeBook').classList.toggle('hidden', kind === 'creative' || kind === 'furnace' || kind === 'chest' || kind === 'enchant' || kind === 'trade');
     el('btnRecipeBook').classList.toggle('active', this.recipeBookOpen);
 
     if (kind === 'creative') this.renderCreative(body);
     else if (kind === 'furnace') this.renderFurnace(body);
     else if (kind === 'chest') this.renderChest(body);
     else if (kind === 'enchant') this.renderEnchant(body);
+    else if (kind === 'trade') this.renderTrade(body);
     else this.renderCraftingScreen(body);
 
     if (this.screen.kind !== 'creative') {
@@ -1063,6 +1064,47 @@
     note.className = 'invNote';
     note.textContent = '책장 ' + ent.shelves + '개 · 주위에 책장을 놓으면 더 강한 마법이 나와요 (최대 15개)';
     body.appendChild(note);
+  };
+
+  UI.renderTrade = function (body) {
+    const game = this.game;
+    const PROF = { farmer: '농부', librarian: '사서', smith: '대장장이', cleric: '성직자' };
+    const head = document.createElement('p');
+    head.className = 'invNote';
+    head.textContent = (PROF[this.screen.entity.prof] || '주민') + ' · 가진 물건으로 바꿀 수 있는 거래가 밝게 표시돼요';
+    body.appendChild(head);
+    const list = document.createElement('div');
+    list.className = 'tradeList';
+    const icon = (id, n) => {
+      const d = document.createElement('span');
+      d.className = 'tradeItem';
+      const img = document.createElement('img');
+      img.src = Items.icon(id);
+      d.appendChild(img);
+      const c = document.createElement('b');
+      c.textContent = n > 1 ? n : '';
+      d.appendChild(c);
+      d.title = Items.name(id);
+      return d;
+    };
+    this.screen.entity.trades.forEach((t, i) => {
+      const row = document.createElement('button');
+      row.className = 'tradeRow';
+      row.disabled = !game.canAfford(t);
+      for (const [id, n] of t.cost) row.appendChild(icon(id, n));
+      const arrow = document.createElement('span');
+      arrow.className = 'tradeArrow';
+      arrow.textContent = '→';
+      row.appendChild(arrow);
+      row.appendChild(icon(t.result[0], t.result[1]));
+      const name = document.createElement('span');
+      name.className = 'tradeName';
+      name.textContent = Items.name(t.result[0]);
+      row.appendChild(name);
+      Controls.bindTap(row, () => { if (!row.disabled) game.doTrade(i); });
+      list.appendChild(row);
+    });
+    body.appendChild(list);
   };
 
   UI.renderChest = function (body) {
