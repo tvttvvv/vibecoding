@@ -181,6 +181,7 @@
         spawn: this.handlers.getSpawn ? this.handlers.getSpawn() : null,
         edits: this.handlers.getEdits ? this.handlers.getEdits() : this.editList(),
         savedAt: this.handlers.getSavedAt ? this.handlers.getSavedAt() : 0,
+        entities: this.handlers.getEntities ? this.handlers.getEntities() : [],
         roster: this.roster(),
         host: this.name
       });
@@ -220,6 +221,13 @@
     // monsters live on the host; guests report their swings and get the result
     if (msg.t === 'mobhit') {
       if (this.handlers.onMobHit) this.handlers.onMobHit(msg);
+      return;
+    }
+
+    // a chest changed: the host keeps it and passes it on to everyone else
+    if (msg.t === 'ent') {
+      this._broadcast({ t: 'ent', key: msg.key, data: msg.data }, conn.id);
+      if (this.handlers.onEntity) this.handlers.onEntity(msg);
       return;
     }
 
@@ -329,6 +337,11 @@
       return;
     }
 
+    if (msg.t === 'ent') {
+      if (this.handlers.onEntity) this.handlers.onEntity(msg);
+      return;
+    }
+
     if (msg.t === 'mobs') {
       if (this.handlers.onMobs) this.handlers.onMobs(msg.m);
       return;
@@ -429,6 +442,13 @@
   Net.sendMobHit = function (mobId, dmg, kx, kz) {
     if (!this.active || this.isHost || !this.hostConn) return;
     this.hostConn.send({ t: 'mobhit', mobId, dmg, kx, kz });
+  };
+
+  Net.sendEntity = function (key, data) {
+    if (!this.active) return;
+    const msg = { t: 'ent', key, data };
+    if (this.isHost) this._broadcast(msg);
+    else if (this.hostConn) this.hostConn.send(msg);
   };
 
   Net.sendSleep = function () {

@@ -60,7 +60,8 @@
 
   UI.closeSettings = function () {
     el('settingsScreen').classList.add('hidden');
-    if (this.game.started && !this.screen) this.game.paused = false;
+    const pauseOpen = !el('pauseScreen').classList.contains('hidden');
+    if (this.game.started && !this.screen && !pauseOpen) this.game.paused = false;
   };
 
   UI.renderSettings = function () {
@@ -115,7 +116,8 @@
     if (!el('settingsScreen').classList.contains('hidden')) { this.closeSettings(); return; }
     if (!el('chatScreen').classList.contains('hidden')) { this.closeChat(); return; }
     if (this.screen) { this.closeScreen(); return; }
-    Controls.releaseLock();
+    if (!el('pauseScreen').classList.contains('hidden')) { this.hidePause(); return; }
+    if (this.game.started) this.showPause();
   };
 
   // Only the parts that move: a full re-render would drop a drag in progress.
@@ -684,6 +686,8 @@
 
   UI.openScreen = function (kind, entity) {
     const inv = this.game.inventory;
+    // the mouse is needed to move items around
+    Controls.releaseLock();
     this.screen = { kind, entity };
     inv.craftWidth = kind === 'crafting' ? 3 : 2;
     el('screen').classList.remove('hidden');
@@ -699,6 +703,10 @@
       const taken = inv.add(stack.id, stack.count);
       if (taken < stack.count) this.game.spawnDropAtPlayer(stack.id, stack.count - taken);
     }
+    if (this.screen && this.screen.kind === 'chest') {
+      Sound.chest(false);
+      this.game.syncChest(this.screen.entity);
+    }
     this.screen = null;
     el('screen').classList.add('hidden');
     this.game.paused = false;
@@ -713,6 +721,7 @@
     if (kind === 'fin') return this.screen.entity.input;
     if (kind === 'ffuel') return this.screen.entity.fuel;
     if (kind === 'fout') return this.screen.entity.output;
+    if (kind === 'chest') return this.screen.entity.slots;
     return null;
   };
 
@@ -801,7 +810,9 @@
       inv.held.count += move;
       out.count -= move;
       if (out.count <= 0) f.output[0] = null;
+      this.game.smeltXp(out.id, move);
     } else {
+      this.game.smeltXp(out.id, out.count);
       inv.held = out;
       f.output[0] = null;
     }
@@ -850,13 +861,15 @@
     const body = el('screenBody');
     body.innerHTML = '';
 
-    const titles = { inventory: '인벤토리', crafting: '제작', furnace: '화로', creative: '크리에이티브' };
-    el('screenTitle').textContent = titles[this.screen.kind] || '인벤토리';
-    el('btnRecipeBook').classList.toggle('hidden', this.screen.kind === 'creative' || this.screen.kind === 'furnace');
+    const titles = { inventory: '인벤토리', crafting: '제작', furnace: '화로', creative: '크리에이티브', chest: '상자' };
+    const kind = this.screen.kind;
+    el('screenTitle').textContent = titles[kind] || '인벤토리';
+    el('btnRecipeBook').classList.toggle('hidden', kind === 'creative' || kind === 'furnace' || kind === 'chest');
     el('btnRecipeBook').classList.toggle('active', this.recipeBookOpen);
 
-    if (this.screen.kind === 'creative') this.renderCreative(body);
-    else if (this.screen.kind === 'furnace') this.renderFurnace(body);
+    if (kind === 'creative') this.renderCreative(body);
+    else if (kind === 'furnace') this.renderFurnace(body);
+    else if (kind === 'chest') this.renderChest(body);
     else this.renderCraftingScreen(body);
 
     if (this.screen.kind !== 'creative') {
@@ -990,6 +1003,18 @@
     body.appendChild(note);
   };
 
+  UI.renderChest = function (body) {
+    const chest = this.screen.entity;
+    const grid = document.createElement('div');
+    grid.className = 'invGrid chestGrid';
+    for (let i = 0; i < 27; i++) grid.appendChild(this.makeSlot(chest.slots[i], { kind: 'chest', index: i }));
+    body.appendChild(grid);
+    const label = document.createElement('p');
+    label.className = 'invNote';
+    label.textContent = '인벤토리';
+    body.appendChild(label);
+  };
+
   UI.buildMainGrid = function () {
     const inv = this.game.inventory;
     const grid = document.createElement('div');
@@ -1073,15 +1098,68 @@
     setTimeout(() => node.classList.remove('flash'), 180);
   };
 
+  // our own splash lines, shown one at a time under the title
+  const SPLASHES = [
+    '100% 손으로 그린 픽셀!', '크리퍼 조심!', '횃불은 넉넉하게!', '빵은 밀 세 개!',
+    '태블릿에서도 된다!', '다이아몬드는 깊은 곳에!', '밤에는 침대로!', '보트 타고 강 건너기!',
+    '곡괭이는 돌부터!', '양털 세 개면 침대!', '좀비는 햇빛이 싫어요', '구름이 네모나다!',
+    '웅크리면 안 떨어져요', '상자에 잘 보관하세요', '경험치 구슬 뽁뽁!'
+  ];
+
   UI.showMenu = function () {
+    const sp = el('splash');
+    if (sp) sp.textContent = SPLASHES[Math.floor(Math.random() * SPLASHES.length)];
     el('menuScreen').classList.remove('hidden');
+    document.body.classList.toggle('onTitle', !this.game.started);
     this.refreshSaveButtons();
   };
-  UI.hideMenu = function () { el('menuScreen').classList.add('hidden'); };
-  UI.showDeath = function () {
+  UI.hideMenu = function () {
+    el('menuScreen').classList.add('hidden');
+    document.body.classList.remove('onTitle');
+  };
+  UI.showDeath = function (score) {
     // the room's mode is the host's call; switching would also dodge item loss
     el('btnDeathCreative').classList.toggle('hidden', Net.active);
+    el('deathScore').textContent = '점수: ' + (score || 0);
     el('deathScreen').classList.remove('hidden');
+    Controls.releaseLock();
+  };
+
+  // ------------------------------------------------------------ pause menu
+  UI.showPause = function () {
+    if (!this.game.started || this.game.player.dead) return;
+    if (this.screen) this.closeScreen();
+    el('pauseScreen').classList.remove('hidden');
+    el('pauseRoomNote').textContent = Net.active
+      ? '멀티플레이 중에는 세계가 멈추지 않아요'
+      : '';
+    // a room keeps running for everyone else, so only solo play stops
+    if (!Net.active) this.game.paused = true;
+    Controls.releaseLock();
+  };
+
+  UI.hidePause = function () {
+    el('pauseScreen').classList.add('hidden');
+    if (!this.screen) this.game.paused = false;
+  };
+
+  // ---------------------------------------------------------- xp and crouch
+  UI.renderXp = function (p) {
+    if (!p) return;
+    const game = this.game;
+    const show = game.mode === 'survival';
+    el('xpBar').classList.toggle('hidden', !show);
+    if (!show) return;
+    const info = game.xpInfo(p.xp || 0);
+    const pct = Math.round(info.progress * 1000) / 10;
+    if (this._xpSig === info.level + ':' + pct) return;
+    this._xpSig = info.level + ':' + pct;
+    el('xpFill').style.width = pct + '%';
+    el('xpLevel').textContent = info.level > 0 ? info.level : '';
+  };
+
+  UI.setSneak = function (on) {
+    el('btnSneak').classList.toggle('active', !!on);
   };
   UI.hideDeath = function () { el('deathScreen').classList.add('hidden'); };
 
@@ -1109,6 +1187,8 @@
     el('btnFlyUp').classList.toggle('hidden', !flying);
     el('btnFlyDown').classList.toggle('hidden', !flying);
     el('btnJump').classList.toggle('hidden', flying);
+    el('btnSneak').classList.toggle('hidden', flying);
+    if (flying) { Controls.toggleSneak(false); this.setSneak(false); }
   };
 
   UI.setOverlay = function (id, alpha) { el(id).style.opacity = alpha; };

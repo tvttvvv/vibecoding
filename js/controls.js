@@ -10,6 +10,7 @@
     up: false,
     down: false,
     run: false,
+    sneak: false,
     lookDX: 0,
     lookDY: 0,
     mining: false,
@@ -29,6 +30,10 @@
   // time a movement key is pressed, so a phone never sees it.
   let keyboardMode = false;
   let pointerLocked = false;
+  // the on-screen crouch button toggles, as Bedrock's does; Shift holds
+  let sneakToggle = false;
+  let sneakKey = false;
+  let expectUnlock = false;
 
   function joyRadius() { return Settings ? Settings.get('joyRadius') : 46; }
   function joyDead() { return Settings ? Settings.get('joyDead') : 7; }
@@ -349,12 +354,17 @@
       state.up = !!keys[' '];
       state.down = !!keys.shift;
       state.run = !!keys.control;
+      sneakKey = !!keys.shift;
+      state.sneak = sneakKey || sneakToggle;
     };
 
     document.addEventListener('pointerlockchange', () => {
       pointerLocked = !!document.pointerLockElement;
       if (!pointerLocked) state.mining = false;
-      if (hooks.onPointerLock) hooks.onPointerLock(pointerLocked);
+      // Esc frees the mouse: unless we freed it ourselves, that means "pause"
+      const ours = expectUnlock;
+      expectUnlock = false;
+      if (hooks.onPointerLock) hooks.onPointerLock(pointerLocked, ours);
     });
 
     window.addEventListener('keydown', (e) => {
@@ -413,9 +423,17 @@
   }
 
   function releaseLock() {
+    if (!pointerLocked) return;
+    expectUnlock = true;
     if (document.exitPointerLock) {
       try { document.exitPointerLock(); } catch (e) { /* already out */ }
     }
+  }
+
+  function toggleSneak(force) {
+    sneakToggle = force === undefined ? !sneakToggle : !!force;
+    state.sneak = sneakKey || sneakToggle;
+    return sneakToggle;
   }
 
   function debug() {
@@ -430,7 +448,7 @@
 
   global.Controls = {
     state, init, tickHold, consumeLook, bindTap, bindHold,
-    markTouch, recentTouch, debug, releaseLock,
+    markTouch, recentTouch, debug, releaseLock, toggleSneak,
     lookSens, cancelMineOnLook,
     isKeyboard: () => keyboardMode,
     isLocked: () => pointerLocked,

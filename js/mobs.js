@@ -354,16 +354,19 @@
       const z = Math.floor(player.pos.z + Math.sin(ang) * dist);
       const y = world.groundY(x, z);
       if (y <= 0 || y >= WorldConst.WORLD_HEIGHT - 4) continue;
-      if (world.getBlock(x, y + 1, z) !== B.AIR) continue;
-      if (world.getBlock(x, y + 2, z) !== B.AIR) continue;
+      const a1 = world.getBlock(x, y + 1, z), a2 = world.getBlock(x, y + 2, z);
+      if (B.byId[a1].solid || B.byId[a1].liquid || B.byId[a2].solid || B.byId[a2].liquid) continue;
 
       const surface = world.getBlock(x, y, z);
       const open = skyOpen(world, x, y, z);
 
       if (hostile) {
-        // monsters need darkness: night out in the open, or a roof over them
+        // monsters need darkness, as in Minecraft: no torchlight at all, and
+        // not much sky (night, or under a roof)
+        const l = world.lightAt(x, y + 1, z);
+        const day = World.lightUniforms.uDaylight.value;
+        if (l.blk > 0 || l.sky * day > 7) continue;
         if (open && !night) continue;
-        if (this.litNearby(game, x + 0.5, y + 1, z + 0.5)) continue;
         const type = HOSTILE[Math.floor(Math.random() * HOSTILE.length)];
         this.spawn(type, x + 0.5, y + 1, z + 0.5);
       } else {
@@ -419,6 +422,8 @@
       }
 
       this.think(m, dt, world, player, game, distSq);
+      // every so often a mob makes its noise
+      if (Math.random() < dt / 9 && global.Sound) Sound.mob(m.type, 'idle', Math.sqrt(distSq));
       this.physics(m, dt, world);
       this.sync(m);
     }
@@ -444,10 +449,12 @@
         if (m.attackCooldown <= 0 && dist < 14) {
           m.attackCooldown = 2.2;
           this.shoot(m, player);
+          if (global.Sound) Sound.bow(dist);
         }
       } else if (def.explodes) {
         if (dist > 1.9) { wantX = dx / len; wantZ = dz / len; }
         if (dist < 3.2) {
+          if (m.fuse === 0 && global.Sound) Sound.fuse(dist);
           m.fuse += dt;
           if (m.fuse > 1.5) { this.explode(m, world, player, game); return; }
         } else {
@@ -470,9 +477,16 @@
         m.moving = Math.random() < 0.6;
         m.wanderYaw = Math.random() * Math.PI * 2;
       }
+      // a hurt animal runs, zig-zagging, for a few seconds
+      if (m.panic > 0) {
+        m.panic -= dt;
+        m.moving = true;
+        if (Math.random() < dt * 1.5) m.wanderYaw += (Math.random() - 0.5) * 1.6;
+      }
       if (m.moving) {
-        wantX = Math.sin(m.wanderYaw);
-        wantZ = Math.cos(m.wanderYaw);
+        const k = m.panic > 0 ? 2 : 1;
+        wantX = Math.sin(m.wanderYaw) * k;
+        wantZ = Math.cos(m.wanderYaw) * k;
         m.yaw = m.wanderYaw;
       }
     }
@@ -499,12 +513,11 @@
     if (!m.group) return;
     m.group.position.set(m.x, m.y, m.z);
     m.group.rotation.y = m.yaw;
+    // lit like the world around it, and flushed red for a moment when hurt
     const flash = m.hurtFlash > 0;
-    if (flash !== m._flashed) {
-      m._flashed = flash;
-      const mat = m.group.userData.material;
-      if (mat) mat.color.setRGB(1, flash ? 0.35 : 1, flash ? 0.35 : 1);
-    }
+    const light = this.lightFn ? this.lightFn(m.x, m.y + m.def.h * 0.6, m.z) : 1;
+    const mat = m.group.userData.material;
+    if (mat) mat.color.setRGB(light, light * (flash ? 0.35 : 1), light * (flash ? 0.35 : 1));
     if (m.def.explodes && m.group.scale) {
       const s = m.fuse > 0 ? 1 + Math.sin(m.fuse * 30) * 0.08 * Math.min(1, m.fuse) : 1;
       m.group.scale.set(s, s, s);
@@ -515,6 +528,9 @@
     for (const m of this.list) {
       if (m.hurtFlash > 0) m.hurtFlash = Math.max(0, m.hurtFlash - dt);
       if (m.group) {
+        const light = this.lightFn ? this.lightFn(m.x, m.y + m.def.h * 0.6, m.z) : 1;
+        const mat = m.group.userData.material;
+        if (mat) mat.color.setRGB(light, light * (m.hurtFlash > 0 ? 0.35 : 1), light * (m.hurtFlash > 0 ? 0.35 : 1));
         const k = Math.min(1, dt * 12);
         m.group.position.x += (m.x - m.group.position.x) * k;
         m.group.position.y += (m.y - m.group.position.y) * k;
@@ -576,6 +592,11 @@
 
   Mobs.explode = function (m, world, player, game) {
     const R = 3;
+    if (global.Sound) Sound.explode(Math.hypot(player.pos.x - m.x, player.pos.z - m.z));
+    if (global.Entities) {
+      Entities.burst(m.x, m.y + 1, m.z, B.SNOW, 24, 1.6);
+      Entities.burst(m.x, m.y + 1, m.z, B.GRAVEL, 16, 1.4);
+    }
     const cx = Math.floor(m.x), cy = Math.floor(m.y + 0.5), cz = Math.floor(m.z);
     for (let x = -R; x <= R; x++) {
       for (let y = -R; y <= R; y++) {

@@ -7,12 +7,13 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>복셀 크래프트</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23795433'/><rect width='16' height='5' fill='%235d9c3c'/></svg>">
-<link rel="stylesheet" href="css/style.css?v=15">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri@2.40.3/dist/galmuri.css">
+<link rel="stylesheet" href="css/style.css?v=16">
 <script>
 // GitHub Pages caches this page for ten minutes, so a new build can sit
 // unseen. Ask an uncached version file and reload once if we are behind.
 (function () {
-  var BUILD = 15;
+  var BUILD = 16;
   try {
     fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
       .then(function (r) { return r.json(); })
@@ -47,6 +48,7 @@
         <div id="foodRow" class="iconRow"></div>
       </div>
     </div>
+    <div id="xpBar" class="hidden"><div id="xpFill"></div><span id="xpLevel"></span></div>
     <div id="hotbarRow">
       <div id="hotbar"></div>
       <button id="btnInventory" class="mcbtn small" aria-label="인벤토리">
@@ -65,12 +67,14 @@
     <button id="btnFlyUp" class="mcbtn hidden" aria-label="상승"><i class="chev up"></i></button>
     <button id="btnFlyDown" class="mcbtn hidden" aria-label="하강"><i class="chev down"></i></button>
     <button id="btnJump" class="mcbtn jump" aria-label="점프"><i class="chev up"></i></button>
+    <button id="btnSneak" class="mcbtn sneak" aria-label="웅크리기"><i class="crouch"></i></button>
   </div>
 
   <div id="topRight">
     <button id="btnRoom" class="mcbtn small hidden" aria-label="방">방</button>
     <button id="btnChat" class="mcbtn small hidden" aria-label="채팅">💬</button>
     <button id="btnFly" class="mcbtn small hidden" aria-label="비행">✈</button>
+    <button id="btnPause" class="mcbtn small" aria-label="일시정지"><i class="pauseIcon"></i></button>
     <button id="btnSettings" class="mcbtn small" aria-label="설정">⚙</button>
     <button id="btnDebug" class="mcbtn small" aria-label="정보">i</button>
   </div>
@@ -111,10 +115,20 @@
   </div>
 
   <div id="deathScreen" class="overlay hidden">
-    <h2>당신은 죽었습니다</h2>
+    <h2>사망했습니다!</h2>
+    <p id="deathScore">점수: 0</p>
     <p>가지고 있던 아이템은 죽은 자리에 떨어졌습니다.</p>
-    <button class="bigBtn" data-respawn-mode="survival">부활하기</button>
+    <button class="bigBtn" data-respawn-mode="survival">부활</button>
     <button id="btnDeathCreative" class="bigBtn alt" data-respawn-mode="creative">크리에이티브로 전환</button>
+    <button id="btnDeathTitle" class="bigBtn ghost">타이틀 화면</button>
+  </div>
+
+  <div id="pauseScreen" class="overlay hidden">
+    <h1>게임 메뉴</h1>
+    <button id="btnResume" class="bigBtn">게임으로 돌아가기</button>
+    <button id="btnPauseSettings" class="bigBtn ghost">설정</button>
+    <button id="btnQuitTitle" class="bigBtn ghost">저장하고 타이틀로 나가기</button>
+    <p id="pauseRoomNote" class="menuNote"></p>
   </div>
 
   <div id="loadingScreen" class="overlay hidden">
@@ -142,8 +156,11 @@
   </div>
 
   <div id="menuScreen" class="overlay">
-    <h1>복셀 크래프트</h1>
-    <p class="buildTag">버전 v15</p>
+    <div class="titleWrap">
+      <h1 class="gameTitle">복셀 크래프트</h1>
+      <span id="splash" class="splash"></span>
+    </div>
+    <p class="buildTag">버전 v16</p>
 
     <div id="menuMain" class="menuPage">
       <p>무한 지형, 강과 바다, 숲과 사막, 동굴과 광석. 캐고, 만들고, 살아남으세요.</p>
@@ -191,20 +208,24 @@
 
 <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/store.js?v=15"></script>
-<script src="js/settings.js?v=15"></script>
-<script src="js/noise.js?v=15"></script>
-<script src="js/textures.js?v=15"></script>
-<script src="js/blocks.js?v=15"></script>
-<script src="js/items.js?v=15"></script>
-<script src="js/recipes.js?v=15"></script>
-<script src="js/world.js?v=15"></script>
-<script src="js/player.js?v=15"></script>
-<script src="js/inventory.js?v=15"></script>
-<script src="js/net.js?v=15"></script>
-<script src="js/mobs.js?v=15"></script>
-<script src="js/controls.js?v=15"></script>
-<script src="js/ui.js?v=15"></script>
-<script src="js/game.js?v=15"></script>
+<script src="js/store.js?v=16"></script>
+<script src="js/settings.js?v=16"></script>
+<script src="js/noise.js?v=16"></script>
+<script src="js/textures.js?v=16"></script>
+<script src="js/blocks.js?v=16"></script>
+<script src="js/items.js?v=16"></script>
+<script src="js/recipes.js?v=16"></script>
+<script src="js/world.js?v=16"></script>
+<script src="js/player.js?v=16"></script>
+<script src="js/inventory.js?v=16"></script>
+<script src="js/net.js?v=16"></script>
+<script src="js/sound.js?v=16"></script>
+<script src="js/entities.js?v=16"></script>
+<script src="js/sky.js?v=16"></script>
+<script src="js/hand.js?v=16"></script>
+<script src="js/mobs.js?v=16"></script>
+<script src="js/controls.js?v=16"></script>
+<script src="js/ui.js?v=16"></script>
+<script src="js/game.js?v=16"></script>
 </body>
 </html>

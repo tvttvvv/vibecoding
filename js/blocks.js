@@ -77,6 +77,26 @@
     opaque: false, hardness: 0.2, height: 0.5625, interactive: 'bed'
   });
 
+  // ---- plants: crossed quads that sit on the ground and pop off without it
+  const PLANT = { opaque: false, solid: false, hardness: 0, render: 'cross', needsGround: true, replaceable: true };
+  const TALL_GRASS = simple(27, '잔디', T.tall_grass, Object.assign({}, PLANT, { drop: 0 }));
+  const DANDELION = simple(28, '민들레', T.dandelion, Object.assign({}, PLANT, { replaceable: false }));
+  const POPPY = simple(29, '양귀비', T.poppy, Object.assign({}, PLANT, { replaceable: false }));
+  const FARMLAND = def(30, '경작지', {
+    top: T.farmland_top, side: T.dirt, bottom: T.dirt,
+    opaque: false, height: 0.9375, hardness: 0.6, tool: 'shovel', drop: DIRT
+  });
+  const WHEAT_0 = simple(31, '밀', T.wheat_0, Object.assign({}, PLANT, { replaceable: false, crop: 0, drop: 0 }));
+  const WHEAT_1 = simple(32, '밀', T.wheat_1, Object.assign({}, PLANT, { replaceable: false, crop: 1, drop: 0 }));
+  const WHEAT_2 = simple(33, '밀', T.wheat_2, Object.assign({}, PLANT, { replaceable: false, crop: 2, drop: 0 }));
+  const WHEAT_3 = simple(34, '밀', T.wheat_3, Object.assign({}, PLANT, { replaceable: false, crop: 3, drop: 0 }));
+  const CHEST = def(35, '상자', {
+    top: T.chest_top, side: T.chest_side, bottom: T.chest_top,
+    opaque: false, height: 0.875, hardness: 2.5, tool: 'axe', interactive: 'chest'
+  });
+  // torches need something to stand on too
+  byId[TORCH].needsGround = true;
+
   byId[STONE].drop = COBBLESTONE;
   byId[GRASS].drop = DIRT;
   byId[LEAVES].drop = 0;
@@ -121,7 +141,8 @@
     GRASS, DIRT, STONE, COBBLESTONE, SAND, SANDSTONE, GRAVEL,
     LOG, LEAVES, PLANKS, GLASS, SNOW, SNOW_GRASS, CACTUS,
     COAL_ORE, IRON_ORE, GOLD_ORE, DIAMOND_ORE,
-    CRAFTING_TABLE, FURNACE, TORCH, WOOL, BED, BEDROCK
+    CRAFTING_TABLE, FURNACE, CHEST, TORCH, WOOL, BED, FARMLAND,
+    TALL_GRASS, DANDELION, POPPY, BEDROCK
   ];
 
   global.Blocks = {
@@ -129,6 +150,7 @@
     LOG, LEAVES, PLANKS, BEDROCK, COAL_ORE, IRON_ORE, GOLD_ORE,
     DIAMOND_ORE, WATER, SNOW, SNOW_GRASS, CACTUS, GLASS,
     CRAFTING_TABLE, FURNACE, FURNACE_LIT, TORCH, WOOL, BED,
+    TALL_GRASS, DANDELION, POPPY, FARMLAND, WHEAT_0, WHEAT_1, WHEAT_2, WHEAT_3, CHEST,
     byId, tileFor, isOpaque, isSolid, isLiquid, mineTime, canHarvest, iconFor, creativeList
   };
 })(window);

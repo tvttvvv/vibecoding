@@ -87,6 +87,10 @@
   const BONE = def(170, '뼈', T.item_bone);
   const STRING = def(171, '실', T.item_string);
   const GUNPOWDER = def(172, '화약', T.item_gunpowder);
+  const SEEDS = def(173, '밀 씨앗', T.item_seeds);
+  const WHEAT = def(174, '밀', T.item_wheat);
+  const BREAD = def(175, '빵', T.item_bread, { food: 5, saturation: 6 });
+  const BOAT = def(176, '보트', T.item_boat, { stackMax: 1 });
 
   // ---- unified block/item access -------------------------------------------
   function isBlock(id) { return id < ITEM_BASE; }
@@ -121,7 +125,8 @@
 
   function fuelSeconds(id) {
     if (isBlock(id)) {
-      if (id === Blocks.PLANKS || id === Blocks.LOG || id === Blocks.CRAFTING_TABLE) return 15;
+      if (id === Blocks.PLANKS || id === Blocks.LOG || id === Blocks.CRAFTING_TABLE ||
+          id === Blocks.CHEST) return 15;
       return 0;
     }
     return byId[id].fuel || 0;
@@ -129,7 +134,8 @@
 
   const creativeItems = [
     STICK, COAL, IRON_INGOT, GOLD_INGOT, DIAMOND,
-    APPLE, COOKED_BEEF, COOKED_PORK, COOKED_CHICKEN, COOKED_MUTTON, BONE, STRING, GUNPOWDER,
+    APPLE, BREAD, COOKED_BEEF, COOKED_PORK, COOKED_CHICKEN, COOKED_MUTTON, BONE, STRING, GUNPOWDER,
+    SEEDS, WHEAT, BOAT,
     tools.wood_pickaxe, tools.wood_axe, tools.wood_shovel, tools.wood_sword, tools.wood_hoe,
     tools.stone_pickaxe, tools.stone_axe, tools.stone_shovel, tools.stone_sword, tools.stone_hoe,
     tools.iron_pickaxe, tools.iron_axe, tools.iron_shovel, tools.iron_sword, tools.iron_hoe,
@@ -150,7 +156,7 @@
     STICK, COAL, IRON_INGOT, GOLD_INGOT, DIAMOND,
     APPLE, RAW_BEEF, COOKED_BEEF, RAW_PORK, COOKED_PORK,
     RAW_CHICKEN, COOKED_CHICKEN, RAW_MUTTON, COOKED_MUTTON,
-    ROTTEN_FLESH, BONE, STRING, GUNPOWDER,
+    ROTTEN_FLESH, BONE, STRING, GUNPOWDER, SEEDS, WHEAT, BREAD, BOAT,
     PIECE_ORDER, creativeItems,
     isBlock, get, name, tileOf, icon, stackMax, maxDurability, fuelSeconds, foodOf
   };

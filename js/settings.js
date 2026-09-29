@@ -13,7 +13,9 @@
     { key: 'invertY', label: '시점 상하 반전', type: 'bool', def: 0 },
     { key: 'holdMs', label: '길게 눌러 캐기 시간', min: 80, max: 500, step: 10, def: 180, unit: 'ms' },
     { key: 'cancelMine', label: '시점을 돌리면 캐기 취소', type: 'bool', def: 1 },
-    { key: 'btnScale', label: '버튼 크기', min: 70, max: 160, step: 5, def: 100, unit: '%' }
+    { key: 'btnScale', label: '버튼 크기', min: 70, max: 160, step: 5, def: 100, unit: '%' },
+    { key: 'volume', label: '소리 크기', min: 0, max: 100, step: 5, def: 70, unit: '%' },
+    { key: 'viewBob', label: '걸을 때 화면 흔들림', type: 'bool', def: 1 }
   ];
 
   const values = {};
@@ -63,6 +65,7 @@
       root.style.setProperty('--joy-radius', values.joyRadius + 'px');
       root.style.setProperty('--joy-zone', values.joyZone + '%');
       root.style.setProperty('--btn-scale', values.btnScale / 100);
+      if (global.Sound) Sound.setVolume(values.volume / 100);
       if (this.onChange) this.onChange();
     },
 

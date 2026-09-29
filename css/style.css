@@ -6,8 +6,11 @@ html, body {
   -webkit-user-select: none; user-select: none;
   -webkit-touch-callout: none;
   touch-action: none;
-  font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', sans-serif;
+  /* Galmuri is a Korean bitmap font in the spirit of Minecraft's own */
+  font-family: 'Galmuri11', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', sans-serif;
+  -webkit-font-smoothing: none;
 }
+button, input { font-family: inherit; }
 
 canvas { display: block; position: absolute; top: 0; left: 0; }
 img { image-rendering: pixelated; -ms-interpolation-mode: nearest-neighbor; }
@@ -461,3 +464,99 @@ body.keyboardMode #crosshair { display: block; }
 
 /* settings sit above the main menu, which stays open behind them */
 #settingsScreen { z-index: 130; background: rgba(8, 11, 17, 0.96); }
+
+/* ============================================================ v16: Minecraft look */
+
+/* the classic grey stone button with its bevel, and the hover/press states */
+.bigBtn, .bigBtn.alt, .bigBtn.ghost {
+  min-width: 270px; padding: 12px 20px; font-size: 16px; font-weight: 400;
+  color: #e0e0e0; text-shadow: 2px 2px 0 #3e3e3e;
+  background: #6f6f6f;
+  border: 2px solid #000;
+  border-radius: 0;
+  box-shadow: inset 2px 2px 0 #a8a8a8, inset -2px -3px 0 #4a4a4a;
+  image-rendering: pixelated;
+}
+.bigBtn:active, .bigBtn:hover {
+  filter: none; color: #ffffa0;
+  background: #7b86b8;
+  box-shadow: inset 2px 2px 0 #b6c0ea, inset -2px -3px 0 #4d567e;
+}
+.panelBtn { border-radius: 0 !important; }
+
+/* the title: stone-coloured blocky letters with a hard shadow, and the
+   yellow splash line tilted off its corner */
+.titleWrap { position: relative; margin-bottom: 4px; }
+.gameTitle {
+  font-family: 'Galmuri14', 'Galmuri11', sans-serif;
+  font-size: 46px !important; letter-spacing: 3px !important;
+  color: #d8d8d8;
+  text-shadow: 0 3px 0 #7a7a7a, 0 6px 0 #3a3a3a, 4px 8px 0 rgba(0,0,0,0.55) !important;
+}
+.splash {
+  position: absolute; right: -34px; bottom: -6px;
+  color: #ffff3f; font-size: 15px; text-shadow: 2px 2px 0 #3f3f00;
+  transform: rotate(-18deg);
+  animation: splashPulse 0.55s ease-in-out infinite alternate;
+  white-space: nowrap; pointer-events: none;
+}
+@keyframes splashPulse { from { transform: rotate(-18deg) scale(1); } to { transform: rotate(-18deg) scale(1.1); } }
+
+/* the title screen sits over the turning world, like the panorama */
+#menuScreen { background: linear-gradient(rgba(0,0,0,0.18), rgba(0,0,0,0.42)); }
+#menuScreen input[type="text"] {
+  background: #000; color: #e0e0e0; border: 2px solid #a0a0a0; border-radius: 0;
+  font-size: 15px; padding: 10px 12px; min-width: 270px; text-align: center;
+}
+.menuNote { color: #d0d0d0 !important; text-shadow: 1px 1px 0 #222; }
+
+/* in-game menus use the dark dirt backdrop of the real options screens */
+#pauseScreen, #deathScreen, #settingsScreen, #roomScreen, #loadingScreen {
+  background-color: #2b2016;
+  background-image:
+    linear-gradient(rgba(0,0,0,0.62), rgba(0,0,0,0.62)),
+    repeating-conic-gradient(#5a4028 0 25%, #4a3420 0 50%);
+  background-size: auto, 32px 32px;
+}
+#pauseScreen { background: rgba(0,0,0,0.55); background-image: none; }
+#deathScreen { background: rgba(120, 0, 0, 0.45); background-image: none; }
+#deathScreen h2 { color: #fff !important; font-size: 34px !important; text-shadow: 3px 3px 0 #3a0000; }
+
+/* experience: green bar between the hearts and the hotbar, level in the middle */
+#xpBar {
+  position: relative; width: var(--hotbar-w); max-width: 94vw; height: 7px;
+  background: #1d1d1d; border: 1px solid #000;
+  box-shadow: inset 0 1px 0 #3b3b3b;
+}
+#xpFill { height: 100%; width: 0; background: linear-gradient(#b8f858, #6fc21e); transition: width 0.15s linear; }
+#xpLevel {
+  position: absolute; left: 50%; top: -15px; transform: translateX(-50%);
+  color: #80ff20; font-size: 14px;
+  text-shadow: 1px 0 0 #000, -1px 0 0 #000, 0 1px 0 #000, 0 -1px 0 #000;
+}
+
+/* crouch and pause buttons */
+.mcbtn.sneak { width: calc(56px * var(--btn-scale)); height: calc(56px * var(--btn-scale)); }
+.mcbtn.sneak.active { background: rgba(120, 200, 90, 0.5); border-color: #b8f080; }
+.crouch {
+  display: block; width: 20px; height: 20px; position: relative;
+  border-bottom: 5px solid #fff;
+}
+.crouch::before {
+  content: ''; position: absolute; left: 4px; top: 2px; width: 12px; height: 8px;
+  border-top: 5px solid #fff; border-left: 5px solid #fff; transform: skewX(-20deg);
+}
+.pauseIcon { display: block; width: 14px; height: 16px; border-left: 5px solid #fff; border-right: 5px solid #fff; }
+
+/* chest: three rows of nine, above the player's own inventory */
+.chestGrid { margin-bottom: 4px; }
+
+/* the hand is drawn by WebGL; keep the crosshair above it */
+#crosshair { z-index: 12; }
+
+/* the title screen scrolls rather than cutting off its top on short screens,
+   and hides the in-game controls behind it */
+#menuScreen { justify-content: flex-start; overflow-y: auto; padding-top: 28px; padding-bottom: 28px; }
+#menuScreen > * { flex-shrink: 0; }
+body.onTitle #hud, body.onTitle #joystickZone, body.onTitle #joyVisual,
+body.onTitle #rightControls, body.onTitle #topRight, body.onTitle #crosshair { display: none !important; }

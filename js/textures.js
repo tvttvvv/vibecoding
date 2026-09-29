@@ -316,6 +316,63 @@
     for (let x = 1; x < 5; x++) for (let y = 1; y < 8; y++) api.put(x, y, '#e9ecec');
   });
 
+  // ---- plants and farming ---------------------------------------------------
+  define('tall_grass', (api) => {
+    api.clear();
+    const greens = ['#5d9c3c', '#4f8a33', '#6cae46', '#437a2b'];
+    for (let b = 0; b < 9; b++) {
+      let x = 1 + Math.floor(rnd() * 14);
+      const h = 6 + Math.floor(rnd() * 9);
+      for (let y = 15; y > 15 - h; y--) {
+        api.put(x, y, pick(greens));
+        if (rnd() < 0.25) x = Math.max(0, Math.min(15, x + (rnd() < 0.5 ? -1 : 1)));
+      }
+    }
+  });
+
+  function flower(name, petal, dark, centre) {
+    define(name, (api) => {
+      api.clear();
+      for (let y = 8; y < 16; y++) api.put(7, y, y % 3 ? '#4f8a33' : '#437a2b');
+      api.put(6, 12, '#5d9c3c'); api.put(5, 11, '#5d9c3c'); api.put(8, 13, '#5d9c3c'); api.put(9, 12, '#5d9c3c');
+      const pts = [[6, 4], [7, 4], [8, 4], [5, 5], [6, 5], [7, 5], [8, 5], [9, 5], [5, 6], [6, 6], [8, 6], [9, 6], [6, 7], [7, 7], [8, 7]];
+      for (const [x, y] of pts) api.put(x, y, rnd() < 0.3 ? dark : petal);
+      api.put(7, 6, centre);
+    });
+  }
+  flower('dandelion', '#f5d82b', '#d8b418', '#f09a1a');
+  flower('poppy', '#d6282a', '#a31c1f', '#2b2b2b');
+
+  define('farmland_top', (api) => {
+    speckle(api, '#5a3b22', ['#4d321c', '#664429', '#3f2916'], 0.6);
+    for (let y = 1; y < TILE; y += 4) for (let x = 0; x < TILE; x++) api.put(x, y, pick(['#3f2916', '#35220f']));
+  });
+
+  for (let stage = 0; stage < 4; stage++) {
+    define('wheat_' + stage, (api) => {
+      api.clear();
+      const h = 4 + stage * 3;
+      const stem = stage < 3 ? ['#5d9c3c', '#6cae46', '#4f8a33'] : ['#b8a23a', '#c9b64a', '#a18c2c'];
+      for (const x of [1, 4, 7, 10, 13]) {
+        for (let y = 15; y > 15 - h; y--) api.put(x + (y % 5 === 0 ? 1 : 0), y, pick(stem));
+        if (stage === 3) {
+          for (let y = 15 - h; y < 15 - h + 4; y++) { api.put(x, y, '#d9c25a'); api.put(x + 1, y, '#c4a93f'); }
+        }
+      }
+    });
+  }
+
+  define('chest_top', (api) => {
+    speckle(api, '#a0712f', ['#8b5f24', '#b58239', '#946826'], 0.5);
+    for (let i = 0; i < TILE; i++) { api.put(i, 0, '#4a3312'); api.put(i, 15, '#4a3312'); api.put(0, i, '#4a3312'); api.put(15, i, '#4a3312'); }
+  });
+
+  define('chest_side', (api) => {
+    speckle(api, '#a0712f', ['#8b5f24', '#b58239', '#946826'], 0.5);
+    for (let i = 0; i < TILE; i++) { api.put(i, 0, '#4a3312'); api.put(i, 15, '#4a3312'); api.put(0, i, '#4a3312'); api.put(15, i, '#4a3312'); api.put(i, 5, '#4a3312'); }
+    for (let x = 7; x < 9; x++) for (let y = 4; y < 8; y++) api.put(x, y, y === 4 ? '#8a8a8a' : '#c8c8c8');
+  });
+
   // ---------------------------------------------------------------- items
   const MAT = {
     wood: { a: '#9c7b4a', b: '#6f5531', c: '#b79262' },
@@ -512,6 +569,37 @@
       const x = 3 + Math.floor(rnd() * 10), y = 3 + Math.floor(rnd() * 10);
       api.put(x, y, pick(['#4a4a4a', '#2f2f2f', '#6a6a6a', '#3d3d3d']));
     }
+  });
+
+  define('item_seeds', (api) => {
+    api.clear();
+    const pts = [[5, 5], [9, 4], [7, 7], [4, 9], [10, 8], [6, 11], [9, 11], [12, 6], [3, 6]];
+    for (const [x, y] of pts) { api.put(x, y, '#5d9c3c'); api.put(x + 1, y, '#3f6b25'); api.put(x, y + 1, '#4f8a33'); }
+  });
+
+  define('item_wheat', (api) => {
+    api.clear();
+    for (let i = 0; i < 11; i++) { api.put(3 + i, 13 - i, '#b8a23a'); api.put(4 + i, 13 - i, '#a18c2c'); }
+    for (let i = 0; i < 5; i++) { rectOn(api, 10 + (i % 2), 1 + i, 3, 1, i % 2 ? '#d9c25a' : '#c4a93f'); }
+    rectOn(api, 9, 4, 2, 2, '#d9c25a');
+  });
+
+  define('item_bread', (api) => {
+    api.clear();
+    rectOn(api, 2, 7, 12, 4, '#b8793a');
+    rectOn(api, 3, 6, 10, 1, '#c98a45');
+    rectOn(api, 2, 11, 12, 1, '#8a5626');
+    for (const x of [4, 7, 10]) { api.put(x, 7, '#e3b066'); api.put(x + 1, 8, '#e3b066'); }
+  });
+
+  define('item_boat', (api) => {
+    api.clear();
+    rectOn(api, 1, 8, 14, 3, '#9c7b4a');
+    rectOn(api, 2, 11, 12, 1, '#6f5531');
+    rectOn(api, 1, 6, 2, 2, '#9c7b4a');
+    rectOn(api, 13, 6, 2, 2, '#9c7b4a');
+    for (let x = 1; x < 15; x++) api.put(x, 8, '#b79262');
+    rectOn(api, 6, 3, 1, 5, '#6b4a2a');
   });
 
   const TOOL_KINDS = ['pickaxe', 'axe', 'shovel', 'sword', 'hoe'];

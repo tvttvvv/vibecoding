@@ -74,6 +74,9 @@
   shaped(B.TORCH, 4, ['#', '|'], { '#': I.COAL, '|': I.STICK });
   shaped(B.WOOL, 1, ['##', '##'], { '#': I.STRING });
   shaped(B.BED, 1, ['WWW', 'PPP'], { W: B.WOOL, P: B.PLANKS });
+  shaped(B.CHEST, 1, ['###', '# #', '###'], { '#': B.PLANKS });
+  shaped(I.BREAD, 1, ['###'], { '#': I.WHEAT });
+  shaped(I.BOAT, 1, ['# #', '###'], { '#': B.PLANKS });
 
   for (const [, mat, tier] of PLANK_LIKE) {
     const key = { '#': mat, '|': I.STICK };

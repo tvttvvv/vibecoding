@@ -66,17 +66,23 @@
   let capFaces = 0;
   let sPos = null, sUv = null, sCol = null, sIdx = null;
   let lPos = null, lUv = null, lCol = null, lIdx = null;
+  // grows mid-chunk without losing what is already written
+  function grow(arr, size, Ctor) {
+    const out = new Ctor(size);
+    if (arr) out.set(arr);
+    return out;
+  }
   function ensureScratch(faces) {
     if (faces <= capFaces) return;
     capFaces = Math.max(faces, Math.ceil(capFaces * 1.6), 8192);
-    sPos = new Float32Array(capFaces * 12);
-    sUv = new Float32Array(capFaces * 8);
-    sCol = new Float32Array(capFaces * 12);
-    sIdx = new Uint32Array(capFaces * 6);
-    lPos = new Float32Array(capFaces * 12);
-    lUv = new Float32Array(capFaces * 8);
-    lCol = new Float32Array(capFaces * 12);
-    lIdx = new Uint32Array(capFaces * 6);
+    sPos = grow(sPos, capFaces * 12, Float32Array);
+    sUv = grow(sUv, capFaces * 8, Float32Array);
+    sCol = grow(sCol, capFaces * 12, Float32Array);
+    sIdx = grow(sIdx, capFaces * 6, Uint32Array);
+    lPos = grow(lPos, capFaces * 12, Float32Array);
+    lUv = grow(lUv, capFaces * 8, Float32Array);
+    lCol = grow(lCol, capFaces * 12, Float32Array);
+    lIdx = grow(lIdx, capFaces * 6, Uint32Array);
   }
 
   // ---------------------------------------------------------------- worldgen
@@ -216,8 +222,34 @@
       }
     }
 
+    growPlants(chunk, seed);
     growFeatures(chunk, seed);
     chunk.generated = true;
+  }
+
+  // tall grass and flowers on open grass; trees grown afterwards overwrite them
+  function growPlants(chunk, seed) {
+    const baseX = chunk.cx * CHUNK_SIZE, baseZ = chunk.cz * CHUNK_SIZE;
+    for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+      for (let lz = 0; lz < CHUNK_SIZE; lz++) {
+        const wx = baseX + lx, wz = baseZ + lz;
+        const y = Math.floor(columnHeight(wx, wz, seed));
+        if (y <= SEA_LEVEL || y >= WORLD_HEIGHT - 2) continue;
+        const i = (y * CHUNK_SIZE + lz) * CHUNK_SIZE + lx;
+        if (chunk.data[i] !== B.GRASS) continue;
+        if (chunk.data[i + CHUNK_SIZE * CHUNK_SIZE] !== B.AIR) continue;
+        const biome = biomeAt(wx, wz, seed);
+        const h = Noise.hash2(wx, wz, seed + 71);
+        const grass = biome === 'plains' ? 0.2 : biome === 'forest' ? 0.12 : 0.04;
+        let plant = 0;
+        if (h < grass) plant = B.TALL_GRASS;
+        else if (h < grass + 0.012) plant = B.DANDELION;
+        else if (h < grass + 0.022) plant = B.POPPY;
+        if (!plant) continue;
+        chunk.data[i + CHUNK_SIZE * CHUNK_SIZE] = plant;
+        if (y + 1 > chunk.maxY) chunk.maxY = y + 1;
+      }
+    }
   }
 
   function growFeatures(chunk, seed) {
@@ -271,12 +303,15 @@
     this.renderDistance = 4;
     this._lastChunk = null;
     this._lastKey = '';
-    this.material = new THREE.MeshBasicMaterial({
+    this.light = World.lightUniforms;
+    // chunks the player just changed: rebuilt before anything else
+    this.urgent = new Set();
+    this.material = litMaterial({
       map: Textures.texture,
       vertexColors: true,
       alphaTest: 0.5
     });
-    this.liquidMaterial = new THREE.MeshBasicMaterial({
+    this.liquidMaterial = litMaterial({
       map: Textures.texture,
       vertexColors: true,
       transparent: true,
@@ -285,7 +320,40 @@
       side: THREE.DoubleSide
     });
     this.onChunkReady = null;
-    this._pad = new Uint8Array((CHUNK_SIZE + 2) * (WORLD_HEIGHT + 4) * (CHUNK_SIZE + 2));
+  }
+
+  // Vertex colour carries (face shade x AO, sky light, block light). The sky
+  // part is scaled by daylight here, so the day cycle costs nothing per chunk.
+  World.lightUniforms = {
+    uDaylight: { value: 1 },
+    uSkyTint: { value: new THREE.Color(1, 1, 1) },
+    uMinLight: { value: 0.06 }
+  };
+
+  function litMaterial(opts) {
+    const m = new THREE.MeshBasicMaterial(opts);
+    m.onBeforeCompile = (shader) => {
+      shader.uniforms.uDaylight = World.lightUniforms.uDaylight;
+      shader.uniforms.uSkyTint = World.lightUniforms.uSkyTint;
+      shader.uniforms.uMinLight = World.lightUniforms.uMinLight;
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', [
+          '#include <common>',
+          'uniform float uDaylight;',
+          'uniform vec3 uSkyTint;',
+          'uniform float uMinLight;',
+          'float mcCurve(float f) { return f / (2.3 - 1.3 * f); }'
+        ].join('\n'))
+        .replace('#include <color_fragment>', [
+          '#ifdef USE_COLOR',
+          '  vec3 skyPart = uSkyTint * mcCurve(vColor.g * uDaylight);',
+          '  vec3 blkPart = vec3(1.0, 0.93, 0.8) * mcCurve(vColor.b);',
+          '  vec3 lit = max(max(skyPart, blkPart), vec3(uMinLight));',
+          '  diffuseColor.rgb *= vColor.r * lit;',
+          '#endif'
+        ].join('\n'));
+    };
+    return m;
   }
 
   World.prototype.key = function (cx, cz) { return cx + ',' + cz; };
@@ -333,7 +401,10 @@
     const lx = x - cx * CHUNK_SIZE, lz = z - cz * CHUNK_SIZE;
     c.data[(y * CHUNK_SIZE + lz) * CHUNK_SIZE + lx] = id;
     if (id !== B.AIR && y > c.maxY) c.maxY = y;
+    if (B.byId[id].light) c.hasLight = true;
     c.dirty = true;
+    this.urgent.add(c);
+    (c.pendingEdits || (c.pendingEdits = [])).push(x, y, z);
 
     if (lx === 0) this.markDirty(cx - 1, cz);
     if (lx === CHUNK_SIZE - 1) this.markDirty(cx + 1, cz);
@@ -369,41 +440,216 @@
     return -1;
   };
 
-  // ---------------------------------------------------------------- meshing
-  World.prototype.buildChunkMesh = function (chunk) {
-    if (!OPAQUE) buildLookups();
-    const PW = CHUNK_SIZE + 2;
-    const pad = this._pad;
-    const baseX = chunk.cx * CHUNK_SIZE, baseZ = chunk.cz * CHUNK_SIZE;
-    const yTop = Math.min(WORLD_HEIGHT - 1, chunk.maxY + 1);
-    const yFillTop = Math.min(WORLD_HEIGHT + 1, yTop + 2);
+  // ---------------------------------------------------------------- lighting
+  // Minecraft keeps two light values per cell: sky light (15 under open sky,
+  // fading into caves and under water) and block light (torches). A chunk is
+  // lit from a 3x3-chunk region around it, which is exact because light never
+  // travels more than 15 blocks. The mesher bakes both values into the vertex
+  // colours and the shader mixes them with the time of day, so night falls
+  // without rebuilding a single chunk.
+  const RW = CHUNK_SIZE * 3;           // region width in x and z
+  const RM = CHUNK_SIZE;               // margin: region x/z index = local + 16
+  const RH = WORLD_HEIGHT + 4;         // region height, y index = y + 2
+  const SZ = RW, SY = RW * RW;
+  const RSIZE = SY * RH;
+  const region = new Uint8Array(RSIZE);
+  const skyL = new Uint8Array(RSIZE);
+  const blkL = new Uint8Array(RSIZE);
+  const colTop = new Int16Array(RW * RW);
+  const queue = new Int32Array(RSIZE);
 
-    for (let y = -2; y <= yFillTop; y++) {
-      const py = y + 2;
-      for (let z = -1; z <= CHUNK_SIZE; z++) {
-        const pz = z + 1;
-        const rowBase = (py * PW + pz) * PW;
-        const inZ = z >= 0 && z < CHUNK_SIZE;
-        const inY = y >= 0 && y < WORLD_HEIGHT;
-        for (let x = -1; x <= CHUNK_SIZE; x++) {
-          let v;
-          if (inY && inZ && x >= 0 && x < CHUNK_SIZE) {
-            v = chunk.data[(y * CHUNK_SIZE + z) * CHUNK_SIZE + x];
-          } else {
-            v = this.getBlock(baseX + x, y, baseZ + z);
+  let EMIT = null, DIM = null;
+  function buildLightLookups() {
+    const n = B.byId.length;
+    EMIT = new Uint8Array(n);
+    DIM = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      const d = B.byId[i];
+      if (!d) continue;
+      EMIT[i] = d.light || 0;
+      // water and leaves let light through but take a little of it
+      DIM[i] = (d.liquid || i === B.LEAVES) ? 1 : 0;
+    }
+  }
+
+  function regionIndex(lx, y, lz) {
+    return (y + 2) * SY + (lz + RM) * SZ + (lx + RM);
+  }
+
+  World.prototype.fillRegion = function (chunk) {
+    let top = 0, anyLight = false;
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const c = this.chunks.get(this.key(chunk.cx + dx, chunk.cz + dz));
+        const ox = RM + dx * CHUNK_SIZE, oz = RM + dz * CHUNK_SIZE;
+        if (!c || !c.generated) {
+          for (let y = 0; y < WORLD_HEIGHT; y++) {
+            for (let z = 0; z < CHUNK_SIZE; z++) {
+              const b = (y + 2) * SY + (z + oz) * SZ + ox;
+              region.fill(B.AIR, b, b + CHUNK_SIZE);
+            }
           }
-          pad[rowBase + x + 1] = v;
+          continue;
+        }
+        if (c.maxY > top) top = c.maxY;
+        if (c.hasLight) anyLight = true;
+        const d = c.data;
+        for (let y = 0; y < WORLD_HEIGHT; y++) {
+          for (let z = 0; z < CHUNK_SIZE; z++) {
+            const s = (y * CHUNK_SIZE + z) * CHUNK_SIZE;
+            region.set(d.subarray(s, s + CHUNK_SIZE), (y + 2) * SY + (z + oz) * SZ + ox);
+          }
         }
       }
     }
+    // below the world is rock, above it is air
+    region.fill(B.STONE, 0, 2 * SY);
+    region.fill(B.AIR, (WORLD_HEIGHT + 2) * SY, RSIZE);
+    return { top: Math.min(WORLD_HEIGHT - 1, top + 2), anyLight };
+  };
 
-    const PWY = PW * PW;
-    const padBase = 2 * PWY + PW + 1;
+  function lightRegion(top, anyLight) {
+    const yLim = top;                        // world y; everything above is open sky
+    const limIdx = (yLim + 3) * SY;
+    skyL.fill(0, 0, limIdx);
+    skyL.fill(15, limIdx, RSIZE);
+    blkL.fill(0);
+
+    // straight down from the sky, dimmed by water and leaves
+    for (let z = 0; z < RW; z++) {
+      for (let x = 0; x < RW; x++) {
+        let level = 15, y = yLim;
+        let i = (y + 2) * SY + z * SZ + x;
+        for (; y >= 0; y--, i -= SY) {
+          const id = region[i];
+          if (OPAQUE[id]) break;
+          if (DIM[id]) level = level > 0 ? level - 1 : 0;
+          skyL[i] = level;
+        }
+        colTop[z * RW + x] = y;
+      }
+    }
+
+    // sideways into overhangs and cave mouths: only where a neighbouring
+    // column is taller can light need to spread
+    let qh = 0, qt = 0;
+    for (let z = 0; z < RW; z++) {
+      for (let x = 0; x < RW; x++) {
+        const c = z * RW + x;
+        const own = colTop[c];
+        let high = own;
+        if (x > 0 && colTop[c - 1] > high) high = colTop[c - 1];
+        if (x < RW - 1 && colTop[c + 1] > high) high = colTop[c + 1];
+        if (z > 0 && colTop[c - RW] > high) high = colTop[c - RW];
+        if (z < RW - 1 && colTop[c + RW] > high) high = colTop[c + RW];
+        for (let y = own + 1; y <= high && y <= yLim; y++) {
+          const i = (y + 2) * SY + z * SZ + x;
+          if (skyL[i] > 1) queue[qt++] = i;
+        }
+      }
+    }
+    spread(skyL, qh, qt, yLim);
+
+    if (!anyLight) return;
+    qt = 0;
+    const end = (yLim + 3) * SY;
+    for (let i = 2 * SY; i < end; i++) {
+      const e = EMIT[region[i]];
+      if (e) { blkL[i] = e; queue[qt++] = i; }
+    }
+    if (qt) spread(blkL, 0, qt, yLim);
+  }
+
+  function spread(L, qh, qt, yLim) {
+    while (qh < qt) {
+      const i = queue[qh++];
+      const level = L[i];
+      if (level <= 1) continue;
+      const next = level - 1;
+      const x = i % SZ;
+      const z = ((i / SZ) | 0) % RW;
+      const y = ((i / SY) | 0) - 2;
+      if (x > 0) { const n = i - 1; if (!OPAQUE[region[n]] && L[n] < next) { L[n] = next; queue[qt++] = n; } }
+      if (x < RW - 1) { const n = i + 1; if (!OPAQUE[region[n]] && L[n] < next) { L[n] = next; queue[qt++] = n; } }
+      if (z > 0) { const n = i - SZ; if (!OPAQUE[region[n]] && L[n] < next) { L[n] = next; queue[qt++] = n; } }
+      if (z < RW - 1) { const n = i + SZ; if (!OPAQUE[region[n]] && L[n] < next) { L[n] = next; queue[qt++] = n; } }
+      if (y > 0) { const n = i - SY; if (!OPAQUE[region[n]] && L[n] < next) { L[n] = next; queue[qt++] = n; } }
+      if (y < yLim) { const n = i + SY; if (!OPAQUE[region[n]] && L[n] < next) { L[n] = next; queue[qt++] = n; } }
+    }
+  }
+
+  // light of one cell, for spawning rules and the hand in first person
+  World.prototype.lightAt = function (x, y, z) {
+    if (y >= WORLD_HEIGHT) return { sky: 15, blk: 0 };
+    if (y < 0) return { sky: 0, blk: 0 };
+    const cx = Math.floor(x / CHUNK_SIZE), cz = Math.floor(z / CHUNK_SIZE);
+    const c = this.getChunk(cx, cz);
+    if (!c || !c.sky) return { sky: 15, blk: 0 };
+    const i = (y * CHUNK_SIZE + (z - cz * CHUNK_SIZE)) * CHUNK_SIZE + (x - cx * CHUNK_SIZE);
+    return { sky: c.sky[i], blk: c.blk[i] };
+  };
+
+  // After an edit only the edited chunk is rebuilt at once; a neighbour is
+  // rebuilt only if the new light actually reaches it.
+  World.prototype.checkNeighbourLight = function (chunk) {
+    const edits = chunk.pendingEdits;
+    chunk.pendingEdits = null;
+    if (!edits) return;
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dz) continue;
+        const n = this.chunks.get(this.key(chunk.cx + dx, chunk.cz + dz));
+        if (!n || !n.generated || n.dirty || !n.sky) continue;
+        const bx = n.cx * CHUNK_SIZE, bz = n.cz * CHUNK_SIZE;
+        let changed = false;
+        for (let e = 0; e < edits.length && !changed; e += 3) {
+          const ex = edits[e], ey = edits[e + 1], ez = edits[e + 2];
+          const x0 = Math.max(0, ex - 15 - bx), x1 = Math.min(CHUNK_SIZE - 1, ex + 15 - bx);
+          const z0 = Math.max(0, ez - 15 - bz), z1 = Math.min(CHUNK_SIZE - 1, ez + 15 - bz);
+          const y0 = Math.max(0, ey - 15), y1 = Math.min(WORLD_HEIGHT - 1, ey + 15);
+          if (x0 > x1 || z0 > z1) continue;
+          for (let y = y0; y <= y1 && !changed; y++) {
+            for (let z = z0; z <= z1 && !changed; z++) {
+              const ri = (y + 2) * SY + (z + RM + dz * CHUNK_SIZE) * SZ + RM + dx * CHUNK_SIZE;
+              const ci = (y * CHUNK_SIZE + z) * CHUNK_SIZE;
+              for (let x = x0; x <= x1; x++) {
+                if (skyL[ri + x] !== n.sky[ci + x] || blkL[ri + x] !== n.blk[ci + x]) { changed = true; break; }
+              }
+            }
+          }
+        }
+        if (changed) n.dirty = true;
+      }
+    }
+  };
+
+  // ---------------------------------------------------------------- meshing
+  World.prototype.buildChunkMesh = function (chunk) {
+    if (!OPAQUE) buildLookups();
+    if (!EMIT) buildLightLookups();
+    const baseX = chunk.cx * CHUNK_SIZE, baseZ = chunk.cz * CHUNK_SIZE;
+    const yTop = Math.min(WORLD_HEIGHT - 1, chunk.maxY + 1);
+
+    const info = this.fillRegion(chunk);
+    lightRegion(Math.max(info.top, yTop + 1), info.anyLight);
+
+    // keep this chunk's own light for later questions about it
+    if (!chunk.sky) {
+      chunk.sky = new Uint8Array(CHUNK_SIZE * WORLD_HEIGHT * CHUNK_SIZE);
+      chunk.blk = new Uint8Array(CHUNK_SIZE * WORLD_HEIGHT * CHUNK_SIZE);
+    }
+    for (let y = 0; y < WORLD_HEIGHT; y++) {
+      for (let z = 0; z < CHUNK_SIZE; z++) {
+        const ri = regionIndex(0, y, z), ci = (y * CHUNK_SIZE + z) * CHUNK_SIZE;
+        chunk.sky.set(skyL.subarray(ri, ri + CHUNK_SIZE), ci);
+        chunk.blk.set(blkL.subarray(ri, ri + CHUNK_SIZE), ci);
+      }
+    }
+    this.checkNeighbourLight(chunk);
 
     ensureScratch(8192);
-    const pos = sPos, uvs = sUv, cols = sCol, idx = sIdx;
-    const lpos = lPos, luvs = lUv, lcols = lCol, lidx = lIdx;
     let sVert = 0, sTri = 0, lVert = 0, lTri = 0;
+    const pad = region;
 
     for (let y = 0; y <= yTop; y++) {
       for (let z = 0; z < CHUNK_SIZE; z++) {
@@ -413,15 +659,18 @@
           if (id === B.AIR) continue;
 
           const isLiquid = LIQUID[id];
-          const pHere = padBase + y * PWY + z * PW + x;
-          const waterTopDrop = isLiquid && pad[pHere + PWY] !== id ? 0.125 : 0;
+          const pHere = regionIndex(x, y, z);
+          const waterTopDrop = isLiquid && pad[pHere + SY] !== id ? 0.125 : 0;
 
-          // torches and the like: two crossed quads, drawn from both sides and
-          // at full brightness so they read as a light in a dark room
+          // torches, grass and flowers: two crossed quads drawn from both sides,
+          // lit by the light in their own cell
           if (CROSS[id]) {
+            if (sVert + 16 > capFaces * 4) ensureScratch(capFaces * 2);
+            const pos = sPos, uvs = sUv, cols = sCol, idx = sIdx;
             const t4 = FACE_TILE_OF[id * 6 + 2] * 4;
             const cu0 = TILE_UV[t4], cu1 = TILE_UV[t4 + 1];
             const cv0 = TILE_UV[t4 + 2], cv1 = TILE_UV[t4 + 3];
+            const ls = skyL[pHere] / 15, lb = blkL[pHere] / 15;
             const r = 0.36, cx = x + 0.5, cz = z + 0.5;
             const quads = [[-r, -r, r, r], [-r, r, r, -r]];
             for (const q of quads) {
@@ -433,11 +682,11 @@
                 const px = [ax, bx2, ax, bx2], pz = [az, bz2, az, bz2];
                 for (let ci = 0; ci < 4; ci++) {
                   pos[vp] = cx + px[ci];
-                  pos[vp + 1] = y + (ci >= 2 ? 1 : 0);
+                  pos[vp + 1] = y + (ci >= 2 ? BHEIGHT[id] : 0);
                   pos[vp + 2] = cz + pz[ci];
                   uvs[vu] = (ci === 1 || ci === 3) ? cu1 : cu0;
                   uvs[vu + 1] = ci >= 2 ? cv0 : cv1;
-                  cols[vp] = 1; cols[vp + 1] = 1; cols[vp + 2] = 1;
+                  cols[vp] = 0.92; cols[vp + 1] = ls; cols[vp + 2] = lb;
                   vp += 3; vu += 2;
                 }
                 const ti = sTri * 3;
@@ -454,12 +703,18 @@
           for (let f = 0; f < 6; f++) {
             const f3 = f * 3;
             const nx = FACE_N[f3], ny = FACE_N[f3 + 1], nz = FACE_N[f3 + 2];
-            const pNb = pHere + ny * PWY + nz * PW + nx;
+            const pNb = pHere + ny * SY + nz * SZ + nx;
             const nb = pad[pNb];
             // a shortened block only hides its underside behind a neighbour
             if (OPAQUE[nb] && (bh >= 1 || f === 3)) continue;
             if (isLiquid) { if (LIQUID[nb]) continue; }
             else if (nb === id && !OPAQUE[id] && id !== B.LEAVES) continue;
+
+            if ((isLiquid ? lVert : sVert) + 4 > capFaces * 4) ensureScratch(capFaces * 2);
+            const P = isLiquid ? lPos : sPos;
+            const U = isLiquid ? lUv : sUv;
+            const C = isLiquid ? lCol : sCol;
+            const I = isLiquid ? lIdx : sIdx;
 
             const tile = FACE_TILE_OF[id * 6 + f] * 4;
             const u0 = TILE_UV[tile], u1 = TILE_UV[tile + 1];
@@ -468,26 +723,32 @@
 
             const tux = FACE_TU[f3], tuy = FACE_TU[f3 + 1], tuz = FACE_TU[f3 + 2];
             const tvx = FACE_TV[f3], tvy = FACE_TV[f3 + 1], tvz = FACE_TV[f3 + 2];
-            const stepU = tuy * PWY + tuz * PW + tux;
-            const stepV = tvy * PWY + tvz * PW + tvx;
+            const stepU = tuy * SY + tuz * SZ + tux;
+            const stepV = tvy * SY + tvz * SZ + tvx;
 
-            const P = isLiquid ? lpos : pos;
-            const U = isLiquid ? luvs : uvs;
-            const C = isLiquid ? lcols : cols;
-            const I = isLiquid ? lidx : idx;
+            // a short block's side faces look sideways from inside its own cell
+            const lightCell = (bh < 1 && f !== 3) ? pHere : pNb;
             const vStart = isLiquid ? lVert : sVert;
-
             let vp = vStart * 3, vu = vStart * 2;
             let ao0 = 0, ao1 = 0, ao2 = 0, ao3 = 0;
 
             for (let ci = 0; ci < 4; ci++) {
               const su = CORNER_SIGNS[ci][0], sv = CORNER_SIGNS[ci][1];
-              const s1 = OPAQUE[pad[pNb + stepU * su]];
-              const s2 = OPAQUE[pad[pNb + stepV * sv]];
-              const cr = OPAQUE[pad[pNb + stepU * su + stepV * sv]];
+              const pa = pNb + stepU * su, pb = pNb + stepV * sv, pc = pa + stepV * sv;
+              const s1 = OPAQUE[pad[pa]];
+              const s2 = OPAQUE[pad[pb]];
+              const cr = OPAQUE[pad[pc]];
               const level = (s1 && s2) ? 0 : 3 - (s1 + s2 + cr);
               if (ci === 0) ao0 = level; else if (ci === 1) ao1 = level;
               else if (ci === 2) ao2 = level; else ao3 = level;
+
+              // smooth lighting: average the open cells around this corner
+              let ls = skyL[lightCell], lb = blkL[lightCell], n = 1;
+              if (lightCell === pNb) {
+                if (!s1) { ls += skyL[pa]; lb += blkL[pa]; n++; }
+                if (!s2) { ls += skyL[pb]; lb += blkL[pb]; n++; }
+                if (!cr && !(s1 && s2)) { ls += skyL[pc]; lb += blkL[pc]; n++; }
+              }
 
               const c3 = f * 12 + ci * 3;
               const cy = FACE_CORNER[c3 + 1];
@@ -498,8 +759,9 @@
               U[vu] = (ci === 1 || ci === 3) ? u1 : u0;
               U[vu + 1] = ci >= 2 ? v1 : v0;
 
-              const b = shade * AO_LEVEL[level];
-              C[vp] = b; C[vp + 1] = b; C[vp + 2] = b;
+              C[vp] = shade * AO_LEVEL[level];
+              C[vp + 1] = ls / (n * 15);
+              C[vp + 2] = lb / (n * 15);
 
               vp += 3; vu += 2;
             }
@@ -519,8 +781,8 @@
       }
     }
 
-    this.applyMesh(chunk, 'solidMesh', pos, uvs, cols, idx, sVert, sTri, this.material, baseX, baseZ);
-    this.applyMesh(chunk, 'liquidMesh', lpos, luvs, lcols, lidx, lVert, lTri, this.liquidMaterial, baseX, baseZ);
+    this.applyMesh(chunk, 'solidMesh', sPos, sUv, sCol, sIdx, sVert, sTri, this.material, baseX, baseZ);
+    this.applyMesh(chunk, 'liquidMesh', lPos, lUv, lCol, lIdx, lVert, lTri, this.liquidMaterial, baseX, baseZ);
     chunk.dirty = false;
   };
 
@@ -557,6 +819,18 @@
     const pcx = Math.floor(px / CHUNK_SIZE), pcz = Math.floor(pz / CHUNK_SIZE);
     const R = this.renderDistance;
     let pending = 0;
+
+    // what the player just broke or placed shows up this frame, whatever else
+    // is waiting; light spilling into neighbours follows under the budget
+    if (this.urgent.size) {
+      for (const c of this.urgent) {
+        if (c.generated && c.dirty && this.chunks.get(this.key(c.cx, c.cz)) === c) {
+          for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) this.ensureChunk(c.cx + dx, c.cz + dz);
+          this.buildChunkMesh(c);
+        }
+      }
+      this.urgent.clear();
+    }
 
     for (let ring = 0; ring <= R; ring++) {
       for (let dx = -ring; dx <= ring; dx++) {
@@ -597,7 +871,7 @@
   };
 
   // ---------------------------------------------------------------- raycast
-  World.prototype.raycast = function (origin, dir, maxDist) {
+  World.prototype.raycast = function (origin, dir, maxDist, hitLiquid) {
     let x = Math.floor(origin.x), y = Math.floor(origin.y), z = Math.floor(origin.z);
     const stepX = dir.x > 0 ? 1 : -1, stepY = dir.y > 0 ? 1 : -1, stepZ = dir.z > 0 ? 1 : -1;
     const tDeltaX = dir.x !== 0 ? Math.abs(1 / dir.x) : Infinity;
@@ -611,7 +885,7 @@
 
     while (t <= maxDist) {
       const id = this.getBlock(x, y, z);
-      if (id !== B.AIR && B.byId[id].solid) {
+      if (id !== B.AIR && (hitLiquid || !B.byId[id].liquid)) {
         return { x, y, z, id, nx, ny, nz, dist: t };
       }
       if (tMaxX < tMaxY && tMaxX < tMaxZ) {

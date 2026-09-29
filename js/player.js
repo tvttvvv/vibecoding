@@ -12,6 +12,8 @@
   const WALK_SPEED = 4.4;
   const SPRINT_SPEED = 5.7;
   const SWIM_SPEED = 2.4;
+  const SNEAK_SPEED = 1.3;
+  const SNEAK_EYE = 1.27;
   const FLY_SPEED = 11;
   const MAX_FALL = 55;
   const MAX_AIR = 15;
@@ -63,7 +65,19 @@
     this.hurtFlash = 0;
   }
 
-  Player.prototype.eyeY = function () { return this.pos.y + EYE; };
+  // the camera eases down when you crouch rather than snapping
+  Player.prototype.eyeY = function () { return this.pos.y + (this.eye || EYE); };
+
+  // is there anything under the body's footprint to stand on?
+  Player.prototype.supported = function (world, x, z) {
+    const y = Math.floor(this.pos.y - 0.05);
+    const x0 = Math.floor(x - HALF_W + 0.01), x1 = Math.floor(x + HALF_W - 0.01);
+    const z0 = Math.floor(z - HALF_W + 0.01), z1 = Math.floor(z + HALF_W - 0.01);
+    for (let bx = x0; bx <= x1; bx++) {
+      for (let bz = z0; bz <= z1; bz++) if (solidAt(world, bx, y, bz)) return true;
+    }
+    return false;
+  };
 
   Player.prototype.forward = function (out) {
     out.x = -Math.sin(this.yaw);
@@ -135,14 +149,21 @@
     this.inWater = B.byId[feetBlock].liquid || B.byId[bodyBlock].liquid;
     this.headInWater = B.byId[eyeBlock].liquid;
 
+    // sneaking: slow, crouched, and it will not walk you off an edge
+    this.sneaking = !!input.sneak && !this.flying && !this.inWater;
+    const eyeTarget = this.sneaking ? SNEAK_EYE : EYE;
+    this.eye = (this.eye || EYE) + (eyeTarget - (this.eye || EYE)) * Math.min(1, dt * 14);
+
     const mag = Math.hypot(input.move.x, input.move.y);
     // a keyboard says so explicitly; a joystick means it by pushing to the rim
     const wantRun = input.run !== undefined ? !!input.run : mag > 0.92;
     this.sprinting = !this.flying && wantRun && mag > 0.2 && this.food > 6 && !this.inWater;
 
+    if (this.sneaking) this.sprinting = false;
     let speed;
     if (this.flying) speed = FLY_SPEED;
     else if (this.inWater) speed = SWIM_SPEED;
+    else if (this.sneaking) speed = SNEAK_SPEED;
     else speed = this.sprinting ? SPRINT_SPEED : WALK_SPEED;
 
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
@@ -188,8 +209,13 @@
         if (this.vel.y < -MAX_FALL) this.vel.y = -MAX_FALL;
       }
 
+      const edgeGuard = this.sneaking && grounded;
+      const ox = this.pos.x;
       this._moveAxis(world, 'x', this.vel.x * dt);
+      if (edgeGuard && !this.supported(world, this.pos.x, this.pos.z)) { this.pos.x = ox; this.vel.x = 0; }
+      const oz = this.pos.z;
       this._moveAxis(world, 'z', this.vel.z * dt);
+      if (edgeGuard && !this.supported(world, this.pos.x, this.pos.z)) { this.pos.z = oz; this.vel.z = 0; }
 
       const wasAirborne = this.vel.y < -0.1;
       this._moveAxis(world, 'y', this.vel.y * dt);
@@ -314,8 +340,11 @@
       }
     }
     amount = Math.max(0, Math.round(amount * 2) / 2);
+    if (amount <= 0) return;
     this.health = Math.max(0, this.health - amount);
     this.hurtFlash = 0.35;
+    this.hurtTilt = 1;
+    if (this.onHurt) this.onHurt(amount);
     if (this.health <= 0) this.dead = true;
   };
 
@@ -325,5 +354,5 @@
   };
 
   global.Player = Player;
-  global.PlayerConst = { HALF_W, HEIGHT, EYE, MAX_AIR };
+  global.PlayerConst = { HALF_W, HEIGHT, EYE, MAX_AIR, SNEAK_EYE };
 })(window);
