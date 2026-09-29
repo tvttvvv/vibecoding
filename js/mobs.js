@@ -468,6 +468,8 @@
         const day = World.lightUniforms.uDaylight.value;
         if (l.blk > 0 || l.sky * day > 7) continue;
         if (open && !night) continue;
+        // (away from the host the light may not be worked out yet: torches still count)
+        if (this.litNearby(game, x, y + 1, z)) continue;
         const type = HOSTILE[Math.floor(Math.random() * HOSTILE.length)];
         this.spawn(type, x + 0.5, y + 1, z + 0.5);
       } else {
@@ -489,10 +491,13 @@
     // in a room only the host runs the monsters; everyone else is shown the result
     if (Net.active && !Net.isHost) { this.renderOnly(dt); return; }
 
+    // everyone the monsters can go after: me, and in a room the others in my dimension
+    const targets = game.mobTargets ? game.mobTargets() : [{ id: null, local: true, pos: player.pos, dead: player.dead }];
+
     this._spawnTimer += dt;
     if (this._spawnTimer >= 2) {
       this._spawnTimer = 0;
-      if (game.mode === 'survival') this.trySpawn(world, player, game);
+      if (game.mode === 'survival') this.trySpawn(world, targets[Math.floor(Math.random() * targets.length)], game);
     }
 
     const day = !isNight(game.dayTime);
@@ -511,8 +516,16 @@
         if (m.growUp <= 0) { m.size = 1; m.hp = m.def.hp; }
       }
 
-      const dx = player.pos.x - m.x, dy = player.pos.y - m.y, dz = player.pos.z - m.z;
-      const distSq = dx * dx + dy * dy + dz * dz;
+      let target = targets[0], distSq = Infinity;
+      for (const t of targets) {
+        const dx = t.pos.x - m.x, dy = t.pos.y - m.y, dz = t.pos.z - m.z;
+        const d = dx * dx + dy * dy + dz * dz;
+        if (d < distSq && !(t.dead && d > 4)) { distSq = d; target = t; }
+      }
+      if (distSq === Infinity) {
+        const t = targets[0];
+        distSq = (t.pos.x - m.x) ** 2 + (t.pos.y - m.y) ** 2 + (t.pos.z - m.z) ** 2;
+      }
 
       if (distSq > DESPAWN_DIST * DESPAWN_DIST || m.y < -6) {
         this.remove(m);
@@ -534,14 +547,16 @@
         continue;
       }
 
-      this.think(m, dt, world, player, game, distSq);
+      this.think(m, dt, world, target, game, distSq);
       // every so often a mob makes its noise
-      if (Math.random() < dt / 9 && global.Sound) Sound.mob(m.def.villager ? 'villager' : m.type, 'idle', Math.sqrt(distSq));
+      if (Math.random() < dt / 9 && global.Sound) {
+        Sound.mob(m.def.villager ? 'villager' : m.type, 'idle', Math.hypot(player.pos.x - m.x, player.pos.y - m.y, player.pos.z - m.z));
+      }
       this.physics(m, dt, world);
       this.sync(m);
     }
 
-    this.updateArrows(dt, world, player, game);
+    this.updateArrows(dt, world, targets, game);
   };
 
   Mobs.think = function (m, dt, world, player, game, distSq) {
@@ -582,7 +597,7 @@
         if (dist < 3.2) {
           if (m.fuse === 0 && global.Sound) Sound.fuse(dist);
           m.fuse += dt;
-          if (m.fuse > 1.5) { this.explode(m, world, player, game); return; }
+          if (m.fuse > 1.5) { this.explode(m, world, game.player, game); return; }
         } else {
           m.fuse = Math.max(0, m.fuse - dt);
         }
@@ -591,7 +606,7 @@
         m.attackCooldown -= dt;
         if (dist < (def.reach || 1.7) && m.attackCooldown <= 0) {
           m.attackCooldown = 1.0;
-          game.mobAttack(m, def.damage || 2, dx / len, dz / len);
+          game.mobAttack(m, def.damage || 2, dx / len, dz / len, player);
         }
       }
       m.yaw = Math.atan2(dx, dz);
@@ -687,6 +702,17 @@
         m.group.rotation.y = m.yaw + Math.PI;   // models are built facing -z, they walk along +z
       }
     }
+    // arrows and fireballs the host shot: shown flying, the host decides what they hit
+    for (let i = this.arrows.length - 1; i >= 0; i--) {
+      const a = this.arrows[i];
+      a.age += dt;
+      if (!a.fire) a.vy -= 9 * dt;
+      a.x += a.vx * dt; a.y += a.vy * dt; a.z += a.vz * dt;
+      if (a.age > 5 || (global.Game && Game.world && solidAt(Game.world, a.x, a.y, a.z))) {
+        this._group.remove(a.mesh);
+        this.arrows.splice(i, 1);
+      }
+    }
     this.updateArrowMeshes();
   };
 
@@ -697,18 +723,25 @@
     const dx = ex - sx, dy = ey - sy, dz = ez - sz;
     const len = Math.hypot(dx, dy, dz) || 1;
     const speed = fire ? 11 : 22;
+    const off = fire ? 2.4 : 0;
+    const a = this.addArrow(sx + dx / len * off, sy + dy / len * off, sz + dz / len * off,
+      dx / len * speed, dy / len * speed + (fire ? 0 : 1.6), dz / len * speed, fire);
+    if (Net.active && Net.isHost) {
+      Net.sendFx({ kind: 'marrow', x: +a.x.toFixed(2), y: +a.y.toFixed(2), z: +a.z.toFixed(2),
+        vx: +a.vx.toFixed(2), vy: +a.vy.toFixed(2), vz: +a.vz.toFixed(2), fire: fire ? 1 : 0 });
+    }
+  };
+
+  Mobs.addArrow = function (x, y, z, vx, vy, vz, fire) {
     const mesh = new THREE.Mesh(
       fire ? new THREE.BoxGeometry(0.6, 0.6, 0.6) : new THREE.BoxGeometry(0.08, 0.08, 0.7),
       new THREE.MeshBasicMaterial({ color: fire ? 0xff7a1a : 0xbfae8e, fog: !fire })
     );
-    const off = fire ? 2.4 : 0;
-    mesh.position.set(sx, sy, sz);
+    mesh.position.set(x, y, z);
     this._group.add(mesh);
-    this.arrows.push({
-      mesh, x: sx + dx / len * off, y: sy + dy / len * off, z: sz + dz / len * off,
-      vx: dx / len * speed, vy: dy / len * speed + (fire ? 0 : 1.6), vz: dz / len * speed,
-      age: 0, fire: !!fire
-    });
+    const a = { mesh, x, y, z, vx, vy, vz, age: 0, fire: !!fire };
+    this.arrows.push(a);
+    return a;
   };
 
   // a clear line from the mob's eyes to the player's
@@ -724,7 +757,7 @@
     return true;
   };
 
-  Mobs.updateArrows = function (dt, world, player, game) {
+  Mobs.updateArrows = function (dt, world, targets, game) {
     for (let i = this.arrows.length - 1; i >= 0; i--) {
       const a = this.arrows[i];
       a.age += dt;
@@ -732,12 +765,17 @@
       a.x += a.vx * dt; a.y += a.vy * dt; a.z += a.vz * dt;
 
       const hitBlock = solidAt(world, a.x, a.y, a.z);
-      const dx = a.x - player.pos.x, dy = a.y - (player.pos.y + 0.9), dz = a.z - player.pos.z;
-      const hitPlayer = dx * dx + dy * dy + dz * dz < (a.fire ? 1.1 : 0.7) * (a.fire ? 1.1 : 0.7);
+      const r = a.fire ? 1.1 : 0.7;
+      let hitPlayer = null;
+      for (const t of targets) {
+        if (t.dead) continue;
+        const dx = a.x - t.pos.x, dy = a.y - (t.pos.y + 0.9), dz = a.z - t.pos.z;
+        if (dx * dx + dy * dy + dz * dz < r * r) { hitPlayer = t; break; }
+      }
 
       // a fireball bursts on whatever it touches
       if (a.fire && (hitBlock || hitPlayer)) {
-        this.explode({ x: a.x, y: a.y - 0.5, z: a.z, def: { drops: [] }, size: 1 }, world, player, game, 1.6);
+        this.explode({ x: a.x, y: a.y - 0.5, z: a.z, def: { drops: [] }, size: 1 }, world, game.player, game, 1.6);
         this._group.remove(a.mesh);
         this.arrows.splice(i, 1);
         continue;
@@ -746,7 +784,7 @@
 
       if (hitPlayer) {
         const len = Math.hypot(a.vx, a.vz) || 1;
-        game.mobArrowHit(2, a.vx / len, a.vz / len);
+        game.mobArrowHit(2, a.vx / len, a.vz / len, hitPlayer);
       }
       if (hitBlock || hitPlayer || a.age > 5) {
         this._group.remove(a.mesh);
@@ -762,15 +800,20 @@
     for (const a of this.arrows) a.mesh.position.set(a.x, a.y, a.z);
   };
 
-  Mobs.explode = function (m, world, player, game, radius) {
+  // An explosion, run by whoever set it off, which breaks the blocks; the
+  // others get a 'blast' and replay it (visual) so each one takes their own
+  // damage. Monsters are only hurt where they live: on the host.
+  Mobs.explode = function (m, world, player, game, radius, visual) {
     const R = radius || 3;
+    player = game.player || player;
+    if (!visual && Net.active) Net.sendFx({ kind: 'blast', x: +m.x.toFixed(2), y: +m.y.toFixed(2), z: +m.z.toFixed(2), r: R });
     if (global.Sound) Sound.explode(Math.hypot(player.pos.x - m.x, player.pos.z - m.z));
     if (global.Entities) {
       Entities.burst(m.x, m.y + 1, m.z, B.SNOW, 24, 1.6);
       Entities.burst(m.x, m.y + 1, m.z, B.GRAVEL, 16, 1.4);
     }
     const cx = Math.floor(m.x), cy = Math.floor(m.y + 0.5), cz = Math.floor(m.z);
-    const Ri = Math.ceil(R);
+    const Ri = visual ? -1 : Math.ceil(R);
     for (let x = -Ri; x <= Ri; x++) {
       for (let y = -Ri; y <= Ri; y++) {
         for (let z = -Ri; z <= Ri; z++) {
@@ -789,7 +832,7 @@
     if (dist < reach) {
       const dmg = Math.max(1, Math.round((1 - dist / reach) * 22 * R / 3));
       const len = Math.hypot(dx, dz) || 1;
-      game.mobAttack(m, dmg, dx / len, dz / len);
+      game.mobAttack(m, dmg, dx / len, dz / len, null, true);
     }
     // and anything else standing too close
     // (monsters live on the host, so only the host hurts them)
@@ -801,7 +844,7 @@
       const ol = Math.hypot(ox, oz) || 1;
       if (game.damageMob) game.damageMob(o, Math.max(1, Math.round((1 - od / reach) * 22 * R / 3)), ox / ol, oz / ol, true);
     }
-    this.dropLoot(m, game);
+    if (!visual) this.dropLoot(m, game);
     this.remove(m);
   };
 

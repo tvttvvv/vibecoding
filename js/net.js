@@ -250,6 +250,12 @@
       return;
     }
 
+    if (msg.t === 'fx') {
+      this._broadcast(msg, conn.id);
+      if (this.handlers.onFx) this.handlers.onFx(msg);
+      return;
+    }
+
     // a chest changed: the host keeps it and passes it on to everyone else
     if (msg.t === 'ent') {
       this._broadcast({ t: 'ent', key: msg.key, data: msg.data, dim: msg.dim }, conn.id);
@@ -379,6 +385,11 @@
       return;
     }
 
+    if (msg.t === 'fx') {
+      if (this.handlers.onFx) this.handlers.onFx(msg);
+      return;
+    }
+
     if (msg.t === 'mobs') {
       if (this.handlers.onMobs) this.handlers.onMobs(msg.m, msg.dim || 'overworld');
       return;
@@ -486,6 +497,15 @@
   Net.sendArrow = function (msg) {
     if (!this.active) return;
     msg.t = 'arrow';
+    msg.dim = this.dim();
+    if (this.isHost) this._broadcast(msg);
+    else if (this.hostConn) this.hostConn.send(msg);
+  };
+
+  // something everyone should see happen: lit TNT, an explosion, a mob's shot
+  Net.sendFx = function (msg) {
+    if (!this.active) return;
+    msg.t = 'fx';
     msg.dim = this.dim();
     if (this.isHost) this._broadcast(msg);
     else if (this.hostConn) this.hostConn.send(msg);

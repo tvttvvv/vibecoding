@@ -39,7 +39,7 @@
   function conductor(d) { return d.solid && d.opaque && !d.rsBlock; }
 
   Redstone.support = function (d, x, y, z) {
-    if (d.rsTorch || d.plate || d.wire) return [x, y - 1, z];
+    if (d.attach === undefined || d.plate || d.wire) return [x, y - 1, z];
     const o = ATTACH[d.attach || 0];
     return [x + o[0], y + o[1], z + o[2]];
   };
@@ -120,7 +120,10 @@
     const d = at(w, sx, sy, sz);
     if ((d.lever || d.button || d.plate) && d.on) return true;
     if (d.rsBlock) return true;
-    if (d.rsTorch && d.on) return !(px === sx && py === sy - 1 && pz === sz);
+    if (d.rsTorch && d.on) {
+      const s = this.support(d, sx, sy, sz);
+      return !(px === s[0] && py === s[1] && pz === s[2]);
+    }
     if (d.wire && d.power > 0) return this.wirePoints(w, sx, sy, sz, px - sx, py - sy, pz - sz);
     return false;
   };
@@ -175,10 +178,11 @@
   };
 
   Redstone.torchBlocked = function (w, x, y, z) {
-    const s = at(w, x, y - 1, z);
+    const [sx, sy, sz] = this.support(at(w, x, y, z), x, y, z);
+    const s = at(w, sx, sy, sz);
     if (s.rsBlock) return true;
     if (!conductor(s)) return false;
-    return this.strong(w, x, y - 1, z) || this.weak(w, x, y - 1, z);
+    return this.strong(w, sx, sy, sz) || this.weak(w, sx, sy, sz);
   };
 
   // ------------------------------------------------------------ ticking
@@ -218,7 +222,7 @@
         if (want && flips.length >= 8) { this.torchQueue.set(k, want); this.torchFlips.set(k, flips); continue; }
         flips.push(this.now);
         this.torchFlips.set(k, flips);
-        game.changeBlock(x, y, z, want ? B.RS_TORCH : B.RS_TORCH_OFF);
+        game.changeBlock(x, y, z, want ? d.litId : d.offId);
         if (!want && flips.length >= 8) Entities.burst(x + 0.5, y + 0.7, z + 0.5, B.GRAVEL, 4, 0.2);
       }
     }

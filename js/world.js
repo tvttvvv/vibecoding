@@ -208,7 +208,7 @@
   function Chunk(cx, cz) {
     this.cx = cx;
     this.cz = cz;
-    this.data = new Uint8Array(CHUNK_SIZE * WORLD_HEIGHT * CHUNK_SIZE);
+    this.data = new Uint16Array(CHUNK_SIZE * WORLD_HEIGHT * CHUNK_SIZE);
     this.generated = false;
     this.maxY = 0;
     this.dirty = true;
@@ -682,7 +682,7 @@
   const RH = WORLD_HEIGHT + 4;         // region height, y index = y + 2
   const SZ = RW, SY = RW * RW;
   const RSIZE = SY * RH;
-  const region = new Uint8Array(RSIZE);
+  const region = new Uint16Array(RSIZE);
   const skyL = new Uint8Array(RSIZE);
   const blkL = new Uint8Array(RSIZE);
   const colTop = new Int16Array(RW * RW);
@@ -1209,8 +1209,11 @@
   };
 
   World.prototype.unloadFar = function (pcx, pcz, maxDist) {
+    const keep = this.keep;
     for (const [k, c] of this.chunks) {
       if (Math.max(Math.abs(c.cx - pcx), Math.abs(c.cz - pcz)) <= maxDist) continue;
+      // a host keeps the ground under its guests, for the monsters out there
+      if (keep && keep.some((q) => Math.max(Math.abs(c.cx - q[0]), Math.abs(c.cz - q[1])) <= 3)) continue;
       if (c.solidMesh) { this.group.remove(c.solidMesh); c.solidMesh.geometry.dispose(); }
       if (c.liquidMesh) { this.group.remove(c.liquidMesh); c.liquidMesh.geometry.dispose(); }
       this.chunks.delete(k);

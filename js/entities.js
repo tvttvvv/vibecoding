@@ -195,14 +195,14 @@
   // ------------------------------------------------------------- primed TNT
   // It hops up out of its block, falls where it can and flashes white until
   // the fuse runs out.
-  Entities.primeTnt = function (x, y, z, fuse) {
+  Entities.primeTnt = function (x, y, z, fuse, visual) {
     const mesh = new THREE.Mesh(this.game.blockGeometry(B.TNT, 0.98), this.game.itemMaterial);
     const flash = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.0, 1.0),
       new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, depthWrite: false }));
     mesh.add(flash);
     mesh.position.set(x, y + 0.5, z);
     this.group.add(mesh);
-    this.tnt.push({ mesh, flash, x, y, z, vy: 3, fuse });
+    this.tnt.push({ mesh, flash, x, y, z, vy: 3, fuse, visual: !!visual });
   };
 
   Entities.updateTnt = function (dt) {
@@ -221,6 +221,8 @@
       if (t.fuse > 0) continue;
       this.group.remove(t.mesh);
       this.tnt.splice(i, 1);
+      // someone else's TNT: their game breaks the blocks and sends the blast
+      if (t.visual) continue;
       Mobs.explode({ x: t.x, y: t.y, z: t.z, def: { drops: [] }, size: 1 }, world, game.player, game, 4);
     }
   };

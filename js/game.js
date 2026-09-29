@@ -1103,6 +1103,7 @@
       getDim: () => this.dimension || 'overworld',
       getDimData: (dim) => this.dimSnapshot(dim),
       onBoat: (msg) => { if ((msg.dim || 'overworld') === this.dimension) Entities.applyRemoteBoat(msg); },
+      onFx: (msg) => this.onFx(msg),
       onArrow: (msg) => {
         if ((msg.dim || 'overworld') !== this.dimension) return;
         Entities.shootArrow(msg.x, msg.y, msg.z, msg.vx, msg.vy, msg.vz, { visual: true, damage: 0 });
@@ -1815,6 +1816,17 @@
       return true;
     }
 
+    // torches touched to the side of a block hang on that wall
+    if ((id === B.TORCH || id === B.RS_TORCH) && hit.ny !== 1) {
+      if (hit.ny === -1 || !this.freeCell(x, y, z)) return true;
+      const f = hit.nz === 1 ? 0 : hit.nx === -1 ? 1 : hit.nz === -1 ? 2 : 3;
+      const tid = (id === B.TORCH ? B.TORCH_WALL : B.RS_TORCH_WALL) + f;
+      if (!this.isSupported(x, y, z, tid)) return true;
+      this.changeBlock(x, y, z, tid);
+      this.placed(tid);
+      return true;
+    }
+
     // ladders go on walls, against the face you touched
     if (def.ladder !== undefined) {
       if (hit.ny !== 0 || !hd.opaque || !this.freeCell(x, y, z)) return true;
@@ -1850,6 +1862,20 @@
     this.changeBlock(x, y, z, B.AIR);
     Entities.primeTnt(x + 0.5, y, z + 0.5, fuse);
     Sound.fuse(this.distTo(x, y, z));
+    Net.sendFx({ kind: 'tnt', x: x + 0.5, y, z: z + 0.5, fuse: +fuse.toFixed(2) });
+  };
+
+  // what someone else's game shows happening: lit TNT, an explosion, a shot
+  Game.onFx = function (msg) {
+    if ((msg.dim || 'overworld') !== this.dimension || !this.world) return;
+    if (msg.kind === 'tnt') {
+      Entities.primeTnt(msg.x, msg.y, msg.z, msg.fuse, true);
+      Sound.fuse(this.distTo(msg.x, msg.y, msg.z));
+    } else if (msg.kind === 'blast') {
+      Mobs.explode({ x: msg.x, y: msg.y, z: msg.z, def: { drops: [] }, size: 1 }, this.world, this.player, this, msg.r, true);
+    } else if (msg.kind === 'marrow' && !Net.isHost) {
+      Mobs.addArrow(msg.x, msg.y, msg.z, msg.vx, msg.vy, msg.vz, !!msg.fire);
+    }
   };
 
   Game.toggleDoor = function (x, y, z) {
@@ -2094,10 +2120,56 @@
   };
 
   // a monster reaching a player: the host resolves it and tells the victim
-  Game.mobAttack = function (mob, damage, kx, kz) {
-    if (this.mode !== 'survival') return;
+  // who the monsters can see: me, and (on the host) the others in this dimension
+  Game.mobTargets = function () {
     const p = this.player;
-    const near = Math.hypot(p.pos.x - mob.x, p.pos.z - mob.z) < (mob.def.reach || 3) + 1.4 ||
+    const out = [{ id: null, local: true, pos: p.pos, dead: p.dead }];
+    if (Net.active && Net.isHost) {
+      for (const id in Net.players) {
+        const o = Net.players[id];
+        if (!o.dim || o.dim !== this.dimension) continue;
+        if (!o._target) o._target = { id, local: false, pos: { x: 0, y: 0, z: 0 }, dead: false };
+        o._target.pos.x = o.x; o._target.pos.y = o.y; o._target.pos.z = o.z;
+        out.push(o._target);
+      }
+    }
+    return out;
+  };
+
+  // the host keeps the land under each guest loaded, so monsters there have
+  // ground to stand on
+  Game.keepGuestLand = function () {
+    const w = this.world;
+    if (!Net.active || !Net.isHost) { w.keep = null; return; }
+    const CS = WorldConst.CHUNK_SIZE;
+    const keep = [];
+    let made = 0;
+    for (const id in Net.players) {
+      const o = Net.players[id];
+      if (!o.dim || o.dim !== this.dimension) continue;
+      const cx = Math.floor(o.x / CS), cz = Math.floor(o.z / CS);
+      keep.push([cx, cz]);
+      for (let dx = -2; dx <= 2 && made < 2; dx++) {
+        for (let dz = -2; dz <= 2 && made < 2; dz++) {
+          const c = w.getChunk(cx + dx, cz + dz);
+          if (c && c.generated) continue;
+          w.ensureChunk(cx + dx, cz + dz);
+          made++;
+        }
+      }
+    }
+    w.keep = keep;
+  };
+
+  Game.mobAttack = function (mob, damage, kx, kz, target, blast) {
+    if (this.mode !== 'survival') return;
+    // a guest being bitten hears about it from the host
+    if (target && !target.local) {
+      Net.sendHit(target.id, damage, kx, kz, mob.def.name);
+      return;
+    }
+    const p = this.player;
+    const near = blast || Math.hypot(p.pos.x - mob.x, p.pos.z - mob.z) < (mob.def.reach || 3) + 1.4 ||
       mob.def.explodes;
     if (!near) return;
     p.hurt(damage);
@@ -2107,8 +2179,9 @@
     this._lastAttacker = { name: mob.def.name, at: performance.now() };
   };
 
-  Game.mobArrowHit = function (damage, kx, kz) {
+  Game.mobArrowHit = function (damage, kx, kz, target) {
     if (this.mode !== 'survival') return;
+    if (target && !target.local) { Net.sendHit(target.id, damage, kx, kz, '스켈레톤'); return; }
     const p = this.player;
     p.hurt(damage);
     p.knockX = kx * 2.4;
@@ -2777,6 +2850,7 @@
     this.world.update(p.pos.x, p.pos.z, holes ? 11 : 6, -Math.sin(p.yaw), -Math.cos(p.yaw));
     this.saveTick(dt);
     this.updateSky(dt);
+    this.keepGuestLand();
     if (!this.paused) Mobs.update(dt, this.world, p, this);
     if (Net.active) {
       Net.sendPos(p);

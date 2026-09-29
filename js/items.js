@@ -110,8 +110,9 @@
   const REDSTONE = def(193, '레드스톤 가루', T.item_redstone);
 
   // ---- unified block/item access -------------------------------------------
-  // blocks are 0-99 and, since there were more of them, 200-255
-  function isBlock(id) { return id < ITEM_BASE || id >= 200; }
+  // blocks are 0-99 and, since there came to be more of them, 200-999;
+  // items are 100-199 and 1000 up
+  function isBlock(id) { return id < ITEM_BASE || (id >= 200 && id < 1000); }
 
   function get(id) {
     return isBlock(id) ? Blocks.byId[id] : byId[id];

@@ -303,6 +303,25 @@
   }
   const TNT = def(244, 'TNT', { top: T.tnt_top, side: T.tnt_side, bottom: T.tnt_bottom, hardness: 0, tnt: true });
 
+  // torches on walls: a short stick against the wall, the wall at facing f
+  function wallTorch(id, name, tile, f, opts) {
+    return def(id, name, Object.assign({
+      top: tile, side: tile, bottom: tile, opaque: false, solid: false, hardness: 0, render: 'boxes',
+      boxes: [mount(f + 1, [7 * P, 0, 3 * P, 9 * P, 2 * P, 14 * P])], needsGround: true, attach: f + 1
+    }, opts));
+  }
+  const TORCH_WALL = 245;          // 245..248
+  const RS_TORCH_WALL = 249;       // 249..252 lit, 253..256 out
+  for (let f = 0; f < 4; f++) {
+    wallTorch(TORCH_WALL + f, '횃불', T.torch, f, { light: 14, drop: TORCH, torch: true });
+    wallTorch(RS_TORCH_WALL + f, '레드스톤 횃불', T.rs_torch_on, f,
+      { light: 7, drop: RS_TORCH, rsTorch: true, on: true, litId: RS_TORCH_WALL + f, offId: RS_TORCH_WALL + 4 + f });
+    wallTorch(RS_TORCH_WALL + 4 + f, '레드스톤 횃불', T.rs_torch_off, f,
+      { drop: RS_TORCH, rsTorch: true, on: false, litId: RS_TORCH_WALL + f, offId: RS_TORCH_WALL + 4 + f });
+  }
+  byId[RS_TORCH].litId = byId[RS_TORCH_OFF].litId = RS_TORCH;
+  byId[RS_TORCH].offId = byId[RS_TORCH_OFF].offId = RS_TORCH_OFF;
+
   const CARROTS = 84;
   for (let s = 0; s < 4; s++) {
     simple(CARROTS + s, '당근', T['carrots_' + s], Object.assign({}, PLANT, { replaceable: false, crop: s, cropKind: 'carrot', drop: 0 }));
@@ -374,6 +393,7 @@
     LAPIS_ORE, SUGAR_CANE, BOOKSHELF, ENCHANTING_TABLE,
     NETHERRACK, SOUL_SAND, GLOWSTONE, QUARTZ_ORE, PORTAL_X, PORTAL_Z,
     REDSTONE_ORE, WIRE, RS_TORCH, RS_TORCH_OFF, LEVER, BUTTON, LAMP, LAMP_ON, REDSTONE_BLOCK, PLATE, TNT,
+    TORCH_WALL, RS_TORCH_WALL, mount,
     byId, tileFor, isOpaque, isSolid, isLiquid, mineTime, canHarvest, iconFor, creativeList
   };
 })(window);
