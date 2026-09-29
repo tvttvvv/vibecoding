@@ -224,6 +224,12 @@
       return;
     }
 
+    if (msg.t === 'boat') {
+      this._broadcast(msg, conn.id);
+      if (this.handlers.onBoat) this.handlers.onBoat(msg);
+      return;
+    }
+
     // a chest changed: the host keeps it and passes it on to everyone else
     if (msg.t === 'ent') {
       this._broadcast({ t: 'ent', key: msg.key, data: msg.data }, conn.id);
@@ -342,6 +348,11 @@
       return;
     }
 
+    if (msg.t === 'boat') {
+      if (this.handlers.onBoat) this.handlers.onBoat(msg);
+      return;
+    }
+
     if (msg.t === 'mobs') {
       if (this.handlers.onMobs) this.handlers.onMobs(msg.m);
       return;
@@ -442,6 +453,13 @@
   Net.sendMobHit = function (mobId, dmg, kx, kz) {
     if (!this.active || this.isHost || !this.hostConn) return;
     this.hostConn.send({ t: 'mobhit', mobId, dmg, kx, kz });
+  };
+
+  Net.sendBoat = function (msg) {
+    if (!this.active) return;
+    msg.t = 'boat';
+    if (this.isHost) this._broadcast(msg);
+    else if (this.hostConn) this.hostConn.send(msg);
   };
 
   Net.sendEntity = function (key, data) {

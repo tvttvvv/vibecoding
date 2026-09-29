@@ -1,3 +1,11 @@
+/* Galmuri11 by Lee Minseo, SIL Open Font License 1.1 (fonts/LICENSE-Galmuri.txt).
+   Shipped with the game so it works offline and without a CDN. */
+@font-face {
+  font-family: 'Galmuri11';
+  src: url('../fonts/Galmuri11.woff2') format('woff2');
+  font-display: swap;
+}
+
 * { box-sizing: border-box; }
 
 html, body {
@@ -488,7 +496,7 @@ body.keyboardMode #crosshair { display: block; }
    yellow splash line tilted off its corner */
 .titleWrap { position: relative; margin-bottom: 4px; }
 .gameTitle {
-  font-family: 'Galmuri14', 'Galmuri11', sans-serif;
+  font-family: 'Galmuri11', sans-serif;
   font-size: 46px !important; letter-spacing: 3px !important;
   color: #d8d8d8;
   text-shadow: 0 3px 0 #7a7a7a, 0 6px 0 #3a3a3a, 4px 8px 0 rgba(0,0,0,0.55) !important;

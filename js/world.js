@@ -117,8 +117,57 @@
     return 'plains';
   }
 
+  // Two kinds of cave, as in Minecraft since 1.18: "cheese" pockets where one
+  // noise field is high, and long "spaghetti" tunnels where two other fields
+  // both sit near their middle, which traces a winding line through the rock.
+  const CHEESE = 0.64, SPAGHETTI = 0.034;
+  function caveNoise(wx, y, wz, seed, out, o) {
+    out[o] = Noise.fbm3(wx * 0.045, y * 0.075, wz * 0.045, seed + 11, 2);
+    out[o + 1] = Noise.fbm3(wx * 0.018, y * 0.036, wz * 0.018, seed + 12, 2);
+    out[o + 2] = Noise.fbm3(wx * 0.018, y * 0.036, wz * 0.018, seed + 13, 2);
+  }
+  function isCave(c, a, b, y) {
+    // tunnels widen a little with depth, the deep caves being the big ones
+    const w = SPAGHETTI * (y < 20 ? 1.25 : 1);
+    return c > CHEESE || (Math.abs(a - 0.5) < w && Math.abs(b - 0.5) < w);
+  }
+  const _cv = new Float32Array(3);
   function caveAt(wx, y, wz, seed) {
-    return Noise.fbm3(wx * 0.045, y * 0.075, wz * 0.045, seed + 11, 2) > 0.635;
+    caveNoise(wx, y, wz, seed, _cv, 0);
+    return isCave(_cv[0], _cv[1], _cv[2], y);
+  }
+
+  // The noise is sampled on a coarse 4x4x4 lattice and blended in between,
+  // which is a sixteenth of the work and still smooth enough for rock.
+  const LG = 4;
+  const LNX = CHUNK_SIZE / LG + 1;
+  const LNY = Math.ceil(WORLD_HEIGHT / LG) + 1;
+  const lattice = new Float32Array(LNX * LNX * LNY * 3);
+  function caveLattice(baseX, baseZ, seed, topY) {
+    const ny = Math.min(LNY, Math.ceil(topY / LG) + 2);
+    for (let iy = 0; iy < ny; iy++) {
+      for (let iz = 0; iz < LNX; iz++) {
+        for (let ix = 0; ix < LNX; ix++) {
+          caveNoise(baseX + ix * LG, iy * LG, baseZ + iz * LG, seed, lattice, ((iy * LNX + iz) * LNX + ix) * 3);
+        }
+      }
+    }
+  }
+  const _cs = new Float32Array(3);
+  function caveSample(lx, y, lz) {
+    const fx = lx / LG, fy = y / LG, fz = lz / LG;
+    const ix = Math.min(LNX - 2, fx | 0), iy = Math.min(LNY - 2, fy | 0), iz = Math.min(LNX - 2, fz | 0);
+    const tx = fx - ix, ty = fy - iy, tz = fz - iz;
+    for (let k = 0; k < 3; k++) {
+      const at = (x, yy, z) => lattice[((yy * LNX + z) * LNX + x) * 3 + k];
+      const c00 = at(ix, iy, iz) * (1 - tx) + at(ix + 1, iy, iz) * tx;
+      const c10 = at(ix, iy + 1, iz) * (1 - tx) + at(ix + 1, iy + 1, iz) * tx;
+      const c01 = at(ix, iy, iz + 1) * (1 - tx) + at(ix + 1, iy, iz + 1) * tx;
+      const c11 = at(ix, iy + 1, iz + 1) * (1 - tx) + at(ix + 1, iy + 1, iz + 1) * tx;
+      const c0 = c00 * (1 - ty) + c10 * ty, c1 = c01 * (1 - ty) + c11 * ty;
+      _cs[k] = c0 * (1 - tz) + c1 * tz;
+    }
+    return isCave(_cs[0], _cs[1], _cs[2], y);
   }
 
   function oreAt(wx, y, wz, seed) {
@@ -176,6 +225,7 @@
   function generateChunk(chunk, seed) {
     const baseX = chunk.cx * CHUNK_SIZE;
     const baseZ = chunk.cz * CHUNK_SIZE;
+    caveLattice(baseX, baseZ, seed, WORLD_HEIGHT - 1);
 
     for (let lx = 0; lx < CHUNK_SIZE; lx++) {
       for (let lz = 0; lz < CHUNK_SIZE; lz++) {
@@ -208,7 +258,10 @@
               if (ore) id = ore;
             }
 
-            if (y > 3 && depth > 0 && caveAt(wx, y, wz, seed)) id = B.AIR;
+            // no caves right under a lake or the sea: they would sit under a
+            // ceiling of water that has nowhere to go
+            const wet = surfaceY < SEA_LEVEL + 2 && depth < 6;
+            if (y > 3 && depth > 0 && !wet && caveSample(lx, y, lz)) id = B.AIR;
           }
 
           if (y === 0) id = B.BEDROCK;
@@ -685,7 +738,7 @@
                   pos[vp + 1] = y + (ci >= 2 ? BHEIGHT[id] : 0);
                   pos[vp + 2] = cz + pz[ci];
                   uvs[vu] = (ci === 1 || ci === 3) ? cu1 : cu0;
-                  uvs[vu + 1] = ci >= 2 ? cv0 : cv1;
+                  uvs[vu + 1] = ci >= 2 ? cv1 : cv0;
                   cols[vp] = 0.92; cols[vp + 1] = ls; cols[vp + 2] = lb;
                   vp += 3; vu += 2;
                 }
@@ -784,6 +837,7 @@
     this.applyMesh(chunk, 'solidMesh', sPos, sUv, sCol, sIdx, sVert, sTri, this.material, baseX, baseZ);
     this.applyMesh(chunk, 'liquidMesh', lPos, lUv, lCol, lIdx, lVert, lTri, this.liquidMaterial, baseX, baseZ);
     chunk.dirty = false;
+    chunk.built = true;
   };
 
   World.prototype.applyMesh = function (chunk, slot, pos, uvs, cols, idx, vertCount, triCount, material, baseX, baseZ) {
@@ -814,14 +868,16 @@
   };
 
   // ---------------------------------------------------------------- streaming
-  World.prototype.update = function (px, pz, budgetMs) {
+  // Streaming. Chunks in view are generated and meshed nearest first, and
+  // ahead of the camera before behind it. Generating a neighbour is its own
+  // step against the frame budget, so a slow device never stalls on eight at
+  // once. meshedRadius tells the game how far the world is actually drawn,
+  // so its fog can hide anything still missing instead of showing a hole.
+  World.prototype.update = function (px, pz, budgetMs, fx, fz) {
     const t0 = performance.now();
     const pcx = Math.floor(px / CHUNK_SIZE), pcz = Math.floor(pz / CHUNK_SIZE);
     const R = this.renderDistance;
-    let pending = 0;
 
-    // what the player just broke or placed shows up this frame, whatever else
-    // is waiting; light spilling into neighbours follows under the budget
     if (this.urgent.size) {
       for (const c of this.urgent) {
         if (c.generated && c.dirty && this.chunks.get(this.key(c.cx, c.cz)) === c) {
@@ -832,32 +888,58 @@
       this.urgent.clear();
     }
 
-    for (let ring = 0; ring <= R; ring++) {
-      for (let dx = -ring; dx <= ring; dx++) {
-        for (let dz = -ring; dz <= ring; dz++) {
-          if (Math.max(Math.abs(dx), Math.abs(dz)) !== ring) continue;
-          const cx = pcx + dx, cz = pcz + dz;
-          const c = this.chunks.get(this.key(cx, cz));
-          if (c && c.generated && !c.dirty) continue;
-          pending++;
-          if (performance.now() - t0 > budgetMs) return pending;
+    const hasDir = fx !== undefined && (fx || fz);
+    const todo = this._todo || (this._todo = []);
+    todo.length = 0;
+    let nearestHole = Infinity;
+    for (let dx = -R; dx <= R; dx++) {
+      for (let dz = -R; dz <= R; dz++) {
+        const cx = pcx + dx, cz = pcz + dz;
+        const c = this.chunks.get(this.key(cx, cz));
+        if (c && c.generated && !c.dirty) continue;
+        // distance from the player to the near edge of that chunk
+        const ex = Math.max(cx * CHUNK_SIZE - px, 0, px - (cx + 1) * CHUNK_SIZE);
+        const ez = Math.max(cz * CHUNK_SIZE - pz, 0, pz - (cz + 1) * CHUNK_SIZE);
+        const edge = Math.hypot(ex, ez);
+        if (!c || !c.built) nearestHole = Math.min(nearestHole, edge);
+        let score = Math.hypot(dx, dz);
+        if (hasDir && (dx || dz)) score -= ((dx * fx + dz * fz) / Math.hypot(dx, dz)) * 1.4;
+        // a chunk that has never been drawn is a hole: those go first
+        if (c && c.built) score += 2.5;
+        todo.push(score, cx, cz);
+      }
+    }
+    this.meshedRadius = nearestHole;
 
-          this.ensureChunk(cx, cz);
-          this.ensureChunk(cx - 1, cz);
-          this.ensureChunk(cx + 1, cz);
-          this.ensureChunk(cx, cz - 1);
-          this.ensureChunk(cx, cz + 1);
-          this.ensureChunk(cx - 1, cz - 1);
-          this.ensureChunk(cx + 1, cz - 1);
-          this.ensureChunk(cx - 1, cz + 1);
-          this.ensureChunk(cx + 1, cz + 1);
-          this.buildChunkMesh(this.chunks.get(this.key(cx, cz)));
+    const order = this._order || (this._order = []);
+    order.length = 0;
+    for (let i = 0; i < todo.length; i += 3) order.push(i);
+    order.sort((a, b) => todo[a] - todo[b]);
+
+    let built = 0;
+    for (const i of order) {
+      const cx = todo[i + 1], cz = todo[i + 2];
+      let over = false;
+      for (let dx = -1; dx <= 1 && !over; dx++) {
+        for (let dz = -1; dz <= 1 && !over; dz++) {
+          const n = this.chunks.get(this.key(cx + dx, cz + dz));
+          if (n && n.generated) continue;
+          this.ensureChunk(cx + dx, cz + dz);
+          if (performance.now() - t0 > budgetMs && built > 0) over = true;
         }
       }
+      if (over) break;
+      if (built > 0 && performance.now() - t0 > budgetMs) break;
+      const c = this.chunks.get(this.key(cx, cz));
+      if (!c.generated) continue;
+      this.buildChunkMesh(c);
+      c.built = true;
+      built++;
+      if (performance.now() - t0 > budgetMs) break;
     }
 
     this.unloadFar(pcx, pcz, R + 3);
-    return pending;
+    return order.length - built;
   };
 
   World.prototype.unloadFar = function (pcx, pcz, maxDist) {
@@ -866,7 +948,9 @@
       if (c.solidMesh) { this.group.remove(c.solidMesh); c.solidMesh.geometry.dispose(); }
       if (c.liquidMesh) { this.group.remove(c.liquidMesh); c.liquidMesh.geometry.dispose(); }
       this.chunks.delete(k);
+      // drop the lookup cache too, or a deleted chunk could still be read
       this._lastKey = '';
+      this._lastChunk = null;
     }
   };
 

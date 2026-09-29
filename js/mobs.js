@@ -512,7 +512,7 @@
   Mobs.sync = function (m) {
     if (!m.group) return;
     m.group.position.set(m.x, m.y, m.z);
-    m.group.rotation.y = m.yaw;
+    m.group.rotation.y = m.yaw + Math.PI;   // models are built facing -z, they walk along +z
     // lit like the world around it, and flushed red for a moment when hurt
     const flash = m.hurtFlash > 0;
     const light = this.lightFn ? this.lightFn(m.x, m.y + m.def.h * 0.6, m.z) : 1;
@@ -535,7 +535,7 @@
         m.group.position.x += (m.x - m.group.position.x) * k;
         m.group.position.y += (m.y - m.group.position.y) * k;
         m.group.position.z += (m.z - m.group.position.z) * k;
-        m.group.rotation.y = m.yaw;
+        m.group.rotation.y = m.yaw + Math.PI;   // models are built facing -z, they walk along +z
       }
     }
     this.updateArrowMeshes();

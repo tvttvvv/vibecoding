@@ -78,6 +78,11 @@
     Hand.init(this);
     Entities.init(this);
     Mobs.lightFn = (x, y, z) => this.lightAtPoint(x, y, z);
+    Entities.onChange = (boat, op) => {
+      if (!Net.active) return;
+      Net.sendBoat({ op, id: boat.id, x: +boat.x.toFixed(2), y: +boat.y.toFixed(2), z: +boat.z.toFixed(2), yaw: +boat.yaw.toFixed(2), rider: boat.rider });
+      this._worldDirty = true;
+    };
   };
 
   Game.render = function (withHand) {
@@ -108,7 +113,14 @@
   // how bright a spot is, on the same curve the terrain shader uses
   Game.lightAtPoint = function (x, y, z) {
     if (!this.world) return 1;
-    const l = this.world.lightAt(Math.floor(x), Math.floor(y), Math.floor(z));
+    let fx = Math.floor(x), fy = Math.floor(y), fz = Math.floor(z);
+    // a point inside a solid block has no light of its own: use the cell above
+    for (let i = 0; i < 2; i++) {
+      const id = this.world.getBlock(fx, fy, fz);
+      if (id === B.AIR || !B.byId[id].opaque) break;
+      fy++;
+    }
+    const l = this.world.lightAt(fx, fy, fz);
     const day = World.lightUniforms.uDaylight.value;
     const curve = (f) => f / (2.3 - 1.3 * f);
     return Math.max(curve(l.sky / 15 * day), curve(l.blk / 15), 0.08);
@@ -247,6 +259,7 @@
     this._sleepCooldown = 0;
     this._cropTimer = 0;
     this._stepDist = 0;
+    this.eating = null;
     UI.renderXp(this.player);
     UI.setSneak(false);
   };
@@ -661,7 +674,7 @@
         while (c.slots.length < 27) c.slots.push(null);
         continue;
       }
-      if (r[0] === 'b') { Entities.placeBoat(r[1], r[2], r[3], r[4]); continue; }
+      if (r[0] === 'b') { Entities.placeBoat(r[1], r[2], r[3], r[4], r[5], true); continue; }
       const f = this.furnaceAt(r[0], r[1], r[2]);
       f.input[0] = unpack(r[3]);
       f.fuel[0] = unpack(r[4]);
@@ -850,7 +863,8 @@
       getDayTime: () => this.dayTime,
       getSpawn: () => this.spawnPoint,
       getEdits: () => this.editList(),
-      getEntities: () => this.entityList().filter((r) => r[0] !== 'b'),
+      getEntities: () => this.entityList(),
+      onBoat: (msg) => Entities.applyRemoteBoat(msg),
       onEntity: (msg) => this.onEntity(msg),
       getSavedAt: () => this.worldSavedAt || 0,
       onRestore: (id, msg) => this.onRestore(id, msg),
@@ -1078,7 +1092,7 @@
     // climbing into a boat
     const boat = Entities.boatAt(sx, sy);
     if (boat && !Entities.riding) {
-      Entities.mount(boat.boat);
+      if (Entities.mount(boat.boat) === false) { UI.toast(boat.boat.rider + ' 님이 타고 있어요', 1600); return; }
       UI.toast('점프 버튼(키보드: Space)으로 내립니다', 1800);
       return;
     }
@@ -1130,6 +1144,8 @@
       else UI.renderHotbar();
     }
   };
+
+  Game.myName = function () { return Net.active ? Net.name : 'me'; };
 
   Game.mobInside = function (x, y, z) {
     for (const m of Mobs.list) {
@@ -1327,23 +1343,70 @@
     this._lastAttacker = { name: msg.from, at: performance.now() };
   };
 
+  // Eating the Minecraft way: hold with food in hand and it takes 1.6 seconds
+  // of munching. A quick tap starts the same munch and lets it finish.
+  const EAT_TIME = 1.6;
+
+  Game.canEat = function () {
+    return this.mode !== 'survival' || this.player.food < 20;
+  };
+
   Game.tryEat = function (stack) {
     const food = Items.foodOf(stack.id);
     if (!food) return false;
-    if (performance.now() - (this._eatCooldown || 0) < 700) return true;
-    if (this.mode === 'survival' && this.player.food >= 20) {
-      UI.toast('배가 부릅니다', 1200);
-      return true;
-    }
-    this._eatCooldown = performance.now();
-    this.player.eat(food.food, food.saturation || 0);
-    Sound.eat();
-    if (this.player.food >= 20) Sound.burp();
-    Hand.swing();
-    if (this.mode === 'survival') this.inventory.consumeSelected();
-    UI.renderStats(this.player);
-    UI.toast(Items.name(stack.id) + '을(를) 먹었습니다', 1200);
+    if (this.eating) return true;
+    if (!this.canEat()) { UI.toast('배가 불러서 더 먹을 수 없어요', 1300); return true; }
+    this.startEating(false);
     return true;
+  };
+
+  Game.startEating = function (hold) {
+    const inv = this.inventory;
+    const stack = inv.selectedStack();
+    if (!stack || !Items.foodOf(stack.id)) return;
+    this.eating = { id: stack.id, slot: inv.selected, t: 0, hold: !!hold, munch: 0 };
+  };
+
+  Game.updateEating = function (dt) {
+    const inv = this.inventory;
+    const stack = inv.selectedStack();
+    const holdingFood = Controls.state.mining && stack && Items.foodOf(stack.id);
+    let e = this.eating;
+    if (!e) {
+      if (holdingFood) {
+        if (this.canEat()) this.startEating(true);
+        else if (!this._fullWarned) { this._fullWarned = true; UI.toast('배가 불러서 더 먹을 수 없어요', 1300); }
+      } else {
+        this._fullWarned = false;
+      }
+      return;
+    }
+    // switching items or letting go of a held press stops the meal
+    if (!stack || stack.id !== e.id || inv.selected !== e.slot || (e.hold && !Controls.state.mining)) {
+      this.eating = null;
+      return;
+    }
+    e.t += dt;
+    e.munch -= dt;
+    if (e.munch <= 0) {
+      e.munch = 0.22;
+      Sound.eat();
+      const p = this.player;
+      this._look = this._look || { x: 0, y: 0, z: 0 };
+      p.lookDir(this._look);
+      // crumbs fall from just below the chin, small, as in Minecraft
+      Entities.burst(p.pos.x + this._look.x * 0.8, p.eyeY() - 0.35, p.pos.z + this._look.z * 0.8, e.id, 3, 0.06, 0.045);
+    }
+    if (e.t < EAT_TIME) return;
+
+    const food = Items.foodOf(e.id);
+    this.player.eat(food.food, food.saturation || 0);
+    if (this.mode === 'survival') inv.consumeSelected();
+    if (this.player.food >= 20) Sound.burp();
+    UI.renderStats(this.player);
+    this.eating = null;
+    // keep eating while the press is held and there is room, as in Minecraft
+    if (holdingFood && this.canEat()) this.startEating(true);
   };
 
   // Sleeping runs the clock to dawn. In a room the host owns the time, so a
@@ -1470,7 +1533,9 @@
 
   Game.updateMining = function (dt) {
     const m = this.mining;
-    if (!Controls.state.mining || this.paused || this.player.dead) {
+    const held = this.inventory.selectedStack();
+    const eatingHand = held && Items.foodOf(held.id);
+    if (!Controls.state.mining || this.paused || this.player.dead || eatingHand) {
       m.target = null;
       m.progress = 0;
       this.crackMesh.visible = false;
@@ -1668,8 +1733,16 @@
     const duskAmount = THREE.MathUtils.clamp(1 - Math.abs(height) * 4.5, 0, 1) * (daylight > 0.05 ? 1 : 0);
 
     const sky = SKY_NIGHT.clone().lerp(SKY_DAY, daylight).lerp(SKY_DUSK, duskAmount * 0.55);
-    this.scene.background = sky;
-    this.fog.color.copy(sky);
+    // underground the fog goes dark, as in Minecraft: otherwise the far wall of
+    // a cave melts into sky blue and looks like a hole to the surface
+    const p = this.player;
+    const eye = this.world.lightAt(Math.floor(p.pos.x), Math.floor(p.eyeY()), Math.floor(p.pos.z));
+    const target = eye.sky / 15;
+    if (this._eyeSky === undefined) this._eyeSky = target;
+    this._eyeSky += (target - this._eyeSky) * Math.min(1, dt * 1.5);
+    const dim = 0.06 + 0.94 * this._eyeSky * this._eyeSky;
+    this.fog.color.copy(sky).multiplyScalar(dim);
+    this.scene.background = sky.clone().multiplyScalar(dim);
 
     const brightness = 0.18 + daylight * 0.82;
     const L = World.lightUniforms;
@@ -1687,11 +1760,17 @@
       this.fog.color.setHex(0x2c5ca8);
       this.scene.background = new THREE.Color(0x2c5ca8);
     } else {
-      const far = this.world.renderDistance * WorldConst.CHUNK_SIZE - 8;
-      this.fog.far = far;
-      this.fog.near = far * 0.62;
+      // pull the fog in over anything not drawn yet, then ease it back out
+      const base = this.world.renderDistance * WorldConst.CHUNK_SIZE - 8;
+      const edge = this.world.meshedRadius;
+      const want = Math.min(base, isFinite(edge) ? Math.max(14, edge - 1) : base);
+      if (this._fogFar === undefined) this._fogFar = want;
+      const rate = want < this._fogFar ? 10 : 1.5;
+      this._fogFar += (want - this._fogFar) * Math.min(1, dt * rate);
+      this.fog.far = this._fogFar;
+      this.fog.near = this._fogFar * 0.6;
     }
-    Sky.setVisible(!under);
+    Sky.setVisible(!under && this._eyeSky > 0.25);
     Sky.update(this.camera, this.dayTime, dt);
   };
 
@@ -1841,6 +1920,7 @@
       if (p.onGround && Math.hypot(p.vel.x, p.vel.z) > 0.5) this._walkBob = (this._walkBob || 0) + dt * Math.hypot(p.vel.x, p.vel.z) * 1.9;
 
       this.updateMining(dt);
+      this.updateEating(dt);
       this.updateDrops(dt);
       this.updateCrops(dt);
       Entities.update(dt, input);
@@ -1855,7 +1935,9 @@
       this.onDeath();
     }
 
-    this.world.update(p.pos.x, p.pos.z, 6);
+    // a bigger slice of the frame while there are still holes near the player
+    const holes = this.world.meshedRadius < this.world.renderDistance * WorldConst.CHUNK_SIZE;
+    this.world.update(p.pos.x, p.pos.z, holes ? 11 : 6, -Math.sin(p.yaw), -Math.cos(p.yaw));
     this.saveTick(dt);
     this.updateSky(dt);
     if (!this.paused) Mobs.update(dt, this.world, p, this);
@@ -1890,7 +1972,8 @@
     }
 
     const stack = this.inventory.selectedStack();
-    Hand.update(dt, p, stack, this.lightHere(1), !!(Controls.state.mining && this.mining.target));
+    Hand.update(dt, p, stack, this.lightHere(1), !!(Controls.state.mining && this.mining.target),
+      this.eating ? this.eating.t : -1);
 
     // sprinting widens the view, as in Minecraft
     const fovTarget = p.sprinting ? 80 : 72;

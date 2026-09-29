@@ -38,8 +38,8 @@
   };
 
   // ------------------------------------------------------------- particles
-  Entities.burst = function (x, y, z, id, count, spread) {
-    const geo = this.game.blockGeometry(id, 0.1);
+  Entities.burst = function (x, y, z, id, count, spread, size) {
+    const geo = this.game.blockGeometry(id, size || 0.1);
     for (let i = 0; i < count; i++) {
       const mesh = new THREE.Mesh(geo, this.game.itemMaterial);
       const s = spread || 0.4;
@@ -184,7 +184,7 @@
       const geo = new THREE.BoxGeometry(w, h, d);
       const uv = geo.attributes.uv;
       for (let i = 0; i < uv.count; i++) {
-        uv.setXY(i, uv.getX(i) ? T.u1 : T.u0, uv.getY(i) ? T.v0 : T.v1);
+        uv.setXY(i, uv.getX(i) ? T.u1 : T.u0, uv.getY(i) ? T.v1 : T.v0);
       }
       const m = new THREE.Mesh(geo, mat);
       m.position.set(x, y, z);
@@ -198,14 +198,49 @@
     return g;
   }
 
-  Entities.placeBoat = function (x, y, z, yaw) {
+  // Boats are shared in a room: whoever places, rides or breaks one tells the
+  // others through onChange, and a boat someone else is steering just follows
+  // what they send instead of running its own physics.
+  Entities.placeBoat = function (x, y, z, yaw, id, quiet) {
     const mesh = boatMesh(this.boatMat);
     mesh.position.set(x, y, z);
     this.group.add(mesh);
-    const boat = { mesh, x, y, z, yaw: yaw || 0, speed: 0, vy: 0, hits: 0 };
+    const boat = {
+      mesh, x, y, z, yaw: yaw || 0, speed: 0, vy: 0, hits: 0,
+      id: id || ('b' + Math.random().toString(36).slice(2, 9)),
+      rider: null, remoteUntil: 0
+    };
     mesh.userData.boat = boat;
     this.boats.push(boat);
+    if (!quiet) this.changed(boat, 'set');
     return boat;
+  };
+
+  Entities.changed = function (boat, op) {
+    if (this.onChange) this.onChange(boat, op);
+  };
+
+  Entities.boatById = function (id) {
+    for (const b of this.boats) if (b.id === id) return b;
+    return null;
+  };
+
+  Entities.applyRemoteBoat = function (msg) {
+    let boat = this.boatById(msg.id);
+    if (msg.op === 'del') {
+      if (boat) {
+        if (this.riding === boat) this.dismount();
+        const i = this.boats.indexOf(boat);
+        if (i >= 0) this.boats.splice(i, 1);
+        this.group.remove(boat.mesh);
+      }
+      return;
+    }
+    if (!boat) boat = this.placeBoat(msg.x, msg.y, msg.z, msg.yaw, msg.id, true);
+    boat.rider = msg.rider || null;
+    boat.tx = msg.x; boat.ty = msg.y; boat.tz = msg.z; boat.tyaw = msg.yaw;
+    if (boat.rider) boat.remoteUntil = performance.now() + 1500;
+    else { boat.x = msg.x; boat.y = msg.y; boat.z = msg.z; boat.yaw = msg.yaw; boat.remoteUntil = 0; }
   };
 
   Entities.boatAt = function (screenX, screenY, reach) {
@@ -226,11 +261,15 @@
     const i = this.boats.indexOf(boat);
     if (i >= 0) this.boats.splice(i, 1);
     this.group.remove(boat.mesh);
+    this.changed(boat, 'del');
     if (drop && this.game.mode === 'survival') this.game.spawnDrop(boat.x, boat.y + 0.5, boat.z, Items.BOAT, 1);
   };
 
   Entities.mount = function (boat) {
+    if (boat.rider && boat.remoteUntil > performance.now()) return false;
     this.riding = boat;
+    boat.rider = this.game.myName ? this.game.myName() : 'me';
+    this.changed(boat, 'set');
     const p = this.game.player;
     p.vel.x = p.vel.y = p.vel.z = 0;
     p.flying = false;
@@ -240,6 +279,8 @@
     const boat = this.riding;
     if (!boat) return;
     this.riding = null;
+    boat.rider = null;
+    this.changed(boat, 'set');
     const p = this.game.player;
     const world = this.game.world;
     // step off to the side that has room, else straight up
@@ -270,8 +311,21 @@
 
   Entities.updateBoats = function (dt, input) {
     const game = this.game, world = game.world;
+    const now = performance.now();
     for (const boat of this.boats) {
       const ridden = this.riding === boat;
+      // someone else is steering this one: glide to where they say it is
+      if (!ridden && boat.remoteUntil > now && boat.tx !== undefined) {
+        const k = Math.min(1, dt * 10);
+        boat.x += (boat.tx - boat.x) * k; boat.y += (boat.ty - boat.y) * k; boat.z += (boat.tz - boat.z) * k;
+        let dy = boat.tyaw - boat.yaw;
+        while (dy > Math.PI) dy -= Math.PI * 2;
+        while (dy < -Math.PI) dy += Math.PI * 2;
+        boat.yaw += dy * k;
+        boat.mesh.position.set(boat.x, boat.y, boat.z);
+        boat.mesh.rotation.y = boat.yaw;
+        continue;
+      }
       const surface = waterSurface(world, boat.x, boat.y, boat.z);
       const onWater = surface !== null;
 
@@ -314,6 +368,8 @@
       boat.mesh.rotation.y = boat.yaw;
 
       if (ridden) {
+        boat.sendT = (boat.sendT || 0) - dt;
+        if (boat.sendT <= 0) { boat.sendT = 0.1; this.changed(boat, 'set'); }
         const p = game.player;
         p.pos.x = boat.x; p.pos.y = boat.y + 0.12; p.pos.z = boat.z;
         p.vel.x = p.vel.y = p.vel.z = 0;
@@ -327,7 +383,7 @@
 
   // --------------------------------------------------------------- saving
   Entities.snapshotBoats = function () {
-    return this.boats.map((b) => ['b', +b.x.toFixed(2), +b.y.toFixed(2), +b.z.toFixed(2), +b.yaw.toFixed(2)]);
+    return this.boats.map((b) => ['b', +b.x.toFixed(2), +b.y.toFixed(2), +b.z.toFixed(2), +b.yaw.toFixed(2), b.id]);
   };
 
   Entities.update = function (dt, input) {

@@ -58,7 +58,7 @@
     this.item.visible = true;
   };
 
-  Hand.update = function (dt, player, stack, brightness, mining) {
+  Hand.update = function (dt, player, stack, brightness, mining, eatT) {
     this.setHeld(stack ? stack.id : 0);
 
     if (mining) this.swing();
@@ -91,6 +91,13 @@
         this.item.position.set(0.42, -0.36, -0.7);
         this.item.rotation.set(0.12, 0.8, 0);
       }
+    }
+
+    // eating: the food comes up to the mouth and bobs as you chew
+    if (eatT >= 0 && this.item.visible) {
+      const lift = Math.min(1, eatT / 0.25);
+      this.root.position.set(-0.28 * lift, 0.1 * lift + Math.abs(Math.sin(eatT * 14)) * 0.035 * lift, 0.1 * lift);
+      this.root.rotation.set(0.3 * lift, -0.6 * lift, 0);
     }
 
     const b = Math.max(0.12, Math.min(1, brightness));
