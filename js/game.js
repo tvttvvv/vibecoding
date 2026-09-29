@@ -391,6 +391,14 @@
     const def = B.byId[id];
     const below = this.world.getBlock(x, y - 1, z);
     if (def.crop !== undefined) return below === B.FARMLAND;
+    if (def.cane) {
+      if (below === B.SUGAR_CANE) return true;
+      if (below !== B.GRASS && below !== B.DIRT && below !== B.SAND) return false;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        if (B.byId[this.world.getBlock(x + dx, y - 1, z + dz)].fluid === 'water') return true;
+      }
+      return false;
+    }
     if (def.door) {
       if (def.door.upper) { const b = B.byId[below]; return !!(b && b.door && !b.door.upper); }
       const above = B.byId[this.world.getBlock(x, y + 1, z)];
@@ -453,6 +461,8 @@
       return out;
     }
     if (id === B.GRAVEL && Math.random() < 0.1) return [[Items.FLINT, 1]];
+    if (id === B.BOOKSHELF) return [[Items.BOOK, 3]];
+    if (id === B.LAPIS_ORE) return B.canHarvest(id, toolDef) ? [[Items.LAPIS, 4 + Math.floor(Math.random() * 5)]] : out;
     if (def.crop !== undefined) {
       if (def.crop >= 3) {
         out.push([Items.WHEAT, 1]);
@@ -533,13 +543,8 @@
     return c;
   };
 
-  const packStack = (s) => (s ? (s.dur ? [s.id, s.count, s.dur] : [s.id, s.count]) : 0);
-  const unpackStack = (e) => {
-    if (!Array.isArray(e) || !e[0] || !Items.get(e[0])) return null;
-    const s = { id: e[0], count: Math.max(1, e[1] | 0) };
-    if (e[2]) s.dur = e[2];
-    return s;
-  };
+  const packStack = Inventory.pack;
+  const unpackStack = Inventory.unpack;
 
   // a chest is shared: whatever one player moves in or out, everyone sees
   Game.syncChest = function (chest) {
@@ -633,6 +638,7 @@
       food: p.food,
       air: p.air,
       xp: p.xp || 0,
+      enchSeed: p.enchSeed || 0,
       spawn: this.bedSpawn || null,
       x: +p.pos.x.toFixed(2), y: +p.pos.y.toFixed(2), z: +p.pos.z.toFixed(2),
       yaw: +p.yaw.toFixed(2), pitch: +p.pitch.toFixed(2)
@@ -665,7 +671,7 @@
   Game.entityList = function () {
     const out = [];
     if (!this.blockEntities) return out;
-    const pack = (s) => (s ? (s.dur ? [s.id, s.count, s.dur] : [s.id, s.count]) : 0);
+    const pack = Inventory.pack;
     for (const f of this.blockEntities.values()) {
       if (f.type === 'chest') {
         if (f.slots.some(Boolean)) out.push(['c', f.x, f.y, f.z, f.slots.map(pack)]);
@@ -681,12 +687,7 @@
 
   Game.loadEntities = function (rows) {
     if (!rows || !rows.length) return;
-    const unpack = (e) => {
-      if (!Array.isArray(e) || !e[0] || !Items.get(e[0])) return null;
-      const s = { id: e[0], count: Math.max(1, e[1] | 0) };
-      if (e[2]) s.dur = e[2];
-      return s;
-    };
+    const unpack = Inventory.unpack;
     for (const r of rows) {
       if (r[0] === 'c') {
         const c = this.chestAt(r[1], r[2], r[3]);
@@ -720,6 +721,7 @@
     if (typeof saved.food === 'number') p.food = saved.food;
     if (typeof saved.air === 'number') p.air = saved.air;
     if (typeof saved.xp === 'number') p.xp = saved.xp;
+    if (saved.enchSeed) p.enchSeed = saved.enchSeed;
     if (saved.spawn && typeof saved.spawn.x === 'number') {
       this.bedSpawn = saved.spawn;
       this.spawnPoint = { x: saved.spawn.x, y: saved.spawn.y, z: saved.spawn.z };
@@ -1146,6 +1148,10 @@
       }
       if (targetDef.interactive === 'bed') { this.useBed(hit.x, hit.y, hit.z); return; }
       if (targetDef.interactive === 'door') { this.toggleDoor(hit.x, hit.y, hit.z); return; }
+      if (targetDef.interactive === 'enchant') {
+        UI.openScreen('enchant', { type: 'enchant', item: [null], lapis: [null], shelves: this.shelvesAround(hit.x, hit.y, hit.z) });
+        return;
+      }
     }
 
     if (!stack) { if (hit) UI.toast('손에 든 블록이 없어요', 1200); return; }
@@ -1215,6 +1221,8 @@
     const speed = 58 * power;
     let damage = Math.ceil(power * 6);
     if (power >= 1) damage += Math.floor(Math.random() * (damage / 2 + 2));   // a full draw can crit
+    const pw = Enchant.level(this.inventory.selectedStack(), 'power');
+    if (pw) damage = Math.round(damage * (1 + 0.25 * (pw + 1)));
     const x = ray.origin.x + d.x * 0.4, y = ray.origin.y + d.y * 0.4 - 0.1, z = ray.origin.z + d.z * 0.4;
     Entities.shootArrow(x, y, z, d.x * speed, d.y * speed, d.z * speed, { damage, pickup: this.mode === 'survival' });
     if (Net.active) Net.sendArrow({ x: +x.toFixed(2), y: +y.toFixed(2), z: +z.toFixed(2), vx: +(d.x * speed).toFixed(2), vy: +(d.y * speed).toFixed(2), vz: +(d.z * speed).toFixed(2) });
@@ -1231,6 +1239,51 @@
     Sound.hit(this.distTo(mob.x, mob.y, mob.z));
     if (Net.active && !Net.isHost) { Net.sendMobHit(mob.id, damage, kx, kz); mob.hurtFlash = 0.3; return; }
     this.damageMob(mob, damage, kx, kz);
+  };
+
+  // ---------------------------------------------------------------- enchanting
+  // bookshelves two blocks out from the table, on its level or one above
+  Game.shelvesAround = function (x, y, z) {
+    let n = 0;
+    for (let dy = 0; dy <= 1; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        for (let dz = -2; dz <= 2; dz++) {
+          if (Math.max(Math.abs(dx), Math.abs(dz)) !== 2) continue;
+          if (this.world.getBlock(x + dx, y + dy, z + dz) === B.BOOKSHELF) n++;
+        }
+      }
+    }
+    return n;
+  };
+
+  Game.enchantOffers = function (ent) {
+    const p = this.player;
+    if (!p.enchSeed) p.enchSeed = (Math.random() * 0x7fffffff) | 0;
+    return Enchant.offers(ent.item[0], ent.shelves, p.enchSeed);
+  };
+
+  Game.applyEnchant = function (i) {
+    const ent = UI.screen && UI.screen.entity;
+    if (!ent || ent.type !== 'enchant') return;
+    const o = this.enchantOffers(ent)[i];
+    const item = ent.item[0];
+    if (!o || !item) return;
+    const p = this.player;
+    if (this.mode === 'survival') {
+      const info = this.xpInfo(p.xp || 0);
+      const lapis = ent.lapis[0];
+      if (info.level < o.level || !lapis || lapis.count < o.lapis) return;
+      lapis.count -= o.lapis;
+      if (lapis.count <= 0) ent.lapis[0] = null;
+      p.xp = this.xpForLevel(info.level - o.cost) + Math.floor(info.progress * (this.xpForLevel(info.level - o.cost + 1) - this.xpForLevel(info.level - o.cost)));
+      UI.renderXp(p);
+    }
+    item.ench = Object.assign({}, o.ench);
+    p.enchSeed = (Math.random() * 0x7fffffff) | 0;
+    Sound.levelUp();
+    Entities.crit(p.pos.x, p.eyeY() - 0.3, p.pos.z);
+    this.inventory.changed();
+    UI.renderScreen();
   };
 
   Game.onBred = function (baby) {
@@ -1458,7 +1511,9 @@
 
     const stack = this.inventory.selectedStack();
     const def = stack ? Items.get(stack.id) : null;
-    const damage = def && def.damage ? def.damage : 1;
+    let damage = def && def.damage ? def.damage : 1;
+    const sharp = Enchant.level(stack, 'sharp');
+    if (sharp) damage += 0.5 * sharp + 0.5;
 
     const p = this.player;
     let kx = victim.x - p.pos.x, kz = victim.z - p.pos.z;
@@ -1496,6 +1551,8 @@
     this._lastAttack = now;
     const def = stack ? Items.get(stack.id) : null;
     let damage = def && def.damage ? def.damage : 1;
+    const sharp = Enchant.level(stack, 'sharp');
+    if (sharp) damage += 0.5 * sharp + 0.5;
     Hand.swing();
 
     // a blow landed while falling is a critical hit: half again as strong
@@ -1752,9 +1809,9 @@
     }
   };
 
-  Game.spawnDropAtPlayer = function (id, count) {
+  Game.spawnDropAtPlayer = function (id, count, stack) {
     const p = this.player;
-    this.spawnDrop(p.pos.x, p.pos.y + 0.8, p.pos.z, id, count);
+    this.spawnDrop(p.pos.x, p.pos.y + 0.8, p.pos.z, id, count, stack);
   };
 
   Game.intersectsPlayer = function (x, y, z) {
@@ -1838,7 +1895,7 @@
 
     const stack = this.inventory.selectedStack();
     const toolDef = stack ? Items.get(stack.id) : null;
-    let seconds = this.mode === 'creative' ? 0.12 : B.mineTime(here, toolDef);
+    let seconds = this.mode === 'creative' ? 0.12 : B.mineTime(here, toolDef, Enchant.level(stack, 'eff'));
     if (!isFinite(seconds)) {
       this.crackMesh.visible = false;
       return;
@@ -1891,7 +1948,7 @@
       if (this.mode === 'survival') {
         const lists = entity.type === 'chest' ? [entity.slots] : [entity.input, entity.fuel, entity.output];
         for (const arr of lists) {
-          for (const s of arr) if (s) this.spawnDrop(x + 0.5, y + 0.5, z + 0.5, s.id, s.count);
+          for (const s of arr) if (s) this.spawnDrop(x + 0.5, y + 0.5, z + 0.5, s.id, s.count, s);
         }
       }
       if (UI.screen && UI.screen.entity === entity) UI.closeScreen();
@@ -1903,6 +1960,7 @@
       if (B.canHarvest(id, toolDef)) {
         if (id === B.COAL_ORE) Entities.dropXp(x + 0.5, y + 0.5, z + 0.5, Math.random() * 2);
         else if (id === B.DIAMOND_ORE) Entities.dropXp(x + 0.5, y + 0.5, z + 0.5, 3 + Math.random() * 4);
+        else if (id === B.LAPIS_ORE) Entities.dropXp(x + 0.5, y + 0.5, z + 0.5, 2 + Math.random() * 3);
       }
       const instant = B.byId[id].hardness === 0;
       if (!instant && toolDef && toolDef.tool && this.inventory.damageSelected(1)) {
@@ -1913,11 +1971,12 @@
   };
 
   // ------------------------------------------------------------ dropped items
-  Game.spawnDrop = function (x, y, z, id, count) {
+  Game.spawnDrop = function (x, y, z, id, count, stack) {
     const mesh = new THREE.Mesh(this.blockGeometry(id, 0.28), this.itemMaterial);
     mesh.position.set(x, y, z);
     this.scene.add(mesh);
-    this.drops.push({ mesh, id, count, vy: 1.2, age: 0, x, y, z });
+    const extra = stack && (stack.dur || stack.ench) ? { dur: stack.dur, ench: stack.ench } : null;
+    this.drops.push({ mesh, id, count, vy: 1.2, age: 0, x, y, z, extra });
   };
 
   Game.clearDrops = function () {
@@ -1948,7 +2007,9 @@
         d.y += (p.pos.y + 0.6 - d.y) * pull;
       }
       if (d.age > 0.4 && dist < PICKUP_RANGE) {
-        const pulled = this.inventory.add(d.id, d.count);
+        const pulled = d.extra
+          ? this.inventory.addStack({ id: d.id, count: d.count, dur: d.extra.dur, ench: d.extra.ench })
+          : this.inventory.add(d.id, d.count);
         if (pulled > 0) {
           Sound.pop();
           this.scene.remove(d.mesh);
@@ -2059,7 +2120,7 @@
       const all = this.inventory.slots.concat(this.inventory.armor, this.inventory.craft);
       if (this.inventory.held) all.push(this.inventory.held);
       for (const stack of all) {
-        if (stack) this.spawnDrop(p.pos.x, p.pos.y + 0.5, p.pos.z, stack.id, stack.count);
+        if (stack) this.spawnDrop(p.pos.x, p.pos.y + 0.5, p.pos.z, stack.id, stack.count, stack);
       }
       this.inventory.clear();
       if (UI.screen) UI.closeScreen();
@@ -2383,7 +2444,7 @@
     p.forward(this._fwd);
     this.spawnDrop(
       p.pos.x + this._fwd.x * 1.2, p.pos.y + 1.1, p.pos.z + this._fwd.z * 1.2,
-      stack.id, 1
+      stack.id, 1, stack
     );
     inv.consumeSelected();
   };

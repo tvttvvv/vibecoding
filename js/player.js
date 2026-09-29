@@ -390,6 +390,7 @@
         amount = amount * (1 - Math.min(20, points) * 0.04);
         this.armorProvider.damageArmor(1);
       }
+      if (this.armorProvider.protection) amount *= 1 - this.armorProvider.protection();
     }
     amount = Math.max(0, Math.round(amount * 2) / 2);
     if (amount <= 0) return;

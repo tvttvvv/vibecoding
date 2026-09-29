@@ -394,6 +394,7 @@
   // ------------------------------------------------------------------ slots
   UI.fillSlot = function (node, stack, opts) {
     node.innerHTML = '';
+    node.classList.remove('ench');
     if (!stack) return node;
     const img = document.createElement('img');
     img.src = Items.icon(stack.id);
@@ -416,6 +417,7 @@
       bar.appendChild(fill);
       node.appendChild(bar);
     }
+    node.classList.toggle('ench', !!stack.ench);
     if (opts && opts.ghost) node.classList.add('ghost');
     return node;
   };
@@ -570,6 +572,8 @@
       if (cur || !this.armorFits(index, inv.held)) return;
     }
     if (kind === 'fin' && Recipes.smelting[inv.held.id] === undefined) return;
+      if (kind === 'ein' && !(Enchant.canEnchant(inv.held) && inv.held.count === 1 && !(this.screen.entity.item[0]))) return;
+      if (kind === 'elapis' && inv.held.id !== Items.LAPIS) return;
     if (kind === 'ffuel' && Items.fuelSeconds(inv.held.id) <= 0) return;
 
     if (!cur) {
@@ -636,7 +640,7 @@
     const stack = inv.selectedStack();
     const label = el('heldLabel');
     if (stack) {
-      label.textContent = Items.name(stack.id);
+      label.textContent = Items.name(stack.id) + (stack.ench ? ' (' + Enchant.label(stack) + ')' : '');
       label.classList.remove('hidden');
       clearTimeout(this._labelTimer);
       this._labelTimer = setTimeout(() => label.classList.add('hidden'), 1600);
@@ -700,12 +704,19 @@
     const leftovers = inv.clearCraft();
     if (inv.held) { leftovers.push(inv.held); inv.held = null; }
     for (const stack of leftovers) {
-      const taken = inv.add(stack.id, stack.count);
-      if (taken < stack.count) this.game.spawnDropAtPlayer(stack.id, stack.count - taken);
+      const taken = inv.addStack(stack);
+      if (taken < stack.count) this.game.spawnDropAtPlayer(stack.id, stack.count - taken, stack);
     }
     if (this.screen && this.screen.kind === 'chest') {
       Sound.chest(false);
       this.game.syncChest(this.screen.entity);
+    }
+    if (this.screen && this.screen.kind === 'enchant') {
+      for (const arr of [this.screen.entity.item, this.screen.entity.lapis]) {
+        const st = arr[0];
+        arr[0] = null;
+        if (st && inv.addStack(st) < st.count) this.game.spawnDropAtPlayer(st.id, st.count, st);
+      }
     }
     this.screen = null;
     el('screen').classList.add('hidden');
@@ -722,6 +733,8 @@
     if (kind === 'ffuel') return this.screen.entity.fuel;
     if (kind === 'fout') return this.screen.entity.output;
     if (kind === 'chest') return this.screen.entity.slots;
+    if (kind === 'ein') return this.screen.entity.item;
+    if (kind === 'elapis') return this.screen.entity.lapis;
     return null;
   };
 
@@ -736,6 +749,8 @@
     if (inv.held) {
       if (kind === 'armor' && !this.armorFits(index, inv.held)) return;
       if (kind === 'fin' && Recipes.smelting[inv.held.id] === undefined) return;
+      if (kind === 'ein' && !(Enchant.canEnchant(inv.held) && inv.held.count === 1 && !(this.screen.entity.item[0]))) return;
+      if (kind === 'elapis' && inv.held.id !== Items.LAPIS) return;
       if (kind === 'ffuel' && Items.fuelSeconds(inv.held.id) <= 0) return;
 
       if (!cur) {
@@ -861,15 +876,16 @@
     const body = el('screenBody');
     body.innerHTML = '';
 
-    const titles = { inventory: '인벤토리', crafting: '제작', furnace: '화로', creative: '크리에이티브', chest: '상자' };
+    const titles = { inventory: '인벤토리', crafting: '제작', furnace: '화로', creative: '크리에이티브', chest: '상자', enchant: '마법 부여' };
     const kind = this.screen.kind;
     el('screenTitle').textContent = titles[kind] || '인벤토리';
-    el('btnRecipeBook').classList.toggle('hidden', kind === 'creative' || kind === 'furnace' || kind === 'chest');
+    el('btnRecipeBook').classList.toggle('hidden', kind === 'creative' || kind === 'furnace' || kind === 'chest' || kind === 'enchant');
     el('btnRecipeBook').classList.toggle('active', this.recipeBookOpen);
 
     if (kind === 'creative') this.renderCreative(body);
     else if (kind === 'furnace') this.renderFurnace(body);
     else if (kind === 'chest') this.renderChest(body);
+    else if (kind === 'enchant') this.renderEnchant(body);
     else this.renderCraftingScreen(body);
 
     if (this.screen.kind !== 'creative') {
@@ -1000,6 +1016,52 @@
     const note = document.createElement('p');
     note.className = 'invNote';
     note.textContent = '누르면 선택된 핫바 칸에 들어갑니다.';
+    body.appendChild(note);
+  };
+
+  UI.renderEnchant = function (body) {
+    const game = this.game, ent = this.screen.entity;
+    const wrap = document.createElement('div');
+    wrap.className = 'enchantArea';
+    const col = document.createElement('div');
+    col.className = 'enchantSlots';
+    col.appendChild(this.makeSlot(ent.item[0], { kind: 'ein', index: 0 }));
+    col.appendChild(this.makeSlot(ent.lapis[0], { kind: 'elapis', index: 0 }));
+    wrap.appendChild(col);
+
+    const list = document.createElement('div');
+    list.className = 'enchantOffers';
+    const offers = game.enchantOffers(ent);
+    const level = game.xpInfo(game.player.xp || 0).level;
+    const lapis = ent.lapis[0] ? ent.lapis[0].count : 0;
+    for (let i = 0; i < 3; i++) {
+      const o = offers[i];
+      const btn = document.createElement('button');
+      btn.className = 'enchantOffer';
+      if (!o) {
+        btn.disabled = true;
+        btn.textContent = ent.item[0] ? '마법을 부여할 수 없는 물건' : '물건을 올려 주세요';
+      } else {
+        const ok = game.mode !== 'survival' || (level >= o.level && lapis >= o.lapis);
+        btn.disabled = !ok;
+        btn.innerHTML = '';
+        const name = document.createElement('span');
+        name.className = 'offerName';
+        name.textContent = Enchant.describe(o.ench);
+        const cost = document.createElement('span');
+        cost.className = 'offerCost';
+        cost.textContent = '레벨 ' + o.level + ' · 청금석 ' + o.lapis;
+        btn.appendChild(name);
+        btn.appendChild(cost);
+        Controls.bindTap(btn, () => { if (!btn.disabled) game.applyEnchant(i); });
+      }
+      list.appendChild(btn);
+    }
+    wrap.appendChild(list);
+    body.appendChild(wrap);
+    const note = document.createElement('p');
+    note.className = 'invNote';
+    note.textContent = '책장 ' + ent.shelves + '개 · 주위에 책장을 놓으면 더 강한 마법이 나와요 (최대 15개)';
     body.appendChild(note);
   };
 

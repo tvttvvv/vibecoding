@@ -203,6 +203,15 @@
   const OBSIDIAN = simple(83, '흑요석', T.obsidian, { hardness: 50, tool: 'pickaxe', tier: 4 });
 
   // carrots grow like wheat, planted straight from the carrot itself
+  // ---- enchanting ------------------------------------------------------------
+  const LAPIS_ORE = simple(90, '청금석 광석', T.lapis_ore, { hardness: 3, tool: 'pickaxe', tier: 2, drop: 187 });
+  const SUGAR_CANE = simple(91, '사탕수수', T.sugar_cane, Object.assign({}, PLANT, { replaceable: false, cane: true }));
+  const BOOKSHELF = def(92, '책장', { top: T.planks, side: T.bookshelf, bottom: T.planks, hardness: 1.5, tool: 'axe', drop: 0 });
+  const ENCHANTING_TABLE = def(93, '마법 부여대', {
+    top: T.enchant_top, side: T.enchant_side, bottom: T.obsidian,
+    opaque: false, height: 0.75, hardness: 5, tool: 'pickaxe', tier: 1, interactive: 'enchant', light: 7
+  });
+
   const CARROTS = 84;
   for (let s = 0; s < 4; s++) {
     simple(CARROTS + s, '당근', T['carrots_' + s], Object.assign({}, PLANT, { replaceable: false, crop: s, cropKind: 'carrot', drop: 0 }));
@@ -227,12 +236,15 @@
 
   // Minecraft's formula: hardness x 1.5 when the block will drop, x 5 when it
   // will not, divided by the speed of a matching tool.
-  function mineTime(blockId, tool) {
+  function mineTime(blockId, tool, efficiency) {
     const b = byId[blockId];
     if (!isFinite(b.hardness)) return Infinity;
     const harvest = canHarvest(blockId, tool);
     let speed = 1;
-    if (tool && tool.tool && b.tool && tool.tool.type === b.tool) speed = tool.tool.speed;
+    if (tool && tool.tool && b.tool && tool.tool.type === b.tool) {
+      speed = tool.tool.speed;
+      if (efficiency) speed += efficiency * efficiency + 1;
+    }
     return b.hardness * (harvest ? 1.5 : 5) / speed;
   }
 
@@ -254,7 +266,8 @@
     COAL_ORE, IRON_ORE, GOLD_ORE, DIAMOND_ORE,
     CRAFTING_TABLE, FURNACE, CHEST, TORCH, WOOL, BED, FARMLAND,
     TALL_GRASS, DANDELION, POPPY,
-    SLABS[0], SLABS[1], SLABS[2], STAIRS[0], STAIRS[1], LADDER, OBSIDIAN, BEDROCK
+    SLABS[0], SLABS[1], SLABS[2], STAIRS[0], STAIRS[1], LADDER, OBSIDIAN,
+    LAPIS_ORE, SUGAR_CANE, BOOKSHELF, ENCHANTING_TABLE, BEDROCK
   ];
 
   global.Blocks = {
@@ -264,6 +277,7 @@
     CRAFTING_TABLE, FURNACE, FURNACE_LIT, TORCH, WOOL, BED,
     TALL_GRASS, DANDELION, POPPY, FARMLAND, WHEAT_0, WHEAT_1, WHEAT_2, WHEAT_3, CHEST,
     SLABS, STAIRS, DOOR, LADDER, WATER_FLOW, LAVA, OBSIDIAN, CARROTS,
+    LAPIS_ORE, SUGAR_CANE, BOOKSHELF, ENCHANTING_TABLE,
     byId, tileFor, isOpaque, isSolid, isLiquid, mineTime, canHarvest, iconFor, creativeList
   };
 })(window);

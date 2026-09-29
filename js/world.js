@@ -191,6 +191,7 @@
     const v = Noise.hash3(wx >> 1, y >> 1, wz >> 1, seed + 55);
     if (y < 14 && v < 0.0018) return B.DIAMOND_ORE;
     if (y < 26 && v < 0.0034) return B.GOLD_ORE;
+    if (y < 30 && v > 0.9982) return B.LAPIS_ORE;
     if (y < 44 && v < 0.015) return B.IRON_ORE;
     if (y < 58 && v < 0.026) return B.COAL_ORE;
     return 0;
@@ -305,9 +306,25 @@
       for (let lz = 0; lz < CHUNK_SIZE; lz++) {
         const wx = baseX + lx, wz = baseZ + lz;
         const y = Math.floor(columnHeight(wx, wz, seed));
-        if (y <= SEA_LEVEL || y >= WORLD_HEIGHT - 2) continue;
+        if (y < SEA_LEVEL || y >= WORLD_HEIGHT - 2) continue;
         const i = (y * CHUNK_SIZE + lz) * CHUNK_SIZE + lx;
-        if (chunk.data[i] !== B.GRASS) continue;
+        // sugar cane on the bank, where a neighbouring column is under water
+        const top = chunk.data[i];
+        if ((top === B.GRASS || top === B.SAND) && y === SEA_LEVEL &&
+            chunk.data[i + CHUNK_SIZE * CHUNK_SIZE] === B.AIR &&
+            Noise.hash2(wx, wz, seed + 77) < 0.18) {
+          let wet = false;
+          for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            if (Math.floor(columnHeight(wx + dx, wz + dz, seed)) < SEA_LEVEL) { wet = true; break; }
+          }
+          if (wet) {
+            const h = 1 + Math.floor(Noise.hash2(wx, wz, seed + 78) * 3);
+            for (let k = 1; k <= h && y + k < WORLD_HEIGHT; k++) chunk.data[i + k * CHUNK_SIZE * CHUNK_SIZE] = B.SUGAR_CANE;
+            if (y + h > chunk.maxY) chunk.maxY = y + h;
+            continue;
+          }
+        }
+        if (top !== B.GRASS) continue;
         if (chunk.data[i + CHUNK_SIZE * CHUNK_SIZE] !== B.AIR) continue;
         const biome = biomeAt(wx, wz, seed);
         const h = Noise.hash2(wx, wz, seed + 71);

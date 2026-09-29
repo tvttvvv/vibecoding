@@ -66,6 +66,7 @@
   Inventory.prototype.damageSelected = function (amount) {
     const s = this.slots[this.selected];
     if (!s || !s.dur) return false;
+    if (!Enchant.wears(s)) return false;
     s.dur -= amount;
     if (s.dur <= 0) {
       this.slots[this.selected] = null;
@@ -80,7 +81,7 @@
     let broke = false;
     for (let i = 0; i < 4; i++) {
       const s = this.armor[i];
-      if (!s || !s.dur) continue;
+      if (!s || !s.dur || !Enchant.wears(s)) continue;
       s.dur -= amount;
       if (s.dur <= 0) { this.armor[i] = null; broke = true; }
     }
@@ -96,6 +97,13 @@
       if (d && d.armor) total += d.armor.points;
     }
     return total;
+  };
+
+  // Protection: each level takes 4% off, 80% at most
+  Inventory.prototype.protection = function () {
+    let n = 0;
+    for (const s of this.armor) n += Enchant.level(s, 'prot');
+    return Math.min(0.8, n * 0.04);
   };
 
   Inventory.prototype.counts = function () {
@@ -133,22 +141,49 @@
 
   // Saving happens in this browser only, so the format just has to be small:
   // an empty slot is 0, a filled one [id, count] plus durability when it wears.
+  // One packed form for every place a stack is stored or sent: save files,
+  // chests, furnaces and the network. Enchantments ride along as the fourth
+  // element.
+  function pack(s) {
+    if (!s) return 0;
+    if (s.ench) return [s.id, s.count, s.dur || 0, s.ench];
+    return s.dur ? [s.id, s.count, s.dur] : [s.id, s.count];
+  }
+
+  function unpack(e) {
+    if (!Array.isArray(e) || !e[0] || !Items.get(e[0])) return null;
+    const stack = { id: e[0], count: Math.max(1, Math.min(Items.stackMax(e[0]), e[1] | 0)) };
+    const max = Items.maxDurability(e[0]);
+    if (max) stack.dur = Math.max(1, Math.min(max, e[2] || max));
+    if (e[3] && typeof e[3] === 'object') stack.ench = e[3];
+    return stack;
+  }
+
+  Inventory.pack = pack;
+  Inventory.unpack = unpack;
+
   Inventory.prototype.serialize = function (arr) {
-    return arr.map((s) => (s ? (s.dur ? [s.id, s.count, s.dur] : [s.id, s.count]) : 0));
+    return arr.map(pack);
   };
 
   Inventory.prototype.deserialize = function (arr, data) {
     arr.fill(null);
     if (!Array.isArray(data)) return;
-    for (let i = 0; i < arr.length && i < data.length; i++) {
-      const e = data[i];
-      if (!Array.isArray(e) || !e[0] || !Items.get(e[0])) continue;
-      const count = Math.max(1, Math.min(Items.stackMax(e[0]), e[1] | 0));
-      const stack = { id: e[0], count };
-      const max = Items.maxDurability(e[0]);
-      if (max) stack.dur = Math.max(1, Math.min(max, e[2] || max));
-      arr[i] = stack;
+    for (let i = 0; i < arr.length && i < data.length; i++) arr[i] = unpack(data[i]);
+  };
+
+  // a whole stack, keeping its wear and enchantments
+  Inventory.prototype.addStack = function (stack) {
+    if (!stack) return 0;
+    if (!stack.ench && !stack.dur) return this.add(stack.id, stack.count);
+    for (let i = 0; i < TOTAL_SLOTS; i++) {
+      if (this.slots[i]) continue;
+      this.slots[i] = { id: stack.id, count: stack.count, dur: stack.dur, ench: stack.ench };
+      if (!stack.ench) delete this.slots[i].ench;
+      this.changed();
+      return stack.count;
     }
+    return 0;
   };
 
   Inventory.prototype.craftCells = function () {

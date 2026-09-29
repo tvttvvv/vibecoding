@@ -373,6 +373,42 @@
     });
   }
 
+  oreTile('lapis_ore', ['#1f4fb4', '#2a62d4', '#173c8c'], '#6f9cf0');
+
+  define('sugar_cane', (api) => {
+    api.clear();
+    for (const x of [3, 7, 11]) {
+      for (let y = 0; y < TILE; y++) {
+        api.put(x, y, y % 5 === 0 ? '#7fa84a' : '#9ccc5c');
+        api.put(x + 1, y, y % 5 === 0 ? '#6b9440' : '#86b84e');
+      }
+      api.put(x - 1, 3 + (x % 4), '#9ccc5c'); api.put(x + 2, 9 - (x % 3), '#86b84e');
+    }
+  });
+
+  define('bookshelf', (api) => {
+    speckle(api, '#9c7b4a', ['#8b6a3f', '#a8875a'], 0.3);
+    for (const row of [1, 9]) {
+      for (let x = 1; x < 15; x++) {
+        const c = ['#a8322e', '#3a5aa8', '#3e8a3e', '#c9a43a', '#6b3a8c', '#8b5a2b'][Math.floor(x / 2.4) % 6];
+        for (let y = row; y < row + 6; y++) api.put(x, y, x % 2 ? c : '#2a1a0e');
+      }
+    }
+    for (let x = 0; x < TILE; x++) { api.put(x, 0, '#6b4a2a'); api.put(x, 7, '#6b4a2a'); api.put(x, 8, '#6b4a2a'); api.put(x, 15, '#6b4a2a'); }
+  });
+
+  define('enchant_top', (api) => {
+    speckle(api, '#9e1b25', ['#8b1620', '#b0232e'], 0.3);
+    for (let i = 0; i < TILE; i++) { api.put(i, 0, '#15101f'); api.put(i, 15, '#15101f'); api.put(0, i, '#15101f'); api.put(15, i, '#15101f'); }
+    for (let x = 4; x < 12; x++) for (let y = 5; y < 11; y++) api.put(x, y, x === 7 || x === 8 ? '#6b4a2a' : '#e8e0c8');
+  });
+
+  define('enchant_side', (api) => {
+    speckle(api, '#15101f', ['#1f1830', '#2a2140', '#3a2c55'], 0.5);
+    for (let x = 0; x < TILE; x++) for (let y = 0; y < 4; y++) api.put(x, y, pick(['#9e1b25', '#8b1620']));
+    for (const [x, y] of [[1, 5], [14, 5], [2, 6], [13, 6]]) api.put(x, y, '#4aedd9');
+  });
+
   define('chest_top', (api) => {
     speckle(api, '#a0712f', ['#8b5f24', '#b58239', '#946826'], 0.5);
     for (let i = 0; i < TILE; i++) { api.put(i, 0, '#4a3312'); api.put(i, 15, '#4a3312'); api.put(0, i, '#4a3312'); api.put(15, i, '#4a3312'); }
@@ -677,6 +713,27 @@
     api.clear();
     for (let i = 0; i < 9; i++) { rectOn(api, 3 + i, 12 - i, 2, 2, i % 3 ? '#f08a24' : '#d5701a'); }
     rectOn(api, 12, 1, 1, 3, '#4f8a33'); rectOn(api, 13, 2, 2, 1, '#5d9c3c'); api.put(11, 2, '#6cae46');
+  });
+
+  define('item_lapis', (api) => {
+    api.clear();
+    rectOn(api, 4, 4, 8, 8, '#2a62d4'); rectOn(api, 5, 3, 6, 1, '#3a74e8'); rectOn(api, 3, 5, 1, 6, '#1f4fb4');
+    rectOn(api, 12, 5, 1, 6, '#173c8c'); rectOn(api, 5, 12, 6, 1, '#173c8c');
+    api.put(6, 5, '#8fb4ff'); api.put(7, 6, '#6f9cf0');
+  });
+
+  define('item_paper', (api) => {
+    api.clear();
+    rectOn(api, 3, 3, 10, 11, '#f2efe4');
+    rectOn(api, 12, 4, 1, 10, '#d8d2c0'); rectOn(api, 4, 13, 9, 1, '#d8d2c0');
+    for (const y of [5, 7, 9, 11]) rectOn(api, 5, y, 6, 1, '#e2ddce');
+  });
+
+  define('item_book', (api) => {
+    api.clear();
+    rectOn(api, 3, 3, 10, 11, '#8b3a2b'); rectOn(api, 3, 3, 2, 11, '#6b2a1e');
+    rectOn(api, 5, 12, 8, 1, '#f2efe4'); rectOn(api, 12, 4, 1, 8, '#f2efe4');
+    rectOn(api, 7, 6, 4, 1, '#c9a43a');
   });
 
   define('item_seeds', (api) => {

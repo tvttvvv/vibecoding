@@ -570,3 +570,29 @@ body.onTitle #hud, body.onTitle #joystickZone, body.onTitle #joyVisual,
 body.onTitle #rightControls, body.onTitle #topRight, body.onTitle #crosshair { display: none !important; }
 
 #lavaOverlay { background: radial-gradient(circle, rgba(255,140,20,0.25) 20%, rgba(220,70,0,0.8) 100%); }
+
+/* enchanting */
+.enchantArea { display: flex; gap: 14px; align-items: flex-start; }
+.enchantSlots { display: flex; flex-direction: column; gap: 6px; }
+.enchantOffers { display: flex; flex-direction: column; gap: 5px; min-width: 210px; }
+.enchantOffer {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 6px 9px; text-align: left; font-size: 12px;
+  background: #6b5a3e; color: #f0e6c8; border: 2px solid #2a1f12;
+  box-shadow: inset 2px 2px 0 #8d7a56, inset -2px -2px 0 #4a3d28;
+}
+.enchantOffer:disabled { background: #4a4a4a; color: #9a9a9a; box-shadow: none; }
+.enchantOffer .offerName { color: #d9b8ff; }
+.enchantOffer:disabled .offerName { color: #a898b8; }
+.enchantOffer .offerCost { font-size: 11px; color: #9ef070; }
+.enchantOffer:disabled .offerCost { color: #d06060; }
+
+/* the purple shimmer on enchanted things */
+.slot.ench::after {
+  content: ''; position: absolute; inset: 2px; pointer-events: none;
+  background: linear-gradient(115deg, transparent 20%, rgba(190,120,255,0.55) 40%, transparent 60%);
+  background-size: 250% 250%;
+  animation: glint 2.4s linear infinite;
+  mix-blend-mode: screen;
+}
+@keyframes glint { from { background-position: 150% 0; } to { background-position: -100% 0; } }
