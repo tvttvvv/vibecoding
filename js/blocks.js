@@ -202,6 +202,12 @@
   });
   const OBSIDIAN = simple(83, '흑요석', T.obsidian, { hardness: 50, tool: 'pickaxe', tier: 4 });
 
+  // carrots grow like wheat, planted straight from the carrot itself
+  const CARROTS = 84;
+  for (let s = 0; s < 4; s++) {
+    simple(CARROTS + s, '당근', T['carrots_' + s], Object.assign({}, PLANT, { replaceable: false, crop: s, cropKind: 'carrot', drop: 0 }));
+  }
+
   byId[STONE].drop = COBBLESTONE;
   byId[GRASS].drop = DIRT;
   byId[LEAVES].drop = 0;
@@ -257,7 +263,7 @@
     DIAMOND_ORE, WATER, SNOW, SNOW_GRASS, CACTUS, GLASS,
     CRAFTING_TABLE, FURNACE, FURNACE_LIT, TORCH, WOOL, BED,
     TALL_GRASS, DANDELION, POPPY, FARMLAND, WHEAT_0, WHEAT_1, WHEAT_2, WHEAT_3, CHEST,
-    SLABS, STAIRS, DOOR, LADDER, WATER_FLOW, LAVA, OBSIDIAN,
+    SLABS, STAIRS, DOOR, LADDER, WATER_FLOW, LAVA, OBSIDIAN, CARROTS,
     byId, tileFor, isOpaque, isSolid, isLiquid, mineTime, canHarvest, iconFor, creativeList
   };
 })(window);

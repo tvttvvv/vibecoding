@@ -18,7 +18,7 @@
   const TYPES = {
     pig: {
       name: '돼지', hp: 10, hw: 0.45, h: 0.9, speed: 1.5, hostile: false,
-      drops: [[I.RAW_PORK, 1, 3]],
+      drops: [[I.RAW_PORK, 1, 3]], breedWith: I.CARROT,
       parts: [
         [0.9, 0.6, 1.3, 0xf0a8a0, 0, 0.5, 0],
         [0.2, 0.4, 0.2, 0xe08e86, -0.28, 0.2, -0.45],
@@ -31,7 +31,7 @@
     },
     cow: {
       name: '소', hp: 10, hw: 0.45, h: 1.3, speed: 1.4, hostile: false,
-      drops: [[I.RAW_BEEF, 1, 3]],
+      drops: [[I.RAW_BEEF, 1, 3], [I.LEATHER, 0, 2]], breedWith: I.WHEAT,
       parts: [
         [0.9, 0.8, 1.4, 0x4a3322, 0, 0.85, 0],
         [0.24, 0.5, 0.24, 0x3b2a1c, -0.28, 0.25, -0.45],
@@ -45,7 +45,7 @@
     },
     chicken: {
       name: '닭', hp: 4, hw: 0.22, h: 0.7, speed: 1.4, hostile: false,
-      drops: [[I.RAW_CHICKEN, 1, 1]],
+      drops: [[I.RAW_CHICKEN, 1, 1], [I.FEATHER, 0, 2]], breedWith: I.SEEDS,
       parts: [
         [0.4, 0.45, 0.5, 0xf2f2f2, 0, 0.4, 0],
         [0.1, 0.25, 0.1, 0xf0c635, -0.1, 0.13, 0],
@@ -57,7 +57,7 @@
     },
     sheep: {
       name: '양', hp: 8, hw: 0.45, h: 1.2, speed: 1.4, hostile: false,
-      drops: [[B.WOOL, 1, 1], [I.RAW_MUTTON, 1, 2]],
+      drops: [[B.WOOL, 1, 1], [I.RAW_MUTTON, 1, 2]], breedWith: I.WHEAT,
       parts: [
         [1.0, 0.85, 1.3, 0xe9ecec, 0, 0.8, 0],
         [0.2, 0.45, 0.2, 0xd8d2c8, -0.3, 0.22, -0.4],
@@ -69,7 +69,7 @@
     },
     zombie: {
       name: '좀비', hp: 20, hw: 0.3, h: 1.9, speed: 2.1, hostile: true,
-      damage: 3, reach: 1.7, burns: true, drops: [[I.ROTTEN_FLESH, 0, 2]],
+      damage: 3, reach: 1.7, burns: true, drops: [[I.ROTTEN_FLESH, 0, 2]], rare: [[I.CARROT, 0.05], [I.IRON_INGOT, 0.025]],
       parts: [
         [0.5, 0.75, 0.28, 0x2f6b3f, 0, 1.05, 0],
         [0.22, 0.72, 0.22, 0x33437a, -0.13, 0.36, 0],
@@ -155,11 +155,16 @@
     this.age = 0;
     this.dead = false;
     this.group = null;
+    // breeding: love mode after being fed, a rest afterwards, babies grow up
+    this.size = 1;
+    this.love = 0;
+    this.breedCooldown = 0;
+    this.growUp = 0;
   }
 
   Mob.prototype.moveAxis = function (world, axis, amount) {
     if (!amount) return false;
-    const hw = this.def.hw, h = this.def.h;
+    const hw = this.def.hw * this.size, h = this.def.h * this.size;
     if (axis === 'x') this.x += amount; else if (axis === 'z') this.z += amount; else this.y += amount;
     const limit = world.collideLimit(this.x - hw, this.y, this.z - hw, this.x + hw, this.y + h, this.z + hw, axis, amount);
     if (limit === null) return false;
@@ -272,13 +277,44 @@
     return g;
   };
 
-  Mobs.spawn = function (type, x, y, z) {
+  Mobs.spawn = function (type, x, y, z, opts) {
     const mob = new Mob(type, x, y, z);
+    if (opts && opts.baby) { mob.size = 0.5; mob.growUp = 300; mob.hp = Math.ceil(mob.hp / 2); }
     mob.group = this.buildModel(mob);
     mob.group.position.set(x, y, z);
+    mob.group.scale.setScalar(mob.size);
     this._group.add(mob.group);
     this.list.push(mob);
     return mob;
+  };
+
+  // two animals of a kind, both in love and near each other, make a baby
+  Mobs.findMate = function (m) {
+    let best = null, bd = 64;
+    for (const o of this.list) {
+      if (o === m || o.type !== m.type || o.love <= 0 || o.size < 1) continue;
+      const d = (o.x - m.x) * (o.x - m.x) + (o.z - m.z) * (o.z - m.z);
+      if (d < bd) { bd = d; best = o; }
+    }
+    return best;
+  };
+
+  Mobs.breed = function (a, b, game) {
+    a.love = b.love = 0;
+    a.breedCooldown = b.breedCooldown = 120;
+    const baby = this.spawn(a.type, (a.x + b.x) / 2, Math.max(a.y, b.y) + 0.2, (a.z + b.z) / 2, { baby: true });
+    if (global.Entities) Entities.hearts(baby.x, baby.y + 0.6, baby.z, 6);
+    if (game && game.onBred) game.onBred(baby);
+    return baby;
+  };
+
+  // food held out to an animal: it falls in love, or a baby grows faster
+  Mobs.feed = function (m) {
+    if (!m.def.breedWith) return false;
+    if (m.size < 1) { m.growUp = Math.max(0, m.growUp * 0.9); return true; }
+    if (m.love > 0 || m.breedCooldown > 0) return false;
+    m.love = 30;
+    return true;
   };
 
   Mobs.remove = function (mob) {
@@ -383,6 +419,15 @@
       const m = this.list[i];
       m.age += dt;
       if (m.hurtFlash > 0) m.hurtFlash = Math.max(0, m.hurtFlash - dt);
+      if (m.love > 0) {
+        m.love -= dt;
+        if (global.Entities && Math.random() < dt * 2) Entities.hearts(m.x, m.y + m.def.h * m.size + 0.2, m.z, 1);
+      }
+      if (m.breedCooldown > 0) m.breedCooldown -= dt;
+      if (m.size < 1) {
+        m.growUp -= dt;
+        if (m.growUp <= 0) { m.size = 1; m.hp = m.def.hp; }
+      }
 
       const dx = player.pos.x - m.x, dy = player.pos.y - m.y, dz = player.pos.z - m.z;
       const distSq = dx * dx + dy * dy + dz * dz;
@@ -463,6 +508,16 @@
         m.moving = Math.random() < 0.6;
         m.wanderYaw = Math.random() * Math.PI * 2;
       }
+      // in love: head for a partner, and breed once close enough
+      if (m.love > 0 && !(m.panic > 0)) {
+        const mate = this.findMate(m);
+        if (mate) {
+          const mx = mate.x - m.x, mz = mate.z - m.z;
+          const md = Math.hypot(mx, mz) || 1;
+          if (md < 1.4) { this.breed(m, mate, game); }
+          else { m.moving = true; m.wanderYaw = Math.atan2(mx, mz); m.wander = 1; }
+        }
+      }
       // a hurt animal runs, zig-zagging, for a few seconds
       if (m.panic > 0) {
         m.panic -= dt;
@@ -504,10 +559,9 @@
     const light = this.lightFn ? this.lightFn(m.x, m.y + m.def.h * 0.6, m.z) : 1;
     const mat = m.group.userData.material;
     if (mat) mat.color.setRGB(light, light * (flash ? 0.35 : 1), light * (flash ? 0.35 : 1));
-    if (m.def.explodes && m.group.scale) {
-      const s = m.fuse > 0 ? 1 + Math.sin(m.fuse * 30) * 0.08 * Math.min(1, m.fuse) : 1;
-      m.group.scale.set(s, s, s);
-    }
+    let s = m.size;
+    if (m.def.explodes && m.fuse > 0) s *= 1 + Math.sin(m.fuse * 30) * 0.08 * Math.min(1, m.fuse);
+    m.group.scale.set(s, s, s);
   };
 
   Mobs.renderOnly = function (dt) {
@@ -606,10 +660,13 @@
   };
 
   Mobs.dropLoot = function (m, game) {
-    if (game.mode !== 'survival') return;
+    if (game.mode !== 'survival' || m.size < 1) return;     // babies drop nothing
     for (const [id, min, max] of m.def.drops) {
       const n = min + Math.floor(Math.random() * (max - min + 1));
       if (n > 0) game.spawnDrop(m.x, m.y + 0.4, m.z, id, n);
+    }
+    for (const [id, chance] of (m.def.rare || [])) {
+      if (Math.random() < chance) game.spawnDrop(m.x, m.y + 0.4, m.z, id, 1);
     }
   };
 
@@ -618,7 +675,8 @@
     const out = [];
     for (const m of this.list) {
       out.push([m.id, TYPE_NAMES.indexOf(m.type),
-        +m.x.toFixed(2), +m.y.toFixed(2), +m.z.toFixed(2), +m.yaw.toFixed(2)]);
+        +m.x.toFixed(2), +m.y.toFixed(2), +m.z.toFixed(2), +m.yaw.toFixed(2),
+        m.size < 1 ? 1 : 0, m.love > 0 ? 1 : 0]);
     }
     return out;
   };
@@ -640,6 +698,9 @@
         this.list.push(m);
       }
       m.x = r[2]; m.y = r[3]; m.z = r[4]; m.yaw = r[5];
+      m.size = r[6] ? 0.5 : 1;
+      m.group.scale.setScalar(m.size);
+      if (r[7] && global.Entities && Math.random() < 0.08) Entities.hearts(m.x, m.y + m.def.h * m.size + 0.2, m.z, 1);
     }
     for (let i = this.list.length - 1; i >= 0; i--) {
       if (!seen[this.list[i].id]) this.remove(this.list[i]);

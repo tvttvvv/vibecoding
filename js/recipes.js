@@ -86,6 +86,8 @@
   shaped(I.OAK_DOOR, 3, ['##', '##', '##'], { '#': B.PLANKS });
   shaped(B.LADDER, 3, ['| |', '|||', '| |'], { '|': I.STICK });
   shaped(I.BUCKET, 1, ['# #', ' # '], { '#': I.IRON_INGOT });
+  shaped(I.BOW, 1, [' #|', '# |', ' #|'], { '#': I.STICK, '|': I.STRING });
+  shaped(I.ARROW, 4, ['F', '|', 'E'], { F: I.FLINT, '|': I.STICK, E: I.FEATHER });
 
   for (const [, mat, tier] of PLANK_LIKE) {
     const key = { '#': mat, '|': I.STICK };

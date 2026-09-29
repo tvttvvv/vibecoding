@@ -362,6 +362,17 @@
     });
   }
 
+  for (let stage = 0; stage < 4; stage++) {
+    define('carrots_' + stage, (api) => {
+      api.clear();
+      const h = 3 + stage * 2;
+      for (const x of [2, 6, 10, 13]) {
+        for (let y = 15; y > 15 - h; y--) api.put(x + (y % 3 === 0 ? 1 : 0), y, pick(['#4f8a33', '#5d9c3c', '#6cae46']));
+        if (stage === 3) { api.put(x, 15, '#e9731a'); api.put(x + 1, 15, '#f39a2a'); api.put(x, 14, '#e9731a'); }
+      }
+    });
+  }
+
   define('chest_top', (api) => {
     speckle(api, '#a0712f', ['#8b5f24', '#b58239', '#946826'], 0.5);
     for (let i = 0; i < TILE; i++) { api.put(i, 0, '#4a3312'); api.put(i, 15, '#4a3312'); api.put(0, i, '#4a3312'); api.put(15, i, '#4a3312'); }
@@ -627,6 +638,46 @@
   bucket('item_bucket', null);
   bucket('item_water_bucket', '#3f6fd8');
   bucket('item_lava_bucket', '#e9731a');
+
+  define('item_bow', (api) => {
+    api.clear();
+    // the stave curves down the left, the string runs straight up the right
+    const arc = [[10, 1], [9, 2], [8, 3], [7, 4], [6, 5], [5, 6], [5, 7], [5, 8], [5, 9], [6, 10], [7, 11], [8, 12], [9, 13], [10, 14]];
+    for (const [x, y] of arc) { api.put(x, y, '#8b6a3f'); api.put(x - 1, y, '#6b4a2a'); }
+    for (let y = 1; y <= 14; y++) api.put(12, y, '#e8e8e8');
+    api.put(11, 1, '#c8c8c8'); api.put(11, 14, '#c8c8c8');
+  });
+
+  define('item_arrow', (api) => {
+    api.clear();
+    for (let i = 0; i < 10; i++) { api.put(3 + i, 12 - i, '#8b6a3f'); }
+    rectOn(api, 12, 2, 2, 2, '#a8a8a8'); api.put(13, 1, '#d0d0d0'); api.put(14, 2, '#d0d0d0');
+    api.put(2, 12, '#e8e8e8'); api.put(3, 13, '#e8e8e8'); api.put(2, 13, '#c0c0c0'); api.put(4, 13, '#e8e8e8'); api.put(2, 11, '#e8e8e8');
+  });
+
+  define('item_flint', (api) => {
+    api.clear();
+    rectOn(api, 5, 4, 5, 8, '#3a3a3a'); rectOn(api, 6, 3, 3, 1, '#4a4a4a'); rectOn(api, 10, 6, 1, 5, '#2a2a2a');
+    api.put(6, 5, '#6a6a6a'); api.put(7, 6, '#5a5a5a');
+  });
+
+  define('item_feather', (api) => {
+    api.clear();
+    for (let i = 0; i < 11; i++) api.put(4 + i, 13 - i, '#d8d8d8');
+    for (let i = 2; i < 10; i++) { api.put(5 + i, 13 - i - 2, '#f4f4f4'); api.put(3 + i, 13 - i + 1, '#e8e8e8'); }
+  });
+
+  define('item_leather', (api) => {
+    api.clear();
+    rectOn(api, 3, 4, 10, 8, '#8b5a2b'); rectOn(api, 4, 3, 8, 1, '#8b5a2b'); rectOn(api, 4, 12, 8, 1, '#6f4520');
+    for (let i = 0; i < 10; i++) api.put(4 + Math.floor(rnd() * 8), 5 + Math.floor(rnd() * 6), '#a06a36');
+  });
+
+  define('item_carrot', (api) => {
+    api.clear();
+    for (let i = 0; i < 9; i++) { rectOn(api, 3 + i, 12 - i, 2, 2, i % 3 ? '#f08a24' : '#d5701a'); }
+    rectOn(api, 12, 1, 1, 3, '#4f8a33'); rectOn(api, 13, 2, 2, 1, '#5d9c3c'); api.put(11, 2, '#6cae46');
+  });
 
   define('item_seeds', (api) => {
     api.clear();

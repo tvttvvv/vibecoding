@@ -58,7 +58,7 @@
     this.item.visible = true;
   };
 
-  Hand.update = function (dt, player, stack, brightness, mining, eatT) {
+  Hand.update = function (dt, player, stack, brightness, mining, eatT, bowPower) {
     this.setHeld(stack ? stack.id : 0);
 
     if (mining) this.swing();
@@ -98,6 +98,13 @@
       const lift = Math.min(1, eatT / 0.25);
       this.root.position.set(-0.28 * lift, 0.1 * lift + Math.abs(Math.sin(eatT * 14)) * 0.035 * lift, 0.1 * lift);
       this.root.rotation.set(0.3 * lift, -0.6 * lift, 0);
+    }
+
+    // drawing a bow: brought to the middle, trembling a little at full draw
+    if (bowPower >= 0 && this.item.visible) {
+      const shake = bowPower >= 1 ? Math.sin(performance.now() / 25) * 0.004 : 0;
+      this.root.position.set(-0.3 + shake, 0.12, 0.06 + bowPower * 0.08);
+      this.root.rotation.set(0, 0.35, -0.2);
     }
 
     const b = Math.max(0.12, Math.min(1, brightness));

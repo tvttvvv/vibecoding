@@ -448,6 +448,11 @@
     const out = [];
     const def = B.byId[id];
     if (def.door) return def.door.upper ? out : [[Items.OAK_DOOR, 1]];
+    if (def.cropKind === 'carrot') {
+      out.push([Items.CARROT, def.crop >= 3 ? 1 + Math.floor(Math.random() * 4) : 1]);
+      return out;
+    }
+    if (id === B.GRAVEL && Math.random() < 0.1) return [[Items.FLINT, 1]];
     if (def.crop !== undefined) {
       if (def.crop >= 3) {
         out.push([Items.WHEAT, 1]);
@@ -506,9 +511,9 @@
       if (this.mode === 'survival') this.inventory.damageSelected(1);
       return true;
     }
-    if (stack.id === Items.SEEDS && hit.id === B.FARMLAND) {
+    if ((stack.id === Items.SEEDS || stack.id === Items.CARROT) && hit.id === B.FARMLAND) {
       if (w.getBlock(hit.x, hit.y + 1, hit.z) !== B.AIR) return true;
-      this.changeBlock(hit.x, hit.y + 1, hit.z, B.WHEAT_0);
+      this.changeBlock(hit.x, hit.y + 1, hit.z, stack.id === Items.CARROT ? B.CARROTS : B.WHEAT_0);
       Sound.place(B.TALL_GRASS);
       Hand.swing();
       if (this.mode === 'survival') this.inventory.consumeSelected();
@@ -880,6 +885,8 @@
       getEdits: () => this.editList(),
       getEntities: () => this.entityList(),
       onBoat: (msg) => Entities.applyRemoteBoat(msg),
+      onArrow: (msg) => Entities.shootArrow(msg.x, msg.y, msg.z, msg.vx, msg.vy, msg.vz, { visual: true, damage: 0 }),
+      onMobFeed: (msg) => { const m = Mobs.byId(msg.mobId); if (m) Mobs.feed(m); },
       onEntity: (msg) => this.onEntity(msg),
       getSavedAt: () => this.worldSavedAt || 0,
       onRestore: (id, msg) => this.onRestore(id, msg),
@@ -1142,9 +1149,11 @@
     }
 
     if (!stack) { if (hit) UI.toast('손에 든 블록이 없어요', 1200); return; }
+    if (hit && this.tryFarm(hit, stack)) return;
     // food works anywhere, not only when you are pointing at a block
     if (this.tryEat(stack)) return;
     if (stack.id === Items.BOAT) { this.useBoat(sx, sy); return; }
+    if (Items.get(stack.id) && Items.get(stack.id).bow) return;      // a bow is drawn by holding
     if (stack.id === Items.BUCKET || stack.id === Items.WATER_BUCKET || stack.id === Items.LAVA_BUCKET) {
       this.useBucket(sx, sy, stack);
       return;
@@ -1177,6 +1186,56 @@
   };
 
   Game.myName = function () { return Net.active ? Net.name : 'me'; };
+
+  // ------------------------------------------------------------------ the bow
+  // Minecraft's draw: power grows over about a second, (t^2 + 2t) / 3.
+  Game.bowPower = function (t) {
+    return Math.min(1, (t * t + 2 * t) / 3);
+  };
+
+  Game.updateBow = function (dt) {
+    const held = Controls.state.mining && !this.paused && !this.player.dead;
+    if (held) {
+      if (!this.bowCharge && this.mode === 'survival' && this.inventory.count(Items.ARROW) === 0) {
+        if (!this._noArrowWarned) { this._noArrowWarned = true; UI.toast('화살이 없어요', 1200); }
+        return;
+      }
+      this._noArrowWarned = false;
+      this.bowCharge = (this.bowCharge || 0) + dt;
+      return;
+    }
+    if (this.bowCharge > 0.1) this.shootBow(this.bowPower(this.bowCharge));
+    this.bowCharge = 0;
+  };
+
+  Game.shootBow = function (power) {
+    const p = this.player;
+    const ray = this.rayFrom(Controls.state.pointX, Controls.state.pointY).ray;
+    const d = ray.direction;
+    const speed = 58 * power;
+    let damage = Math.ceil(power * 6);
+    if (power >= 1) damage += Math.floor(Math.random() * (damage / 2 + 2));   // a full draw can crit
+    const x = ray.origin.x + d.x * 0.4, y = ray.origin.y + d.y * 0.4 - 0.1, z = ray.origin.z + d.z * 0.4;
+    Entities.shootArrow(x, y, z, d.x * speed, d.y * speed, d.z * speed, { damage, pickup: this.mode === 'survival' });
+    if (Net.active) Net.sendArrow({ x: +x.toFixed(2), y: +y.toFixed(2), z: +z.toFixed(2), vx: +(d.x * speed).toFixed(2), vy: +(d.y * speed).toFixed(2), vz: +(d.z * speed).toFixed(2) });
+    Sound.bow();
+    Hand.swing();
+    if (this.mode === 'survival') {
+      this.inventory.takeFromSlots(Items.ARROW, 1);
+      this.inventory.damageSelected(1);
+      this.inventory.changed();
+    }
+  };
+
+  Game.arrowHitMob = function (mob, damage, kx, kz) {
+    Sound.hit(this.distTo(mob.x, mob.y, mob.z));
+    if (Net.active && !Net.isHost) { Net.sendMobHit(mob.id, damage, kx, kz); mob.hurtFlash = 0.3; return; }
+    this.damageMob(mob, damage, kx, kz);
+  };
+
+  Game.onBred = function (baby) {
+    if (this.mode === 'survival') Entities.dropXp(baby.x, baby.y + 0.5, baby.z, 1 + Math.random() * 6);
+  };
 
   // ------------------------------------------------------------ shaped blocks
   // after something is placed from the hand
@@ -1420,9 +1479,21 @@
     const block = this.targetAt(screenX, screenY);
     if (block && block.dist < target.distance) return false;
 
-    this._lastAttack = now;
     const mob = target.mob;
     const stack = this.inventory.selectedStack();
+    // an animal's favourite food puts it in the mood instead of hurting it
+    if (stack && mob.def.breedWith === stack.id) {
+      let fed;
+      if (Net.active && !Net.isHost) { Net.sendMobFeed(mob.id); fed = true; }
+      else fed = Mobs.feed(mob);
+      if (fed) {
+        Entities.hearts(mob.x, mob.y + mob.def.h * mob.size + 0.2, mob.z, 3);
+        Hand.swing();
+        if (this.mode === 'survival') this.inventory.consumeSelected();
+      }
+      return true;
+    }
+    this._lastAttack = now;
     const def = stack ? Items.get(stack.id) : null;
     let damage = def && def.damage ? def.damage : 1;
     Hand.swing();
@@ -1698,6 +1769,13 @@
     const m = this.mining;
     const held = this.inventory.selectedStack();
     const eatingHand = held && Items.foodOf(held.id);
+    const bowHand = held && Items.get(held.id) && Items.get(held.id).bow;
+    if (bowHand) {
+      this.updateBow(dt);
+      m.target = null; m.progress = 0; this.crackMesh.visible = false;
+      return;
+    }
+    this.bowCharge = 0;
     if (!Controls.state.mining || this.paused || this.player.dead || eatingHand) {
       m.target = null;
       m.progress = 0;
@@ -2142,10 +2220,10 @@
 
     const stack = this.inventory.selectedStack();
     Hand.update(dt, p, stack, this.lightHere(1), !!(Controls.state.mining && this.mining.target),
-      this.eating ? this.eating.t : -1);
+      this.eating ? this.eating.t : -1, this.bowCharge ? this.bowPower(this.bowCharge) : -1);
 
     // sprinting widens the view, as in Minecraft
-    const fovTarget = p.sprinting ? 80 : 72;
+    const fovTarget = (p.sprinting ? 80 : 72) - (this.bowCharge ? this.bowPower(this.bowCharge) * 12 : 0);
     if (Math.abs(this.camera.fov - fovTarget) > 0.05) {
       this.camera.fov += (fovTarget - this.camera.fov) * Math.min(1, dt * 8);
       this.camera.updateProjectionMatrix();

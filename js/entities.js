@@ -30,7 +30,7 @@
   };
 
   Entities.clear = function () {
-    for (const list of [this.particles, this.orbs, this.falling, this.boats]) {
+    for (const list of [this.particles, this.orbs, this.falling, this.boats, this.arrows]) {
       for (const e of list) this.group.remove(e.mesh);
       list.length = 0;
     }
@@ -68,6 +68,21 @@
     }
   };
 
+  // little red hearts over animals in love
+  Entities.hearts = function (x, y, z, count) {
+    if (!this.heartMat) {
+      this.heartMat = new THREE.MeshBasicMaterial({ color: 0xff3a5a, fog: false });
+      this.heartGeo = new THREE.BoxGeometry(0.12, 0.1, 0.02);
+    }
+    for (let i = 0; i < count; i++) {
+      const mesh = new THREE.Mesh(this.heartGeo, this.heartMat);
+      const px = x + (Math.random() - 0.5) * 0.6, pz = z + (Math.random() - 0.5) * 0.6;
+      mesh.position.set(px, y, pz);
+      this.group.add(mesh);
+      this.particles.push({ mesh, x: px, y, z: pz, vx: 0, vy: 0.9, vz: 0, life: 1.1, noGravity: true, float: true });
+    }
+  };
+
   Entities.updateParticles = function (dt) {
     const world = this.game.world;
     for (let i = this.particles.length - 1; i >= 0; i--) {
@@ -75,7 +90,7 @@
       p.life -= dt;
       if (p.life <= 0) { this.group.remove(p.mesh); this.particles.splice(i, 1); continue; }
       if (!p.noGravity) p.vy -= G * 0.6 * dt;
-      else { p.vx *= 0.9; p.vz *= 0.9; p.vy *= 0.9; }
+      else if (!p.float) { p.vx *= 0.9; p.vz *= 0.9; p.vy *= 0.9; }
       const ny = p.y + p.vy * dt;
       if (!p.noGravity && solidAt(world, p.x, ny - 0.05, p.z)) { p.vy = 0; p.vx *= 0.6; p.vz *= 0.6; }
       else p.y = ny;
@@ -173,6 +188,84 @@
           f.y < p.pos.y + 1.8 && f.y > p.pos.y) {
         p.pos.y = Math.min(p.pos.y, f.y - 1.8);
       }
+    }
+  };
+
+  // ------------------------------------------------------------- arrows
+  // The player's arrows: they fly under gravity, stick where they land (and
+  // can be picked back up), and hurt what they hit. Arrows another player
+  // shot are shown too, but only the shooter decides what they hit.
+  Entities.arrows = [];
+  Entities.shootArrow = function (x, y, z, vx, vy, vz, opts) {
+    if (!this.arrowGeo) {
+      this.arrowGeo = new THREE.BoxGeometry(0.06, 0.06, 0.6);
+      this.arrowMat = new THREE.MeshBasicMaterial({ color: 0x9c7b4a });
+    }
+    const mesh = new THREE.Mesh(this.arrowGeo, this.arrowMat);
+    mesh.position.set(x, y, z);
+    this.group.add(mesh);
+    this.arrows.push(Object.assign({ mesh, x, y, z, vx, vy, vz, age: 0, stuck: false }, opts || {}));
+  };
+
+  Entities.updateArrows = function (dt) {
+    const game = this.game, world = game.world, p = game.player;
+    for (let i = this.arrows.length - 1; i >= 0; i--) {
+      const a = this.arrows[i];
+      a.age += dt;
+      if (a.stuck) {
+        // lying in a block: walk over it to take it back
+        const d = Math.hypot(a.x - p.pos.x, a.y - (p.pos.y + 0.5), a.z - p.pos.z);
+        if (a.pickup && d < 1.3 && a.age > 0.5 && game.mode === 'survival' && game.inventory.add(Items.ARROW, 1) > 0) {
+          Sound.pop();
+          this.group.remove(a.mesh); this.arrows.splice(i, 1);
+        } else if (a.age > 60) {
+          this.group.remove(a.mesh); this.arrows.splice(i, 1);
+        }
+        continue;
+      }
+      a.vy -= 20 * dt;
+      a.vx *= Math.exp(-0.2 * dt); a.vz *= Math.exp(-0.2 * dt);
+      const steps = Math.max(1, Math.ceil(Math.hypot(a.vx, a.vy, a.vz) * dt / 0.25));
+      let done = false;
+      for (let s = 0; s < steps && !done; s++) {
+        a.x += a.vx * dt / steps; a.y += a.vy * dt / steps; a.z += a.vz * dt / steps;
+        const id = world.getBlock(Math.floor(a.x), Math.floor(a.y), Math.floor(a.z));
+        if (id !== B.AIR && B.byId[id].solid) {
+          a.stuck = true; a.age = 0;
+          a.x -= a.vx * dt / steps * 0.5; a.y -= a.vy * dt / steps * 0.5; a.z -= a.vz * dt / steps * 0.5;
+          Sound.dig(id, game.distTo(a.x, a.y, a.z));
+          done = true;
+          break;
+        }
+        if (a.visual) continue;
+        for (const m of Mobs.list) {
+          const hw = m.def.hw * m.size + 0.1, h = m.def.h * m.size;
+          if (Math.abs(a.x - m.x) < hw && Math.abs(a.z - m.z) < hw && a.y > m.y && a.y < m.y + h) {
+            const len = Math.hypot(a.vx, a.vz) || 1;
+            game.arrowHitMob(m, a.damage, a.vx / len, a.vz / len);
+            this.group.remove(a.mesh); this.arrows.splice(i, 1);
+            done = true;
+            break;
+          }
+        }
+        if (done) break;
+        if (Net.active) {
+          for (const id in Net.players) {
+            const o = Net.players[id];
+            if (Math.abs(a.x - o.x) < 0.4 && Math.abs(a.z - o.z) < 0.4 && a.y > o.y && a.y < o.y + 1.8) {
+              const len = Math.hypot(a.vx, a.vz) || 1;
+              Net.sendHit(id, a.damage, a.vx / len, a.vz / len);
+              this.group.remove(a.mesh); this.arrows.splice(i, 1);
+              done = true;
+              break;
+            }
+          }
+        }
+      }
+      if (a.age > 12) { this.group.remove(a.mesh); this.arrows.splice(i, 1); continue; }
+      if (this.arrows[i] !== a) continue;
+      a.mesh.position.set(a.x, a.y, a.z);
+      if (!a.stuck) a.mesh.lookAt(a.x + a.vx, a.y + a.vy, a.z + a.vz);
     }
   };
 
@@ -390,6 +483,7 @@
     this.updateParticles(dt);
     this.updateOrbs(dt);
     this.updateFalling(dt);
+    this.updateArrows(dt);
     this.updateBoats(dt, input);
   };
 
