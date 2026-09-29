@@ -204,6 +204,7 @@
         p.x = msg.x; p.y = msg.y; p.z = msg.z;
         p.yaw = msg.yaw; p.pitch = msg.pitch;
         p.dim = msg.dim || 'overworld';
+        p.gold = !!msg.g;
       }
       this._broadcast({ t: 'pos', id: conn.id, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch, dim: msg.dim }, conn.id);
       return;
@@ -229,6 +230,7 @@
 
     // monsters live on the host; guests report their swings and get the result
     if (msg.t === 'mobhit') {
+      msg.from = conn.id;
       if (this.handlers.onMobHit) this.handlers.onMobHit(msg);
       return;
     }
@@ -246,6 +248,7 @@
     }
 
     if (msg.t === 'mobfeed') {
+      msg.from = conn.id;
       if (this.handlers.onMobFeed) this.handlers.onMobFeed(msg);
       return;
     }
@@ -442,6 +445,7 @@
       pitch: +player.pitch.toFixed(2),
       dim: this.dim()
     };
+    if (this.handlers.getGold && this.handlers.getGold()) msg.g = 1;
     if (this.isHost) {
       msg.id = 'host';
       this._broadcast(msg);

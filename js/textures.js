@@ -583,6 +583,118 @@
   });
   define('slime', (api) => speckle(api, '#6fbf4a', ['#7fd05a', '#5aa83a', '#8ee06a'], 0.5));
 
+  // ---- fortresses, brewing --------------------------------------------------
+  define('nether_bricks', (api) => {
+    api.fill('#2c1418');
+    for (let row = 0; row < 4; row++) {
+      const off = row % 2 ? 4 : 0;
+      for (let bx = -4; bx < TILE; bx += 8) {
+        const c = pick(['#4a2226', '#44201f', '#52282b']);
+        for (let x = Math.max(0, bx + off); x < Math.min(TILE, bx + off + 7); x++) {
+          for (let y = row * 4; y < row * 4 + 3; y++) api.put(x, y, rnd() < 0.2 ? '#3a1a1d' : c);
+        }
+      }
+    }
+  });
+  define('melon_side', (api) => {
+    speckle(api, '#6f9a2a', ['#5a8a1f', '#82ae3a'], 0.4);
+    for (let x = 1; x < TILE; x += 4) for (let y = 0; y < TILE; y++) api.put(x, y, '#3f6a14');
+  });
+  define('melon_top', (api) => {
+    speckle(api, '#6f9a2a', ['#5a8a1f', '#82ae3a'], 0.4);
+    for (let r = 2; r < 8; r += 2) for (let a = 0; a < 24; a++) api.put(Math.round(8 + Math.cos(a / 24 * 6.28) * r), Math.round(8 + Math.sin(a / 24 * 6.28) * r), '#3f6a14');
+  });
+  for (let stage = 0; stage < 3; stage++) {
+    define('wart_' + stage, (api) => {
+      api.clear();
+      const h = 4 + stage * 4;
+      for (const x of [3, 7, 11]) {
+        for (let y = 15; y > 15 - h; y--) api.put(x + (y % 2), y, pick(['#8a1a1a', '#a02424', '#6a1010']));
+        api.put(x - 1, 16 - h, '#c43030'); api.put(x + 1, 15 - h + 1, '#c43030');
+      }
+    });
+  }
+  define('brewing_base', (api) => {
+    speckle(api, '#6f6f6f', ['#7c7c7c', '#626262'], 0.4);
+  });
+  define('blaze_rod', (api) => speckle(api, '#f0b020', ['#ffd24a', '#d88a10'], 0.5));
+  define('brewing_icon', (api) => {
+    api.clear();
+    rectOn(api, 7, 2, 2, 11, '#f0b020');
+    rectOn(api, 2, 13, 12, 2, '#6f6f6f');
+    rectOn(api, 2, 9, 3, 4, '#c8d8e8'); rectOn(api, 11, 9, 3, 4, '#c8d8e8'); rectOn(api, 3, 10, 1, 3, '#d04a8a'); rectOn(api, 12, 10, 1, 3, '#4a8ad0');
+  });
+  function itemRod(color, dark) {
+    return (api) => { api.clear(); for (let i = 0; i < 12; i++) { api.put(3 + i, 13 - i, color); api.put(4 + i, 13 - i, dark); } };
+  }
+  define('item_blaze_rod', itemRod('#ffd24a', '#d88a10'));
+  define('item_blaze_powder', (api) => {
+    api.clear();
+    for (const [x, y] of [[5, 6], [8, 5], [10, 8], [6, 9], [9, 10], [7, 12], [4, 11], [11, 11]]) { api.put(x, y, '#ffd24a'); api.put(x + 1, y, '#f08a10'); api.put(x, y + 1, '#ffb030'); }
+  });
+  define('item_nether_wart', (api) => {
+    api.clear();
+    rectOn(api, 5, 4, 6, 7, '#a02424'); rectOn(api, 4, 6, 8, 3, '#a02424'); rectOn(api, 6, 5, 2, 2, '#d04040'); rectOn(api, 7, 11, 2, 3, '#6a1010');
+  });
+  define('item_ghast_tear', (api) => {
+    api.clear();
+    rectOn(api, 7, 3, 2, 3, '#e8f4ff'); rectOn(api, 6, 6, 4, 5, '#d0e8f8'); rectOn(api, 7, 11, 2, 1, '#a8c8e0'); api.put(7, 7, '#ffffff');
+  });
+  define('item_magma_cream', (api) => {
+    api.clear();
+    rectOn(api, 5, 5, 6, 6, '#e87a1a'); rectOn(api, 4, 6, 8, 4, '#e87a1a'); rectOn(api, 6, 6, 2, 2, '#ffd24a'); rectOn(api, 9, 9, 2, 1, '#a04a10');
+  });
+  define('item_sugar', (api) => {
+    api.clear();
+    for (const [x, y] of [[5, 8], [7, 7], [9, 8], [6, 10], [8, 10], [10, 10], [7, 12], [4, 11], [11, 12]]) { api.put(x, y, '#ffffff'); api.put(x + 1, y, '#e0e0e0'); }
+  });
+  define('item_gold_nugget', (api) => {
+    api.clear();
+    rectOn(api, 6, 6, 4, 4, '#f0c635'); rectOn(api, 5, 7, 6, 2, '#f0c635'); api.put(6, 6, '#fff3a0'); rectOn(api, 8, 9, 2, 1, '#b8901a');
+  });
+  define('item_golden_carrot', (api) => {
+    api.clear();
+    for (let i = 0; i < 9; i++) { api.put(4 + i, 12 - i, '#f0c635'); api.put(5 + i, 12 - i, '#d8a820'); api.put(4 + i, 11 - i, '#ffe070'); }
+    rectOn(api, 12, 2, 2, 2, '#5d9c3c'); api.put(14, 1, '#4f8a33');
+  });
+  define('item_melon_slice', (api) => {
+    api.clear();
+    for (let i = 0; i < 10; i++) { rectOn(api, 3 + i, 12 - i, 2, 1, '#5a8a1f'); rectOn(api, 3 + i, 10 - i, 1, 2, '#d8302a'); }
+    rectOn(api, 6, 8, 1, 1, '#1a1a1a'); rectOn(api, 9, 5, 1, 1, '#1a1a1a');
+  });
+  define('item_glistering_melon', (api) => {
+    api.clear();
+    for (let i = 0; i < 10; i++) { rectOn(api, 3 + i, 12 - i, 2, 1, '#d8a820'); rectOn(api, 3 + i, 10 - i, 1, 2, '#f05a4a'); }
+    api.put(7, 6, '#fff3a0'); api.put(10, 4, '#fff3a0');
+  });
+  define('item_spider_eye', (api) => {
+    api.clear();
+    rectOn(api, 5, 5, 6, 6, '#8a1a2a'); rectOn(api, 4, 6, 8, 4, '#8a1a2a'); rectOn(api, 6, 6, 2, 2, '#e05a6a'); rectOn(api, 9, 8, 2, 2, '#3a0a10');
+  });
+  define('item_nether_brick', (api) => {
+    api.clear(); rectOn(api, 2, 6, 12, 5, '#4a2226'); rectOn(api, 2, 6, 12, 1, '#5a2a2e'); rectOn(api, 2, 10, 12, 1, '#2c1418');
+  });
+  define('item_ender_pearl', (api) => {
+    api.clear();
+    rectOn(api, 5, 4, 6, 8, '#1f6a5a'); rectOn(api, 4, 5, 8, 6, '#1f6a5a'); rectOn(api, 6, 6, 4, 4, '#2a9a82'); rectOn(api, 7, 7, 2, 2, '#0a3a30');
+  });
+  define('item_bottle', (api) => {
+    api.clear();
+    rectOn(api, 7, 2, 2, 1, '#8a6a3f'); rectOn(api, 6, 3, 4, 3, '#dfeaf2'); rectOn(api, 4, 6, 8, 7, '#dfeaf2'); rectOn(api, 5, 13, 6, 1, '#b8c8d4');
+    rectOn(api, 5, 7, 6, 5, 'rgba(255,255,255,0.2)');
+  });
+  function potionTile(color) {
+    return (api) => {
+      api.clear();
+      rectOn(api, 7, 2, 2, 1, '#8a6a3f'); rectOn(api, 6, 3, 4, 3, '#dfeaf2'); rectOn(api, 4, 6, 8, 7, '#dfeaf2'); rectOn(api, 5, 13, 6, 1, '#b8c8d4');
+      rectOn(api, 5, 8, 6, 5, color); rectOn(api, 6, 7, 4, 1, color); api.put(6, 9, '#ffffff');
+    };
+  }
+  const POTION_COLORS = { water: '#385dc6', awkward: '#385dc6', speed: '#7cafc6', strength: '#932423', fire_res: '#e49a3a',
+    regen: '#cd5cab', night_vision: '#1f1fa1', healing: '#f82423', poison: '#4e9331' };
+  for (const k in POTION_COLORS) define('potion_' + k, potionTile(POTION_COLORS[k]));
+  define('oak_fence', (api) => speckle(api, '#9c7b4a', ['#8b6a3f', '#a8875a'], 0.4));
+
   define('chest_top', (api) => {
     speckle(api, '#a0712f', ['#8b5f24', '#b58239', '#946826'], 0.5);
     for (let i = 0; i < TILE; i++) { api.put(i, 0, '#4a3312'); api.put(i, 15, '#4a3312'); api.put(0, i, '#4a3312'); api.put(15, i, '#4a3312'); }

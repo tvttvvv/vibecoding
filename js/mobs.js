@@ -112,7 +112,7 @@
     },
     spider: {
       name: '거미', hp: 16, hw: 0.6, h: 0.85, speed: 2.7, hostile: true,
-      damage: 2, reach: 1.9, drops: [[I.STRING, 0, 2]],
+      damage: 2, reach: 1.9, drops: [[I.STRING, 0, 2]], rare: [[I.SPIDER_EYE, 0.33]],
       parts: [
         [0.8, 0.5, 0.8, 0x2b2b2b, 0, 0.5, 0.2],
         [0.5, 0.4, 0.5, 0x333333, 0, 0.5, -0.4, 'head'],
@@ -145,7 +145,7 @@
   };
   TYPES.ghast = {
     name: '가스트', hp: 10, hw: 2, h: 4.2, speed: 1.4, hostile: true, nether: true, flying: true,
-    ranged: 'fireball', drops: [[I.GUNPOWDER, 0, 2]], noSpawn: true,
+    ranged: 'fireball', drops: [[I.GUNPOWDER, 0, 2]], rare: [[I.GHAST_TEAR, 0.5]], noSpawn: true,
     parts: [
       [4, 4, 4, 0xf2f2f2, 0, 2.5, 0],
       [0.3, 1.4, 0.3, 0xe4e4e4, -1.3, 0.1, -1.3], [0.3, 1.8, 0.3, 0xe4e4e4, 0, -0.1, -1.3], [0.3, 1.2, 0.3, 0xe4e4e4, 1.3, 0.2, -1.3],
@@ -153,6 +153,47 @@
       [0.3, 1.5, 0.3, 0xe4e4e4, -1.3, 0.05, 1.3], [0.3, 1.2, 0.3, 0xe4e4e4, 0, 0.2, 1.3], [0.3, 1.7, 0.3, 0xe4e4e4, 1.3, -0.05, 1.3],
       [0.6, 0.25, 0.05, 0x505050, -0.8, 3.1, -2.02, 'head'], [0.6, 0.25, 0.05, 0x505050, 0.8, 3.1, -2.02, 'head'],
       [0.9, 0.5, 0.05, 0x505050, 0, 2.1, -2.02, 'head']
+    ]
+  };
+
+  // ---- fortress dwellers, and the piglins of the wastes
+  TYPES.blaze = {
+    name: '블레이즈', hp: 20, hw: 0.3, h: 1.8, speed: 2.0, hostile: true, nether: true, flying: true, lowFly: true,
+    ranged: 'blaze', fireImmune: true, drops: [[I.BLAZE_ROD, 0, 1]], noSpawn: true,
+    parts: [
+      [0.5, 0.5, 0.5, 0xf2c030, 0, 1.45, 0, 'head'],
+      [0.1, 0.1, 0.03, 0x3a2a0a, -0.12, 1.5, -0.26, 'head'], [0.1, 0.1, 0.03, 0x3a2a0a, 0.12, 1.5, -0.26, 'head'],
+      [0.12, 0.6, 0.12, 0xe8a020, -0.45, 1.0, 0], [0.12, 0.6, 0.12, 0xe8a020, 0.45, 1.0, 0],
+      [0.12, 0.6, 0.12, 0xe8a020, 0, 1.0, -0.45], [0.12, 0.6, 0.12, 0xe8a020, 0, 1.0, 0.45],
+      [0.12, 0.6, 0.12, 0xd88a10, -0.3, 0.45, -0.3], [0.12, 0.6, 0.12, 0xd88a10, 0.3, 0.45, 0.3],
+      [0.12, 0.6, 0.12, 0xd88a10, 0.3, 0.45, -0.3], [0.12, 0.6, 0.12, 0xd88a10, -0.3, 0.45, 0.3],
+      [0.3, 0.3, 0.3, 0x5a3a10, 0, 0.9, 0]
+    ]
+  };
+  TYPES.wskeleton = {
+    name: '위더 스켈레톤', hp: 20, hw: 0.35, h: 2.4, speed: 2.3, hostile: true, nether: true, fireImmune: true,
+    damage: 8, reach: 1.9, drops: [[I.COAL, 0, 1], [I.BONE, 0, 2]], noSpawn: true,
+    parts: [
+      [0.5, 0.85, 0.26, 0x2a2a2a, 0, 1.35, 0],
+      [0.14, 0.95, 0.14, 0x1f1f1f, -0.13, 0.47, 0], [0.14, 0.95, 0.14, 0x1f1f1f, 0.13, 0.47, 0],
+      [0.13, 0.85, 0.13, 0x1f1f1f, -0.34, 1.45, -0.1], [0.13, 0.85, 0.13, 0x1f1f1f, 0.34, 1.45, -0.25],
+      [0.07, 0.9, 0.12, 0x8a8a8a, 0.34, 1.3, -0.72],
+      [0.55, 0.55, 0.55, 0x2f2f2f, 0, 2.05, 0, 'head'],
+      [0.1, 0.1, 0.03, 0x0a0a0a, -0.12, 2.1, -0.28, 'head'], [0.1, 0.1, 0.03, 0x0a0a0a, 0.12, 2.1, -0.28, 'head']
+    ]
+  };
+  TYPES.piglin = {
+    name: '피글린', hp: 16, hw: 0.3, h: 1.9, speed: 2.3, hostile: false, piglin: true, nether: true,
+    damage: 5, reach: 1.7, drops: [[I.GOLD_NUGGET, 0, 3]], noSpawn: true,
+    parts: [
+      [0.5, 0.75, 0.28, 0x6b4a2a, 0, 1.05, 0],
+      [0.22, 0.72, 0.22, 0x4a3a2a, -0.13, 0.36, 0], [0.22, 0.72, 0.22, 0x4a3a2a, 0.13, 0.36, 0],
+      [0.18, 0.66, 0.18, 0xe0a090, -0.34, 1.12, 0], [0.18, 0.66, 0.18, 0xe0a090, 0.34, 1.12, -0.1],
+      [0.07, 0.75, 0.1, 0xf0c635, 0.34, 1.0, -0.5],
+      [0.56, 0.48, 0.48, 0xe8a898, 0, 1.68, 0, 'head'],
+      [0.26, 0.18, 0.1, 0xd88a7a, 0, 1.6, -0.28, 'head'],
+      [0.08, 0.08, 0.03, 0x1a1a1a, -0.14, 1.75, -0.25, 'head'], [0.08, 0.08, 0.03, 0x1a1a1a, 0.14, 1.75, -0.25, 'head'],
+      [0.12, 0.2, 0.06, 0xf0c635, -0.3, 1.9, 0, 'head'], [0.12, 0.2, 0.06, 0xf0c635, 0.3, 1.9, 0, 'head']
     ]
   };
 
@@ -374,7 +415,39 @@
   };
 
   // food held out to an animal: it falls in love, or a baby grows faster
-  Mobs.feed = function (m) {
+  // a piglin takes a gold ingot, looks it over, and hands something back
+  Mobs.barter = function (m, byId) {
+    if (!m.def.piglin || m.barterT > 0) return false;
+    m.barterT = 5;
+    m.barterBy = byId || null;
+    m.angry = 0;
+    return true;
+  };
+
+  const BARTER = [
+    [() => ({ id: I.ENDER_PEARL, count: 1 + Math.floor(Math.random() * 2) }), 5],
+    [() => ({ id: I.STRING, count: 3 + Math.floor(Math.random() * 7) }), 10],
+    [() => ({ id: I.QUARTZ, count: 5 + Math.floor(Math.random() * 8) }), 10],
+    [() => ({ id: B.OBSIDIAN, count: 1 }), 8],
+    [() => ({ id: B.GRAVEL, count: 8 + Math.floor(Math.random() * 9) }), 10],
+    [() => ({ id: I.LEATHER, count: 2 + Math.floor(Math.random() * 3) }), 10],
+    [() => ({ id: B.SOUL_SAND, count: 2 + Math.floor(Math.random() * 7) }), 10],
+    [() => ({ id: I.NETHER_BRICK, count: 2 + Math.floor(Math.random() * 7) }), 10],
+    [() => ({ id: I.ARROW, count: 6 + Math.floor(Math.random() * 7) }), 8],
+    [() => ({ id: I.IRON_INGOT, count: 1 + Math.floor(Math.random() * 2) }), 8],
+    [() => ({ id: I.POTIONS['fire_res:0'], count: 1 }), 3],
+    [() => ({ id: I.MAGMA_CREAM, count: 1 + Math.floor(Math.random() * 3) }), 8]
+  ];
+  Mobs.barterItem = function () {
+    let total = 0;
+    for (const [, w] of BARTER) total += w;
+    let r = Math.random() * total;
+    for (const [make, w] of BARTER) { if ((r -= w) < 0) return make(); }
+    return BARTER[0][0]();
+  };
+
+  Mobs.feed = function (m, byId) {
+    if (m.def.piglin) return this.barter(m, byId);
     if (!m.def.breedWith) return false;
     if (m.size < 1) { m.growUp = Math.max(0, m.growUp * 0.9); return true; }
     if (m.love > 0 || m.breedCooldown > 0) return false;
@@ -427,8 +500,21 @@
 
   // the nether spawns its own: packs of zombified piglins on the rock, and
   // now and then a ghast out over the open caverns
-  Mobs.trySpawnNether = function (world, player) {
-    if (this.count(true) + this.list.filter((m) => m.type === 'zpiglin').length >= HOSTILE_CAP + 4) return;
+  Mobs.trySpawnNether = function (world, player, game) {
+    if (this.count(true) + this.list.filter((m) => m.type === 'zpiglin' || m.type === 'piglin').length >= HOSTILE_CAP + 4) return;
+    // a fortress nearby breeds blazes and wither skeletons in its halls
+    const fort = global.Fortress && game ? Fortress.near(player.pos.x, player.pos.z, game.seed, 40) : null;
+    if (fort && Math.random() < 0.6) {
+      const inFort = this.list.filter((m) => m.type === 'blaze' || m.type === 'wskeleton').length;
+      if (inFort < 6) {
+        const [x, y, z] = Fortress.randomSpot(fort, Math.random);
+        const d = Math.hypot(x - player.pos.x, z - player.pos.z);
+        if (d > 10 && d < 48 && world.getBlock(x, y, z) === B.AIR && world.getBlock(x, y + 1, z) === B.AIR &&
+            B.byId[world.getBlock(x, y - 1, z)].solid) {
+          this.spawn(Math.random() < 0.5 ? 'blaze' : 'wskeleton', x + 0.5, y, z + 0.5);
+        }
+      }
+    }
     for (let attempt = 0; attempt < 4; attempt++) {
       const ang = Math.random() * Math.PI * 2;
       const dist = SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
@@ -447,15 +533,16 @@
       for (let y = 26; y < 70; y++) {
         const below = B.byId[world.getBlock(x, y - 1, z)];
         if (!below.solid || world.getBlock(x, y, z) !== B.AIR || world.getBlock(x, y + 1, z) !== B.AIR) continue;
-        const n = 2 + Math.floor(Math.random() * 3);
-        for (let k = 0; k < n; k++) this.spawn('zpiglin', x + 0.5 + (Math.random() - 0.5) * 2, y, z + 0.5 + (Math.random() - 0.5) * 2);
+        const piglins = Math.random() < 0.35;
+        const n = piglins ? 1 + Math.floor(Math.random() * 3) : 2 + Math.floor(Math.random() * 3);
+        for (let k = 0; k < n; k++) this.spawn(piglins ? 'piglin' : 'zpiglin', x + 0.5 + (Math.random() - 0.5) * 2, y, z + 0.5 + (Math.random() - 0.5) * 2);
         break;
       }
     }
   };
 
   Mobs.trySpawn = function (world, player, game) {
-    if (game.dimension === 'nether') { this.trySpawnNether(world, player); return; }
+    if (game.dimension === 'nether') { this.trySpawnNether(world, player, game); return; }
     const night = isNight(game.dayTime);
     for (let attempt = 0; attempt < 6; attempt++) {
       const hostile = attempt < 3;
@@ -554,7 +641,7 @@
       }
 
       // lava burns anything that wanders into it
-      if (B.byId[world.getBlock(Math.floor(m.x), Math.floor(m.y + 0.1), Math.floor(m.z))].fluid === 'lava') m.hurt(dt * 8);
+      if (!m.def.fireImmune && B.byId[world.getBlock(Math.floor(m.x), Math.floor(m.y + 0.1), Math.floor(m.z))].fluid === 'lava') m.hurt(dt * 8);
 
       // daylight is fatal to the undead unless they found shade
       if (m.def.burns && day && skyOpen(world, Math.floor(m.x), Math.floor(m.y), Math.floor(m.z))) {
@@ -586,7 +673,19 @@
     let wantX = 0, wantZ = 0;
 
     if (m.angry > 0) m.angry -= dt;
-    const aggressive = def.hostile || (def.neutral && m.angry > 0);
+    // a piglin looking over its gold is busy; done, it hands over the trade
+    if (m.barterT > 0) {
+      m.barterT -= dt;
+      m.wantX = m.wantZ = 0;
+      if (m.barterT <= 0) {
+        const st = this.barterItem();
+        game.lootDrop(m.x, m.y + 1, m.z, st.id, st.count, null, m.barterBy);
+      }
+      return;
+    }
+    // piglins go for anyone not wearing gold
+    const aggressive = def.hostile || (def.neutral && m.angry > 0) ||
+      (def.piglin && (m.angry > 0 || !(game.wearsGold && game.wearsGold(player))));
     const reachY = def.flying ? 40 : 8;
     const range = def.flying ? 40 : 18;
     if (aggressive && canSee && distSq < range * range && Math.abs(player.pos.y - m.y) < reachY) {
@@ -594,7 +693,24 @@
       const len = Math.hypot(dx, dz) || 1;
       const dist = Math.sqrt(distSq);
 
-      if (def.ranged === 'fireball') {
+      if (def.ranged === 'blaze') {
+        // a blaze keeps above you and throws three small fireballs at a time
+        m.hoverY = player.pos.y + 2.5;
+        if (dist < 6) { wantX = -dx / len; wantZ = -dz / len; }
+        else if (dist > 12) { wantX = dx / len; wantZ = dz / len; }
+        m.attackCooldown -= dt;
+        if (m.attackCooldown <= 0 && dist < 24 && this.canSee(world, m, player)) {
+          m.shots = 3; m.attackCooldown = 4; m.shotT = 0;
+        }
+        if (m.shots > 0) {
+          m.shotT -= dt;
+          if (m.shotT <= 0) {
+            m.shots--; m.shotT = 0.3;
+            this.shoot(m, player, 'small');
+            if (global.Sound) Sound.mob('blaze', 'shoot', dist);
+          }
+        }
+      } else if (def.ranged === 'fireball') {
         // a ghast hangs back and lobs fireballs when it can see you
         if (dist < 12) { wantX = -dx / len; wantZ = -dz / len; }
         m.attackCooldown -= dt;
@@ -676,7 +792,8 @@
     m.onGround = false;
     if (m.def.flying) {
       // drift toward a height of its own choosing
-      if (m.hoverY === undefined || Math.random() < dt * 0.2) m.hoverY = 34 + Math.random() * 24;
+      if (m.def.lowFly) { if (m.hoverY === undefined) m.hoverY = m.y + 1; }
+      else if (m.hoverY === undefined || Math.random() < dt * 0.2) m.hoverY = 34 + Math.random() * 24;
       m.vy += ((m.hoverY - m.y) * 0.4 - m.vy) * Math.min(1, dt * 2);
       const bx = m.wantX ? m.moveAxis(world, 'x', m.wantX * speed * dt) : false;
       const bz = m.wantZ ? m.moveAxis(world, 'z', m.wantZ * speed * dt) : false;
@@ -744,7 +861,7 @@
     for (let i = this.arrows.length - 1; i >= 0; i--) {
       const a = this.arrows[i];
       a.age += dt;
-      if (!a.fire) a.vy -= 9 * dt;
+      if (!a.fire && !a.small) a.vy -= 9 * dt;
       a.x += a.vx * dt; a.y += a.vy * dt; a.z += a.vz * dt;
       if (a.age > 5 || (global.Game && Game.world && solidAt(Game.world, a.x, a.y, a.z))) {
         this._group.remove(a.mesh);
@@ -760,24 +877,25 @@
     const sx = m.x, sy = m.y + m.def.h * (fire ? 0.5 : 0.85), sz = m.z;
     const dx = ex - sx, dy = ey - sy, dz = ez - sz;
     const len = Math.hypot(dx, dy, dz) || 1;
-    const speed = fire ? 11 : 22;
-    const off = fire ? 2.4 : 0;
+    const speed = fire === 'small' ? 14 : fire ? 11 : 22;
+    const off = fire === 'small' ? 0.6 : fire ? 2.4 : 0;
     const a = this.addArrow(sx + dx / len * off, sy + dy / len * off, sz + dz / len * off,
       dx / len * speed, dy / len * speed + (fire ? 0 : 1.6), dz / len * speed, fire);
     if (Net.active && Net.isHost) {
       Net.sendFx({ kind: 'marrow', x: +a.x.toFixed(2), y: +a.y.toFixed(2), z: +a.z.toFixed(2),
-        vx: +a.vx.toFixed(2), vy: +a.vy.toFixed(2), vz: +a.vz.toFixed(2), fire: fire ? 1 : 0 });
+        vx: +a.vx.toFixed(2), vy: +a.vy.toFixed(2), vz: +a.vz.toFixed(2), fire: fire === 'small' ? 2 : fire ? 1 : 0 });
     }
   };
 
   Mobs.addArrow = function (x, y, z, vx, vy, vz, fire) {
+    const small = fire === 'small' || fire === 2;
     const mesh = new THREE.Mesh(
-      fire ? new THREE.BoxGeometry(0.6, 0.6, 0.6) : new THREE.BoxGeometry(0.08, 0.08, 0.7),
-      new THREE.MeshBasicMaterial({ color: fire ? 0xff7a1a : 0xbfae8e, fog: !fire })
+      small ? new THREE.BoxGeometry(0.3, 0.3, 0.3) : fire ? new THREE.BoxGeometry(0.6, 0.6, 0.6) : new THREE.BoxGeometry(0.08, 0.08, 0.7),
+      new THREE.MeshBasicMaterial({ color: fire ? (small ? 0xffb030 : 0xff7a1a) : 0xbfae8e, fog: !fire })
     );
     mesh.position.set(x, y, z);
     this._group.add(mesh);
-    const a = { mesh, x, y, z, vx, vy, vz, age: 0, fire: !!fire };
+    const a = { mesh, x, y, z, vx, vy, vz, age: 0, fire: !!fire && !small, small };
     this.arrows.push(a);
     return a;
   };
@@ -799,7 +917,7 @@
     for (let i = this.arrows.length - 1; i >= 0; i--) {
       const a = this.arrows[i];
       a.age += dt;
-      if (!a.fire) a.vy -= 9 * dt;
+      if (!a.fire && !a.small) a.vy -= 9 * dt;
       a.x += a.vx * dt; a.y += a.vy * dt; a.z += a.vz * dt;
 
       const hitBlock = solidAt(world, a.x, a.y, a.z);
@@ -822,7 +940,8 @@
 
       if (hitPlayer) {
         const len = Math.hypot(a.vx, a.vz) || 1;
-        game.mobArrowHit(2, a.vx / len, a.vz / len, hitPlayer);
+        if (a.small) game.mobFireHit(5, a.vx / len, a.vz / len, hitPlayer);
+        else game.mobArrowHit(2, a.vx / len, a.vz / len, hitPlayer);
       }
       if (hitBlock || hitPlayer || a.age > 5) {
         this._group.remove(a.mesh);
@@ -888,12 +1007,13 @@
 
   Mobs.dropLoot = function (m, game) {
     if (game.mode !== 'survival' || m.size < 1) return;     // babies drop nothing
+    const to = m.lastHitBy || null;
     for (const [id, min, max] of m.def.drops) {
       const n = min + Math.floor(Math.random() * (max - min + 1));
-      if (n > 0) game.spawnDrop(m.x, m.y + 0.4, m.z, id, n);
+      if (n > 0) game.lootDrop(m.x, m.y + 0.4, m.z, id, n, null, to);
     }
     for (const [id, chance] of (m.def.rare || [])) {
-      if (Math.random() < chance) game.spawnDrop(m.x, m.y + 0.4, m.z, id, 1);
+      if (Math.random() < chance) game.lootDrop(m.x, m.y + 0.4, m.z, id, 1, null, to);
     }
   };
 

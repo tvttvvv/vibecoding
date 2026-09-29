@@ -215,6 +215,11 @@
     noise({ freq: 500, q: 2, dur: 0.2, gain: 0.3 });
   };
 
+  Sound.brew = function () {
+    tone({ from: 600, to: 900, dur: 0.15, gain: 0.12, wave: 'sine' });
+    tone({ from: 900, to: 1200, dur: 0.15, gain: 0.1, wave: 'sine', delay: 0.12 });
+  };
+
   Sound.piston = function (dist, out) {
     tone({ from: out ? 220 : 180, to: out ? 160 : 240, dur: 0.12, gain: 0.25, wave: 'square', dist });
     tone({ from: 90, to: 70, dur: 0.1, gain: 0.25, wave: 'sawtooth', delay: 0.02, dist });
@@ -259,6 +264,21 @@
       case 'ghast':
         tone({ from: kind === 'shoot' ? 700 : 520, to: kind === 'shoot' ? 300 : 460, dur: 0.9, gain: 0.3, wave: 'sine', dist: d * 0.5 });
         tone({ from: 780, to: 700, dur: 0.8, gain: 0.12, wave: 'triangle', delay: 0.05, dist: d * 0.5 });
+        break;
+      case 'blaze':
+        tone({ from: kind === 'shoot' ? 260 : 180, to: kind === 'shoot' ? 120 : 160, dur: 0.35, gain: 0.25, wave: 'sawtooth', dist: d });
+        tone({ from: 90, to: 70, dur: 0.4, gain: 0.2, wave: 'triangle', delay: 0.05, dist: d });
+        break;
+      case 'wskeleton':
+        tone({ from: 300, to: 200, dur: 0.12, gain: 0.25, wave: 'square', dist: d });
+        tone({ from: 220, to: 150, dur: 0.12, gain: 0.2, wave: 'square', delay: 0.1, dist: d });
+        break;
+      case 'piglin':
+        tone({ from: 240, to: 180, dur: 0.18, gain: 0.3, wave: 'sawtooth', dist: d });
+        tone({ from: 200, to: 260, dur: 0.14, gain: 0.2, wave: 'square', delay: 0.16, dist: d });
+        break;
+      case 'slime':
+        tone({ from: 140, to: 90, dur: 0.12, gain: 0.3, wave: 'sine', dist: d });
         break;
       case 'zpiglin':
         tone({ from: 180, to: 120, dur: 0.3, gain: 0.3, wave: 'sawtooth', dist: d });

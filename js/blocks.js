@@ -424,6 +424,29 @@
     }
   }
 
+  // ---- fortresses, fences, brewing ------------------------------------------
+  const NETHER_BRICKS = simple(360, '네더 벽돌', T.nether_bricks, { hardness: 2, tool: 'pickaxe', tier: 1 });
+  // fences join up with each other and with walls; the mesher draws the rails
+  const FENCE_POST = [[6 * P, 0, 6 * P, 10 * P, 1, 10 * P]];
+  const NETHER_FENCE = simple(361, '네더 벽돌 울타리', T.nether_bricks, {
+    opaque: false, hardness: 2, tool: 'pickaxe', tier: 1, render: 'boxes', boxes: FENCE_POST, fence: 2
+  });
+  const OAK_FENCE = simple(362, '참나무 울타리', T.oak_fence, {
+    opaque: false, hardness: 2, tool: 'axe', render: 'boxes', boxes: FENCE_POST, fence: 1
+  });
+  const NETHER_WART = 363;         // 363..365, grows on soul sand
+  for (let st = 0; st < 3; st++) {
+    simple(NETHER_WART + st, '네더 사마귀', T['wart_' + st], Object.assign({}, PLANT, {
+      replaceable: false, crop: st, cropKind: 'wart', drop: 0
+    }));
+  }
+  const BREWING_STAND = def(366, '양조기', {
+    top: T.brewing_base, side: T.brewing_base, bottom: T.brewing_base, opaque: false, hardness: 0.5, tool: 'pickaxe',
+    render: 'boxes', boxes: [[P, 0, P, 15 * P, 2 * P, 15 * P], [7 * P, 2 * P, 7 * P, 9 * P, 14 * P, 9 * P, T.blaze_rod]],
+    interactive: 'brewing', light: 1, icon: T.brewing_icon, flatItem: true
+  });
+  const MELON = def(367, '수박', { top: T.melon_top, side: T.melon_side, bottom: T.melon_top, hardness: 1, tool: 'axe', drop: 0 });
+
   byId[RS_TORCH].litId = byId[RS_TORCH_OFF].litId = RS_TORCH;
   byId[RS_TORCH].offId = byId[RS_TORCH_OFF].offId = RS_TORCH_OFF;
 
@@ -487,7 +510,8 @@
     LAPIS_ORE, SUGAR_CANE, BOOKSHELF, ENCHANTING_TABLE,
     NETHERRACK, SOUL_SAND, GLOWSTONE, QUARTZ_ORE, BEDROCK,
     REDSTONE_ORE, RS_TORCH, LEVER, BUTTON, PLATE, LAMP, REDSTONE_BLOCK, TNT,
-    REPEATER, COMPARATOR, PISTON, STICKY_PISTON, OBSERVER
+    REPEATER, COMPARATOR, PISTON, STICKY_PISTON, OBSERVER,
+    NETHER_BRICKS, NETHER_FENCE, OAK_FENCE, BREWING_STAND, MELON
   ];
 
   global.Blocks = {
@@ -502,6 +526,7 @@
     REDSTONE_ORE, WIRE, RS_TORCH, RS_TORCH_OFF, LEVER, BUTTON, LAMP, LAMP_ON, REDSTONE_BLOCK, PLATE, TNT,
     TORCH_WALL, RS_TORCH_WALL, mount,
     REPEATER, COMPARATOR, PISTON, STICKY_PISTON, PISTON_HEAD, OBSERVER, D6, OPP6,
+    NETHER_BRICKS, NETHER_FENCE, OAK_FENCE, NETHER_WART, BREWING_STAND, MELON,
     byId, tileFor, isOpaque, isSolid, isLiquid, mineTime, canHarvest, iconFor, creativeList
   };
 })(window);

@@ -110,6 +110,42 @@
   const REDSTONE = def(193, '레드스톤 가루', T.item_redstone);
   // (100-199 ran out: new items start at 1000)
   const SLIME_BALL = def(1000, '슬라임볼', T.item_slime_ball);
+  const BLAZE_ROD = def(1001, '블레이즈 막대기', T.item_blaze_rod, { fuel: 120 });
+  const BLAZE_POWDER = def(1002, '블레이즈 가루', T.item_blaze_powder);
+  const NETHER_WART = def(1003, '네더 사마귀', T.item_nether_wart, { plant: 'wart' });
+  const GLASS_BOTTLE = def(1004, '유리병', T.item_bottle);
+  const GHAST_TEAR = def(1005, '가스트 눈물', T.item_ghast_tear);
+  const MAGMA_CREAM = def(1006, '마그마 크림', T.item_magma_cream);
+  const SUGAR = def(1007, '설탕', T.item_sugar);
+  const GOLD_NUGGET = def(1008, '금 조각', T.item_gold_nugget);
+  const GOLDEN_CARROT = def(1009, '황금 당근', T.item_golden_carrot, { food: 6, saturation: 14.4 });
+  const MELON_SLICE = def(1010, '수박 조각', T.item_melon_slice, { food: 2, saturation: 1.2 });
+  const GLISTERING_MELON = def(1011, '반짝이는 수박', T.item_glistering_melon);
+  const SPIDER_EYE = def(1012, '거미 눈', T.item_spider_eye, { food: 2, saturation: 3.2, sideEffect: ['poison', 1, 5] });
+  const NETHER_BRICK = def(1013, '네더 벽돌', T.item_nether_brick);
+  const ENDER_PEARL = def(1014, '엔더 진주', T.item_ender_pearl, { stackMax: 16 });
+
+  // potions: one id per kind, strength and length
+  const EFFECTS = [
+    ['speed', '신속', [180, 480, 90]], ['strength', '힘', [180, 480, 90]],
+    ['fire_res', '화염 저항', [180, 480, 0]], ['regen', '재생', [45, 90, 22]],
+    ['night_vision', '야간 투시', [180, 480, 0]], ['healing', '치유', [1, 0, 1]],
+    ['poison', '독', [45, 90, 21]]
+  ];
+  const WATER_BOTTLE = def(1020, '물병', T.potion_water, { stackMax: 1, drink: true, potion: null });
+  const AWKWARD = def(1021, '어색한 물약', T.potion_awkward, { stackMax: 1, drink: true, potion: null });
+  const POTIONS = {};
+  EFFECTS.forEach(([key, label, times], e) => {
+    const variants = [['', 1, times[0]], [' (연장)', 1, times[1]], [' II', 2, times[2]]];
+    variants.forEach(([suffix, lvl, time], v) => {
+      if (!time) return;
+      const id = 1030 + e * 3 + v;
+      def(id, label + '의 물약' + suffix, T['potion_' + key], {
+        stackMax: 1, drink: true, potion: { effect: key, lvl, time: key === 'healing' ? 0 : time, variant: v }
+      });
+      POTIONS[key + ':' + v] = id;
+    });
+  });
 
   // ---- unified block/item access -------------------------------------------
   // blocks are 0-99 and, since there came to be more of them, 200-999;
@@ -160,6 +196,9 @@
     APPLE, BREAD, COOKED_BEEF, COOKED_PORK, COOKED_CHICKEN, COOKED_MUTTON, BONE, STRING, GUNPOWDER,
     SEEDS, WHEAT, BOAT, OAK_DOOR, BUCKET, WATER_BUCKET, LAVA_BUCKET,
     BOW, ARROW, FLINT, FEATHER, LEATHER, CARROT, LAPIS, PAPER, BOOK, EMERALD, QUARTZ, FLINT_AND_STEEL, REDSTONE, SLIME_BALL,
+    BLAZE_ROD, BLAZE_POWDER, NETHER_WART, GLASS_BOTTLE, GHAST_TEAR, MAGMA_CREAM, SUGAR, GOLD_NUGGET,
+    GOLDEN_CARROT, MELON_SLICE, GLISTERING_MELON, SPIDER_EYE, NETHER_BRICK, ENDER_PEARL, WATER_BOTTLE, AWKWARD,
+    ...Object.keys(POTIONS).map((k) => POTIONS[k]),
     tools.wood_pickaxe, tools.wood_axe, tools.wood_shovel, tools.wood_sword, tools.wood_hoe,
     tools.stone_pickaxe, tools.stone_axe, tools.stone_shovel, tools.stone_sword, tools.stone_hoe,
     tools.iron_pickaxe, tools.iron_axe, tools.iron_shovel, tools.iron_sword, tools.iron_hoe,
@@ -183,6 +222,9 @@
     ROTTEN_FLESH, BONE, STRING, GUNPOWDER, SEEDS, WHEAT, BREAD, BOAT,
     OAK_DOOR, BUCKET, WATER_BUCKET, LAVA_BUCKET, BOW, ARROW, FLINT, FEATHER, LEATHER, CARROT,
     LAPIS, PAPER, BOOK, EMERALD, QUARTZ, FLINT_AND_STEEL, REDSTONE, SLIME_BALL,
+    BLAZE_ROD, BLAZE_POWDER, NETHER_WART, GLASS_BOTTLE, GHAST_TEAR, MAGMA_CREAM, SUGAR, GOLD_NUGGET,
+    GOLDEN_CARROT, MELON_SLICE, GLISTERING_MELON, SPIDER_EYE, NETHER_BRICK, ENDER_PEARL, WATER_BOTTLE, AWKWARD,
+    EFFECTS, POTIONS,
     PIECE_ORDER, creativeItems,
     isBlock, get, name, tileOf, icon, stackMax, maxDurability, fuelSeconds, foodOf
   };

@@ -616,3 +616,16 @@ body.onTitle #rightControls, body.onTitle #topRight, body.onTitle #crosshair { d
   animation: portalSwirl 1.6s ease-in-out infinite alternate;
 }
 @keyframes portalSwirl { from { filter: hue-rotate(0deg); } to { filter: hue-rotate(35deg); } }
+
+/* ---- potions ---- */
+#effects {
+  font-size: 12px; color: #fff; text-shadow: 1px 1px 0 #3a3a3a; margin-bottom: 3px;
+  max-width: 94vw; text-align: center; pointer-events: none;
+}
+.brewArea { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.brewTop { display: flex; align-items: center; gap: 10px; }
+.brewFuel { width: 44px; height: 8px; background: #2a2a2a; border: 1px solid #000; }
+.brewFuel span { display: block; height: 100%; background: #f0a020; }
+.brewProg { width: 10px; height: 44px; background: #2a2a2a; border: 1px solid #000; display: flex; align-items: flex-start; }
+.brewProg span { display: block; width: 100%; background: #e8e8e8; }
+.brewBottles { display: flex; gap: 14px; }

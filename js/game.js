@@ -200,6 +200,7 @@
     }
     this.clearDrops();
     Entities.clear();
+    this.effects = {};
     // one save slot per world: a room is shared by code, a solo world by seed
     this.roomCode = (opts && opts.room) || null;
     this.worldKey = this.roomCode ? 'r:' + this.roomCode : 's:' + seed;
@@ -405,7 +406,7 @@
     // growing wheat, so the farm keeps ticking without scanning the world
     if (!this.crops) this.crops = new Set();
     const def = B.byId[id];
-    if (def && def.crop !== undefined && def.crop < 3) this.crops.add(key);
+    if (def && def.crop !== undefined && def.crop < (def.cropKind === 'wart' ? 2 : 3)) this.crops.add(key);
     else this.crops.delete(key);
     if (!this.editMap.has(key)) {
       const ck = Math.floor(x / WorldConst.CHUNK_SIZE) + ',' + Math.floor(z / WorldConst.CHUNK_SIZE);
@@ -501,6 +502,7 @@
   Game.isSupported = function (x, y, z, id) {
     const def = B.byId[id];
     const below = this.world.getBlock(x, y - 1, z);
+    if (def.cropKind === 'wart') return below === B.SOUL_SAND;
     if (def.crop !== undefined) return below === B.FARMLAND;
     if (def.cane) {
       if (below === B.SUGAR_CANE) return true;
@@ -584,6 +586,8 @@
     const out = [];
     const def = B.byId[id];
     if (def.door) return def.door.upper ? out : [[Items.OAK_DOOR, 1]];
+    if (def.cropKind === 'wart') return [[Items.NETHER_WART, def.crop >= 2 ? 2 + Math.floor(Math.random() * 3) : 1]];
+    if (id === B.MELON) return [[Items.MELON_SLICE, 3 + Math.floor(Math.random() * 5)]];
     if (def.cropKind === 'carrot') {
       out.push([Items.CARROT, def.crop >= 3 ? 1 + Math.floor(Math.random() * 4) : 1]);
       return out;
@@ -628,10 +632,11 @@
       if (!chunk || !chunk.generated) continue;         // resumes when you come back
       const id = this.world.getBlock(x, y, z);
       const def = B.byId[id];
-      if (def.crop === undefined || def.crop >= 3) { this.crops.delete(key); continue; }
-      // wheat needs light, from the sun or a torch
+      const last = def.cropKind === 'wart' ? 2 : 3;
+      if (def.crop === undefined || def.crop >= last) { this.crops.delete(key); continue; }
+      // wheat needs light, from the sun or a torch; nether wart does not
       const l = this.world.lightAt(x, y, z);
-      if (Math.max(l.sky * day, l.blk) < 9) continue;
+      if (def.cropKind !== 'wart' && Math.max(l.sky * day, l.blk) < 9) continue;
       this.changeBlock(x, y, z, id + 1);
     }
   };
@@ -648,6 +653,14 @@
       Sound.place(B.DIRT);
       Hand.swing();
       if (this.mode === 'survival') this.inventory.damageSelected(1);
+      return true;
+    }
+    if (stack.id === Items.NETHER_WART && hit.id === B.SOUL_SAND) {
+      if (w.getBlock(hit.x, hit.y + 1, hit.z) !== B.AIR) return true;
+      this.changeBlock(hit.x, hit.y + 1, hit.z, B.NETHER_WART);
+      Sound.place(B.TALL_GRASS);
+      Hand.swing();
+      if (this.mode === 'survival') this.inventory.consumeSelected();
       return true;
     }
     if ((stack.id === Items.SEEDS || stack.id === Items.CARROT) && hit.id === B.FARMLAND) {
@@ -669,9 +682,14 @@
       c = { type: 'chest', x, y, z, slots: new Array(27).fill(null) };
       this.blockEntities.set(k, c);
       if (!this.lootGiven) this.lootGiven = new Set();
-      if (!this.lootGiven.has(k) && Villages.isLootChest(x, y, z, this.seed)) {
+      if (!this.lootGiven.has(k) && this.dimension === 'overworld' && Villages.isLootChest(x, y, z, this.seed)) {
         this.lootGiven.add(k);
         Villages.loot(x, y, z, this.seed).forEach((s, i) => { c.slots[(i * 5) % 27] = s; });
+        this._worldDirty = true;
+      }
+      if (!this.lootGiven.has(k) && this.dimension === 'nether' && Fortress.isLootChest(x, y, z, this.seed)) {
+        this.lootGiven.add(k);
+        Fortress.loot(x, y, z, this.seed).forEach((s, i) => { c.slots[(i * 4) % 27] = s; });
         this._worldDirty = true;
       }
     }
@@ -838,6 +856,7 @@
       air: p.air,
       xp: p.xp || 0,
       enchSeed: p.enchSeed || 0,
+      effects: this.effects || {},
       dim: this.dimension,
       worldSpawn: this.worldSpawn || null,
       spawn: this.bedSpawn || null,
@@ -890,6 +909,10 @@
         if (f.slots.some(Boolean)) out.push(['c', f.x, f.y, f.z, f.slots.map(pack)]);
         continue;
       }
+      if (f.type === 'brewing') {
+        out.push(['w', f.x, f.y, f.z, f.bottles.map(pack), pack(f.ingredient[0]), pack(f.fuel[0]), f.fuelLeft, +f.brew.toFixed(1)]);
+        continue;
+      }
       if (f.type !== 'furnace') continue;
       if (!f.input[0] && !f.fuel[0] && !f.output[0] && f.burn <= 0) continue;
       out.push([f.x, f.y, f.z, pack(f.input[0]), pack(f.fuel[0]), pack(f.output[0]),
@@ -910,6 +933,14 @@
         continue;
       }
       if (r[0] === 'b') { Entities.placeBoat(r[1], r[2], r[3], r[4], r[5], true); continue; }
+      if (r[0] === 'w') {
+        const b = this.brewingAt(r[1], r[2], r[3]);
+        b.bottles = (r[4] || []).map(unpack);
+        while (b.bottles.length < 3) b.bottles.push(null);
+        b.ingredient[0] = unpack(r[5]); b.fuel[0] = unpack(r[6]);
+        b.fuelLeft = r[7] || 0; b.brew = r[8] || 0;
+        continue;
+      }
       if (r[0] === 'L') { (this.lootGiven || (this.lootGiven = new Set())).add(r[1]); continue; }
       const f = this.furnaceAt(r[0], r[1], r[2]);
       f.input[0] = unpack(r[3]);
@@ -937,6 +968,7 @@
     if (typeof saved.air === 'number') p.air = saved.air;
     if (typeof saved.xp === 'number') p.xp = saved.xp;
     if (saved.enchSeed) p.enchSeed = saved.enchSeed;
+    if (saved.effects && typeof saved.effects === 'object') this.effects = saved.effects;
     if (saved.worldSpawn && typeof saved.worldSpawn.x === 'number') {
       this.worldSpawn = saved.worldSpawn;
       if (!this.spawnPoint) this.spawnPoint = { x: saved.worldSpawn.x, y: saved.worldSpawn.y, z: saved.worldSpawn.z };
@@ -1123,7 +1155,8 @@
         if ((msg.dim || 'overworld') !== this.dimension) return;
         Entities.shootArrow(msg.x, msg.y, msg.z, msg.vx, msg.vy, msg.vz, { visual: true, damage: 0 });
       },
-      onMobFeed: (msg) => { const m = Mobs.byId(msg.mobId); if (m) Mobs.feed(m); },
+      onMobFeed: (msg) => { const m = Mobs.byId(msg.mobId); if (m) Mobs.feed(m, msg.from || null); },
+      getGold: () => this.wearsGold(),
       onEntity: (msg) => this.onEntity(msg),
       getSavedAt: () => this.worldSavedAt || 0,
       onRestore: (id, msg) => this.onRestore(id, msg),
@@ -1388,6 +1421,7 @@
       if (targetDef.interactive === 'bed') { this.useBed(hit.x, hit.y, hit.z); return; }
       if (targetDef.interactive === 'door') { this.toggleDoor(hit.x, hit.y, hit.z); return; }
       if (targetDef.interactive === 'lever') { this.useLever(hit.x, hit.y, hit.z); return; }
+      if (targetDef.interactive === 'brewing') { UI.openScreen('brewing', this.brewingAt(hit.x, hit.y, hit.z)); return; }
       if (targetDef.interactive === 'button') { this.useButton(hit.x, hit.y, hit.z); return; }
       if (targetDef.interactive === 'repeater') {
         // a tap sets the delay, one to four ticks
@@ -1425,6 +1459,7 @@
       return;
     }
     if (stack.id === Items.BOAT) { this.useBoat(sx, sy); return; }
+    if (stack.id === Items.GLASS_BOTTLE) { this.fillBottle(sx, sy, stack); return; }
     if (Items.get(stack.id) && Items.get(stack.id).bow) return;      // a bow is drawn by holding
     if (stack.id === Items.BUCKET || stack.id === Items.WATER_BUCKET || stack.id === Items.LAVA_BUCKET) {
       this.useBucket(sx, sy, stack);
@@ -1937,6 +1972,65 @@
     }
   };
 
+  // ----------------------------------------------------------------- effects
+  // What potions do: key -> { lvl, t } seconds left. Speed and Strength add
+  // to what you do, Fire Resistance keeps lava off you, Night Vision lights
+  // the dark, Regeneration and Poison heal and hurt a little at a time.
+  const EFFECT_NAMES = { speed: '신속', strength: '힘', fire_res: '화염 저항', regen: '재생', night_vision: '야간 투시', poison: '독' };
+
+  Game.addEffect = function (key, lvl, time) {
+    const p = this.player;
+    if (key === 'healing') {
+      p.health = Math.min(p.maxHealth, p.health + 4 * Math.pow(2, lvl - 1));
+      UI.renderStats(p);
+      return;
+    }
+    if (!this.effects) this.effects = {};
+    const cur = this.effects[key];
+    if (!cur || cur.lvl < lvl || (cur.lvl === lvl && cur.t < time)) this.effects[key] = { lvl, t: time };
+    Sound.levelUp();
+    UI.renderEffects(this);
+  };
+
+  Game.effectLevel = function (key) {
+    const e = this.effects && this.effects[key];
+    return e && e.t > 0 ? e.lvl : 0;
+  };
+
+  Game.updateEffects = function (dt) {
+    const p = this.player;
+    const fx = this.effects || (this.effects = {});
+    let changed = false;
+    for (const k of Object.keys(fx)) {
+      const e = fx[k];
+      e.t -= dt;
+      if (k === 'regen' || k === 'poison') {
+        e.acc = (e.acc || 0) + dt;
+        const every = k === 'regen' ? (e.lvl > 1 ? 1.2 : 2.5) : (e.lvl > 1 ? 0.6 : 1.25);
+        if (e.acc >= every) {
+          e.acc = 0;
+          if (k === 'regen' && p.health < p.maxHealth && !p.dead) { p.health = Math.min(p.maxHealth, p.health + 1); UI.renderStats(p); }
+          if (k === 'poison' && p.health > 1 && this.mode === 'survival') p.hurt(1, true);
+        }
+      }
+      if (e.t <= 0) { delete fx[k]; changed = true; }
+    }
+    p.speedMul = 1 + 0.2 * this.effectLevel('speed');
+    p.fireImmune = this.effectLevel('fire_res') > 0;
+    if (this.effectLevel('night_vision')) World.lightUniforms.uMinLight.value = Math.max(World.lightUniforms.uMinLight.value, 0.8);
+    this._effectsTimer = (this._effectsTimer || 0) + dt;
+    if (changed || this._effectsTimer > 1) { this._effectsTimer = 0; UI.renderEffects(this); }
+  };
+
+  Game.effectText = function () {
+    const fx = this.effects || {};
+    return Object.keys(fx).map((k) => {
+      const e = fx[k];
+      const s = Math.max(0, Math.ceil(e.t));
+      return (EFFECT_NAMES[k] || k) + (e.lvl > 1 ? ' II' : '') + ' ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    });
+  };
+
   // lit TNT jumps out of its block and goes off a few seconds later
   Game.primeTnt = function (x, y, z, fuse) {
     if (this.world.getBlock(x, y, z) !== B.TNT) return;
@@ -1955,7 +2049,9 @@
     } else if (msg.kind === 'blast') {
       Mobs.explode({ x: msg.x, y: msg.y, z: msg.z, def: { drops: [] }, size: 1 }, this.world, this.player, this, msg.r, true);
     } else if (msg.kind === 'marrow' && !Net.isHost) {
-      Mobs.addArrow(msg.x, msg.y, msg.z, msg.vx, msg.vy, msg.vz, !!msg.fire);
+      Mobs.addArrow(msg.x, msg.y, msg.z, msg.vx, msg.vy, msg.vz, msg.fire === 2 ? 'small' : !!msg.fire);
+    } else if (msg.kind === 'drop' && msg.to === Net.myId) {
+      this.spawnDrop(msg.x, msg.y, msg.z, msg.id, msg.count);
     }
   };
 
@@ -1977,6 +2073,23 @@
   };
 
   // --------------------------------------------------------------- buckets
+  // a glass bottle dipped in water comes up full
+  Game.fillBottle = function (sx, sy, stack) {
+    const ray = this.rayFrom(sx, sy).ray;
+    const hit = this.world.raycast(ray.origin, ray.direction, REACH, true);
+    if (!hit || B.byId[hit.id].fluid !== 'water') return;
+    const inv = this.inventory;
+    if (this.mode === 'survival') {
+      if (stack.count > 1) { stack.count--; if (inv.add(Items.WATER_BOTTLE, 1) < 1) this.spawnDropAtPlayer(Items.WATER_BOTTLE, 1); }
+      else inv.slots[inv.selected] = { id: Items.WATER_BOTTLE, count: 1 };
+    } else if (inv.add(Items.WATER_BOTTLE, 1) < 1) {
+      this.spawnDropAtPlayer(Items.WATER_BOTTLE, 1);
+    }
+    inv.changed();
+    Sound.splash(0);
+    Hand.swing();
+  };
+
   Game.useBucket = function (sx, sy, stack) {
     const ray = this.rayFrom(sx, sy).ray;
     const hit = this.world.raycast(ray.origin, ray.direction, REACH, true);
@@ -2130,11 +2243,12 @@
     const mob = target.mob;
     if (mob.def.villager) { this.openTrade(mob); return true; }
     const stack = this.inventory.selectedStack();
-    // an animal's favourite food puts it in the mood instead of hurting it
-    if (stack && mob.def.breedWith === stack.id) {
+    // an animal's favourite food puts it in the mood instead of hurting it,
+    // and a piglin trades for gold
+    if (stack && (mob.def.breedWith === stack.id || (mob.def.piglin && stack.id === Items.GOLD_INGOT))) {
       let fed;
       if (Net.active && !Net.isHost) { Net.sendMobFeed(mob.id); fed = true; }
-      else fed = Mobs.feed(mob);
+      else fed = Mobs.feed(mob, null);
       if (fed) {
         Entities.hearts(mob.x, mob.y + mob.def.h * mob.size + 0.2, mob.z, 3);
         Hand.swing();
@@ -2147,6 +2261,7 @@
     let damage = def && def.damage ? def.damage : 1;
     const sharp = Enchant.level(stack, 'sharp');
     if (sharp) damage += 0.5 * sharp + 0.5;
+    if (this.effectLevel('strength')) damage += 3 * this.effectLevel('strength');
     Hand.swing();
 
     // a blow landed while falling is a critical hit: half again as strong
@@ -2171,9 +2286,10 @@
     return true;
   };
 
-  Game.damageMob = function (mob, damage, kx, kz, calm) {
+  Game.damageMob = function (mob, damage, kx, kz, calm, byId) {
     if (!mob || mob.dead) return;
     mob.hurt(damage);
+    if (!calm) mob.lastHitBy = byId || null;
     if (mob.def.neutral && !calm) {
       for (const o of Mobs.list) {
         if (o.type === mob.type && Math.hypot(o.x - mob.x, o.z - mob.z) < 16) o.angry = 40;
@@ -2197,7 +2313,7 @@
 
   Game.onMobHit = function (msg) {
     if (!Net.isHost) return;
-    this.damageMob(Mobs.byId(msg.mobId), msg.dmg || 1, msg.kx || 0, msg.kz || 0);
+    this.damageMob(Mobs.byId(msg.mobId), msg.dmg || 1, msg.kx || 0, msg.kz || 0, false, msg.from || null);
   };
 
   // a monster reaching a player: the host resolves it and tells the victim
@@ -2211,6 +2327,7 @@
         if (!o.dim || o.dim !== this.dimension) continue;
         if (!o._target) o._target = { id, local: false, pos: { x: 0, y: 0, z: 0 }, dead: false };
         o._target.pos.x = o.x; o._target.pos.y = o.y; o._target.pos.z = o.z;
+        o._target.gold = !!o.gold;
         out.push(o._target);
       }
     }
@@ -2260,6 +2377,23 @@
     this._lastAttacker = { name: mob.def.name, at: performance.now() };
   };
 
+  Game.wearsGold = function (target) {
+    if (target && !target.local) return !!target.gold;
+    const inv = this.inventory;
+    return !!inv && inv.armor.some((s) => { const d = s && Items.get(s.id); return !!(d && d.armor && d.armor.material === 'gold'); });
+  };
+
+  Game.mobFireHit = function (damage, kx, kz, target) {
+    if (this.mode !== 'survival') return;
+    if (target && !target.local) { Net.sendHit(target.id, damage, kx, kz, '블레이즈'); return; }
+    const p = this.player;
+    if (this.effectLevel('fire_res')) return;
+    p.hurt(damage);
+    p.burning = Math.max(p.burning || 0, 3);
+    p.knockX = kx * 1.5; p.knockZ = kz * 1.5;
+    this._lastAttacker = { name: '블레이즈', at: performance.now() };
+  };
+
   Game.mobArrowHit = function (damage, kx, kz, target) {
     if (this.mode !== 'survival') return;
     if (target && !target.local) { Net.sendHit(target.id, damage, kx, kz, '스켈레톤'); return; }
@@ -2288,11 +2422,13 @@
     return this.mode !== 'survival' || this.player.food < 20;
   };
 
+  function drinkable(id) { const d = Items.get(id); return !!(d && d.drink); }
+  function consumable(id) { return !!Items.foodOf(id) || drinkable(id); }
+
   Game.tryEat = function (stack) {
-    const food = Items.foodOf(stack.id);
-    if (!food) return false;
+    if (!consumable(stack.id)) return false;
     if (this.eating) return true;
-    if (!this.canEat()) { UI.toast('배가 불러서 더 먹을 수 없어요', 1300); return true; }
+    if (!drinkable(stack.id) && !this.canEat()) { UI.toast('배가 불러서 더 먹을 수 없어요', 1300); return true; }
     this.startEating(false);
     return true;
   };
@@ -2300,18 +2436,18 @@
   Game.startEating = function (hold) {
     const inv = this.inventory;
     const stack = inv.selectedStack();
-    if (!stack || !Items.foodOf(stack.id)) return;
+    if (!stack || !consumable(stack.id)) return;
     this.eating = { id: stack.id, slot: inv.selected, t: 0, hold: !!hold, munch: 0 };
   };
 
   Game.updateEating = function (dt) {
     const inv = this.inventory;
     const stack = inv.selectedStack();
-    const holdingFood = Controls.state.mining && stack && Items.foodOf(stack.id);
+    const holdingFood = Controls.state.mining && stack && consumable(stack.id);
     let e = this.eating;
     if (!e) {
       if (holdingFood) {
-        if (this.canEat()) this.startEating(true);
+        if (drinkable(stack.id) || this.canEat()) this.startEating(true);
         else if (!this._fullWarned) { this._fullWarned = true; UI.toast('배가 불러서 더 먹을 수 없어요', 1300); }
       } else {
         this._fullWarned = false;
@@ -2336,8 +2472,18 @@
     }
     if (e.t < EAT_TIME) return;
 
+    const d = Items.get(e.id);
+    if (d.drink) {
+      if (d.potion) this.addEffect(d.potion.effect, d.potion.lvl, d.potion.time);
+      if (this.mode === 'survival') inv.slots[inv.selected] = { id: Items.GLASS_BOTTLE, count: 1 };
+      inv.changed();
+      Sound.burp();
+      this.eating = null;
+      return;
+    }
     const food = Items.foodOf(e.id);
     this.player.eat(food.food, food.saturation || 0);
+    if (food.sideEffect && Math.random() < 0.8) this.addEffect(food.sideEffect[0], food.sideEffect[1], food.sideEffect[2]);
     if (this.mode === 'survival') inv.consumeSelected();
     if (this.player.food >= 20) Sound.burp();
     UI.renderStats(this.player);
@@ -2399,8 +2545,26 @@
     return f;
   };
 
+  Game.brewingAt = function (x, y, z) {
+    const k = this.entityKey(x, y, z);
+    let b = this.blockEntities.get(k);
+    if (!b) {
+      b = { type: 'brewing', x, y, z, bottles: [null, null, null], ingredient: [null], fuel: [null], fuelLeft: 0, brew: 0, ingId: 0 };
+      this.blockEntities.set(k, b);
+    }
+    return b;
+  };
+
   Game.updateFurnaces = function (dt) {
     if (this.blockEntities.size === 0) return;
+    for (const b of this.blockEntities.values()) {
+      if (b.type !== 'brewing') continue;
+      if (Brewing.tick(b, dt)) {
+        this._worldDirty = true;
+        if (UI.screen && UI.screen.entity === b && !UI._dragging) UI.renderScreen();
+      }
+      if (UI.screen && UI.screen.entity === b) UI.refreshBrewing();
+    }
     const open = UI.screen && UI.screen.kind === 'furnace' ? UI.screen.entity : null;
     let openChanged = false;
 
@@ -2632,6 +2796,15 @@
     this.drops.push({ mesh, id, count, vy: 1.2, age: 0, x, y, z, extra });
   };
 
+  // loot someone earned: on the host, a guest's kill or trade is sent to them
+  Game.lootDrop = function (x, y, z, id, count, stack, to) {
+    if (to && Net.active && Net.isHost) {
+      Net.sendFx({ kind: 'drop', to, x: +x.toFixed(2), y: +y.toFixed(2), z: +z.toFixed(2), id, count });
+      return;
+    }
+    this.spawnDrop(x, y, z, id, count, stack);
+  };
+
   Game.clearDrops = function () {
     for (const d of this.drops) this.scene.remove(d.mesh);
     this.drops.length = 0;
@@ -2687,7 +2860,7 @@
   Game.updateNetherSky = function (dt) {
     const L = World.lightUniforms;
     L.uDaylight.value = 0;
-    L.uMinLight.value = 0.2;
+    L.uMinLight.value = 0.26;
     L.uSkyTint.value.setRGB(1, 0.85, 0.8);
     this.scene.background = NETHER_FOG;
     this.fog.color.copy(NETHER_FOG);
@@ -2919,6 +3092,7 @@
       Entities.updateParticles(dt);
     }
     if (this.started && !this.loading) this.updateFurnaces(dt);
+    if (this.started && !this.paused) this.updateEffects(dt);
 
     // checked every frame so any damage source, not just Player.update, ends the run
     if (p.dead && !this._deathHandled) {
@@ -2931,6 +3105,7 @@
     this.world.update(p.pos.x, p.pos.z, holes ? 11 : 6, -Math.sin(p.yaw), -Math.cos(p.yaw));
     this.saveTick(dt);
     this.updateSky(dt);
+    if (this.effectLevel('night_vision')) World.lightUniforms.uMinLight.value = Math.max(World.lightUniforms.uMinLight.value, 0.8);
     this.keepGuestLand();
     if (!this.paused) Mobs.update(dt, this.world, p, this);
     if (Net.active) {

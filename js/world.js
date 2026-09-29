@@ -38,7 +38,7 @@
 
   let OPAQUE = null, LIQUID = null, FACE_TILE_OF = null, TILE_UV = null;
   let CROSS = null, BHEIGHT = null, BOXES = null, LTOP = null, LAVAF = null, FLUIDK = null;
-  let WIREL = null, RSC = null;
+  let WIREL = null, RSC = null, FENCEL = null;
   function buildLookups() {
     const n = B.byId.length;
     OPAQUE = new Uint8Array(n);
@@ -51,11 +51,13 @@
     FLUIDK = new Uint8Array(n);
     WIREL = new Uint8Array(n);
     RSC = new Uint8Array(n);
+    FENCEL = new Uint8Array(n);
     for (let i = 0; i < n; i++) {
       const d = B.byId[i];
       if (!d) continue;
       if (d.render === 'boxes') BOXES[i] = d.boxes;
       if (d.wire) WIREL[i] = 1;
+      if (d.fence) FENCEL[i] = d.fence;
       // what redstone dust reaches out and joins up with
       if (d.wire || d.rsTorch || d.lever || d.button || d.plate || d.rsBlock) RSC[i] = 1;
       // repeaters and comparators join only along their length
@@ -343,6 +345,8 @@
         if (h < grass) plant = B.TALL_GRASS;
         else if (h < grass + 0.012) plant = B.DANDELION;
         else if (h < grass + 0.022) plant = B.POPPY;
+        // now and then a melon, out in the plains and woods
+        else if (h > 0.9985 && biome !== 'desert') plant = B.MELON;
         if (!plant) continue;
         chunk.data[i + CHUNK_SIZE * CHUNK_SIZE] = plant;
         if (y + 1 > chunk.maxY) chunk.maxY = y + 1;
@@ -417,6 +421,7 @@
         }
       }
     }
+    if (global.Fortress) Fortress.stamp(chunk, seed);
     chunk.generated = true;
   }
 
@@ -592,6 +597,18 @@
   // along one axis, returns the face of the nearest obstacle it now overlaps
   // on that axis (its min when moving +, its max when moving -), or null.
   const FULL_BOX = [[0, 0, 0, 1, 1, 1]];
+  // what you bump into at a fence: a post and its joins, a block and a half tall
+  World.prototype.fenceBoxes = function (x, y, z, kind) {
+    const P = 1 / 16, H = 1.5;
+    const list = [[6 * P, 0, 6 * P, 10 * P, H, 10 * P]];
+    const n = (dx, dz) => { const d = B.byId[this.getBlock(x + dx, y, z + dz)]; return d.fence === kind || d.opaque; };
+    if (n(0, -1)) list.push([6 * P, 0, 0, 10 * P, H, 6 * P]);
+    if (n(1, 0)) list.push([10 * P, 0, 6 * P, 1, H, 10 * P]);
+    if (n(0, 1)) list.push([6 * P, 0, 10 * P, 10 * P, H, 1]);
+    if (n(-1, 0)) list.push([0, 0, 6 * P, 6 * P, H, 10 * P]);
+    return list;
+  };
+
   World.prototype.collideLimit = function (x0, y0, z0, x1, y1, z1, axis, amount) {
     const E = 1e-6;
     let limit = null;
@@ -599,13 +616,15 @@
     const cy0 = Math.floor(y0), cy1 = Math.floor(y1);
     const cz0 = Math.floor(z0), cz1 = Math.floor(z1);
     for (let x = cx0; x <= cx1; x++) {
-      for (let y = cy0; y <= cy1; y++) {
+      // (one cell lower too, for a fence reaching up into this one)
+      for (let y = cy0 - 1; y <= cy1; y++) {
         for (let z = cz0; z <= cz1; z++) {
           const id = this.getBlock(x, y, z);
           if (id === B.AIR) continue;
           const d = B.byId[id];
           if (!d.solid) continue;
-          const boxes = d.boxes || FULL_BOX;
+          if (y < cy0 && !d.fence) continue;
+          const boxes = d.fence ? this.fenceBoxes(x, y, z, d.fence) : (d.boxes || FULL_BOX);
           for (let i = 0; i < boxes.length; i++) {
             const b = boxes[i];
             const bx0 = x + b[0], by0 = y + b[1], bz0 = z + b[2];
@@ -670,6 +689,31 @@
       WIRE_SHAPES.push(list);
     }
   })();
+  // fences: a post, and two rails out to each fence or wall beside it
+  const FENCE_SHAPES = [];
+  (function () {
+    const P = 1 / 16;
+    for (let m = 0; m < 16; m++) {
+      const list = [[6 * P, 0, 6 * P, 10 * P, 1, 10 * P]];
+      for (const [y0, y1] of [[6 * P, 9 * P], [12 * P, 15 * P]]) {
+        if (m & 1) list.push([7 * P, y0, 0, 9 * P, y1, 6 * P]);
+        if (m & 2) list.push([10 * P, y0, 7 * P, 1, y1, 9 * P]);
+        if (m & 4) list.push([7 * P, y0, 10 * P, 9 * P, y1, 1]);
+        if (m & 8) list.push([0, y0, 7 * P, 6 * P, y1, 9 * P]);
+      }
+      FENCE_SHAPES.push(list);
+    }
+  })();
+  function fenceMask(pad, p, kind) {
+    let m = 0;
+    const offs = [-SZ, 1, SZ, -1];
+    for (let d = 0; d < 4; d++) {
+      const n = pad[p + offs[d]];
+      if (FENCEL[n] === kind || OPAQUE[n]) m |= 1 << d;
+    }
+    return m;
+  }
+
   function wireMask(pad, p) {
     let m = 0;
     const offs = [-SZ, 1, SZ, -1];
@@ -943,7 +987,8 @@
 
           // doors, stairs, slabs, ladders: a few boxes, each face textured with
           // the matching part of the tile so nothing looks stretched
-          const shapeBoxes = WIREL[id] ? WIRE_SHAPES[wireMask(pad, pHere)] : BOXES[id];
+          const shapeBoxes = WIREL[id] ? WIRE_SHAPES[wireMask(pad, pHere)]
+            : FENCEL[id] ? FENCE_SHAPES[fenceMask(pad, pHere, FENCEL[id])] : BOXES[id];
           if (shapeBoxes) {
             const boxes = shapeBoxes;
             for (let bi = 0; bi < boxes.length; bi++) {

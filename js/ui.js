@@ -574,6 +574,9 @@
     if (kind === 'fin' && Recipes.smelting[inv.held.id] === undefined) return;
       if (kind === 'ein' && !(Enchant.canEnchant(inv.held) && inv.held.count === 1 && !(this.screen.entity.item[0]))) return;
       if (kind === 'elapis' && inv.held.id !== Items.LAPIS) return;
+      if (kind === 'bbottle' && !Brewing.isBottle(inv.held.id)) return;
+      if (kind === 'bing' && !Brewing.isIngredient(inv.held.id)) return;
+      if (kind === 'bfuel' && inv.held.id !== Items.BLAZE_POWDER) return;
     if (kind === 'ffuel' && Items.fuelSeconds(inv.held.id) <= 0) return;
 
     if (!cur) {
@@ -735,6 +738,9 @@
     if (kind === 'chest') return this.screen.entity.slots;
     if (kind === 'ein') return this.screen.entity.item;
     if (kind === 'elapis') return this.screen.entity.lapis;
+    if (kind === 'bbottle') return this.screen.entity.bottles;
+    if (kind === 'bing') return this.screen.entity.ingredient;
+    if (kind === 'bfuel') return this.screen.entity.fuel;
     return null;
   };
 
@@ -751,6 +757,9 @@
       if (kind === 'fin' && Recipes.smelting[inv.held.id] === undefined) return;
       if (kind === 'ein' && !(Enchant.canEnchant(inv.held) && inv.held.count === 1 && !(this.screen.entity.item[0]))) return;
       if (kind === 'elapis' && inv.held.id !== Items.LAPIS) return;
+      if (kind === 'bbottle' && !Brewing.isBottle(inv.held.id)) return;
+      if (kind === 'bing' && !Brewing.isIngredient(inv.held.id)) return;
+      if (kind === 'bfuel' && inv.held.id !== Items.BLAZE_POWDER) return;
       if (kind === 'ffuel' && Items.fuelSeconds(inv.held.id) <= 0) return;
 
       if (!cur) {
@@ -876,10 +885,10 @@
     const body = el('screenBody');
     body.innerHTML = '';
 
-    const titles = { inventory: '인벤토리', crafting: '제작', furnace: '화로', creative: '크리에이티브', chest: '상자', enchant: '마법 부여', trade: '주민 거래' };
+    const titles = { inventory: '인벤토리', crafting: '제작', furnace: '화로', creative: '크리에이티브', chest: '상자', enchant: '마법 부여', trade: '주민 거래', brewing: '양조기' };
     const kind = this.screen.kind;
     el('screenTitle').textContent = titles[kind] || '인벤토리';
-    el('btnRecipeBook').classList.toggle('hidden', kind === 'creative' || kind === 'furnace' || kind === 'chest' || kind === 'enchant' || kind === 'trade');
+    el('btnRecipeBook').classList.toggle('hidden', kind === 'creative' || kind === 'furnace' || kind === 'chest' || kind === 'enchant' || kind === 'trade' || kind === 'brewing');
     el('btnRecipeBook').classList.toggle('active', this.recipeBookOpen);
 
     if (kind === 'creative') this.renderCreative(body);
@@ -887,6 +896,7 @@
     else if (kind === 'chest') this.renderChest(body);
     else if (kind === 'enchant') this.renderEnchant(body);
     else if (kind === 'trade') this.renderTrade(body);
+    else if (kind === 'brewing') this.renderBrewing(body);
     else this.renderCraftingScreen(body);
 
     if (this.screen.kind !== 'creative') {
@@ -997,6 +1007,57 @@
     note.className = 'invNote';
     note.textContent = '위 칸에 구울 것, 아래 칸에 연료(석탄·판자·막대기)를 넣으세요.';
     body.appendChild(note);
+  };
+
+  // the brewing stand: ingredient on top, blaze powder beside it, three bottles below
+  UI.renderBrewing = function (body) {
+    const st = this.screen.entity;
+    const wrap = document.createElement('div');
+    wrap.className = 'brewArea';
+    const top = document.createElement('div');
+    top.className = 'brewTop';
+    top.appendChild(this.makeSlot(st.fuel[0], { kind: 'bfuel', index: 0 }));
+    const fuel = document.createElement('div');
+    fuel.className = 'brewFuel';
+    const fuelFill = document.createElement('span');
+    fuelFill.style.width = Math.round(st.fuelLeft / Brewing.FUEL_BREWS * 100) + '%';
+    fuel.appendChild(fuelFill);
+    top.appendChild(fuel);
+    top.appendChild(this.makeSlot(st.ingredient[0], { kind: 'bing', index: 0 }));
+    const prog = document.createElement('div');
+    prog.className = 'brewProg';
+    const progFill = document.createElement('span');
+    progFill.style.height = Math.round(st.brew / Brewing.BREW_TIME * 100) + '%';
+    prog.appendChild(progFill);
+    top.appendChild(prog);
+    wrap.appendChild(top);
+    const bottles = document.createElement('div');
+    bottles.className = 'brewBottles';
+    for (let i = 0; i < 3; i++) bottles.appendChild(this.makeSlot(st.bottles[i], { kind: 'bbottle', index: i }));
+    wrap.appendChild(bottles);
+    body.appendChild(wrap);
+    const note = document.createElement('p');
+    note.className = 'invNote';
+    note.textContent = '아래에 물병, 위에 재료, 왼쪽에 블레이즈 가루(연료). 네더 사마귀로 어색한 물약을 먼저 만드세요. 레드스톤은 시간 연장, 발광석은 강화.';
+    body.appendChild(note);
+  };
+
+  UI.refreshBrewing = function () {
+    if (!this.screen || this.screen.kind !== 'brewing' || this._dragging) return;
+    const st = this.screen.entity;
+    const prog = document.querySelector('#screenPanel .brewProg span');
+    if (prog) prog.style.height = Math.round(st.brew / Brewing.BREW_TIME * 100) + '%';
+    const fuel = document.querySelector('#screenPanel .brewFuel span');
+    if (fuel) fuel.style.width = Math.round(st.fuelLeft / Brewing.FUEL_BREWS * 100) + '%';
+  };
+
+  // what potions are working on you, with the time left
+  UI.renderEffects = function (game) {
+    const box = el('effects');
+    if (!box) return;
+    const lines = game.effectText();
+    box.classList.toggle('hidden', !lines.length);
+    box.textContent = lines.join('  ·  ');
   };
 
   UI.renderCreative = function (body) {

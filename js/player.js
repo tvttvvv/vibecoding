@@ -192,6 +192,7 @@
     else if (this.sneaking) speed = SNEAK_SPEED;
     else if (B.byId[world.getBlock(bx, Math.floor(this.pos.y - 0.2), bz)].slow) speed = WALK_SPEED * B.byId[world.getBlock(bx, Math.floor(this.pos.y - 0.2), bz)].slow;
     else speed = this.sprinting ? SPRINT_SPEED : WALK_SPEED;
+    if (!this.flying && this.speedMul) speed *= this.speedMul;
 
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
     const fx = -sin, fz = -cos;
@@ -334,13 +335,14 @@
       return;
     }
 
-    if (this.inLava) {
+    if (this.inLava && !this.fireImmune) {
       this._lavaTimer = (this._lavaTimer || 0) + dt;
       if (this._lavaTimer >= 0.5) { this._lavaTimer = 0; this.hurt(4); }
       this.burning = 3;
     } else {
       this._lavaTimer = 0.5;
     }
+    if (this.fireImmune) this.burning = 0;
     // still on fire for a moment after climbing out
     if (this.burning > 0 && !this.inLava) {
       this.burning -= dt;

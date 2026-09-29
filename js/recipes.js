@@ -106,6 +106,20 @@
   shaped(B.REPEATER, 1, ['TRT', 'SSS'], { T: B.RS_TORCH, R: I.REDSTONE, S: B.STONE });
   shaped(B.COMPARATOR, 1, [' T ', 'TQT', 'SSS'], { T: B.RS_TORCH, Q: I.QUARTZ, S: B.STONE });
   shaped(B.OBSERVER, 1, ['CCC', 'RRQ', 'CCC'], { C: B.COBBLESTONE, R: I.REDSTONE, Q: I.QUARTZ });
+  // the nether, brewing
+  shaped(B.NETHER_BRICKS, 1, ['##', '##'], { '#': I.NETHER_BRICK });
+  shaped(B.NETHER_FENCE, 6, ['###', '###'], { '#': B.NETHER_BRICKS });
+  shaped(B.OAK_FENCE, 3, ['P|P', 'P|P'], { P: B.PLANKS, '|': I.STICK });
+  shapeless(I.BLAZE_POWDER, 2, [I.BLAZE_ROD]);
+  shapeless(I.MAGMA_CREAM, 1, [I.SLIME_BALL, I.BLAZE_POWDER]);
+  shapeless(I.GOLD_NUGGET, 9, [I.GOLD_INGOT]);
+  shaped(I.GOLD_INGOT, 1, ['###', '###', '###'], { '#': I.GOLD_NUGGET });
+  shaped(I.GOLDEN_CARROT, 1, ['###', '#C#', '###'], { '#': I.GOLD_NUGGET, C: I.CARROT });
+  shaped(I.GLISTERING_MELON, 1, ['###', '#M#', '###'], { '#': I.GOLD_NUGGET, M: I.MELON_SLICE });
+  shaped(B.MELON, 1, ['###', '###', '###'], { '#': I.MELON_SLICE });
+  shaped(I.GLASS_BOTTLE, 3, ['G G', ' G '], { G: B.GLASS });
+  shapeless(I.SUGAR, 1, [B.SUGAR_CANE]);
+  shaped(B.BREWING_STAND, 1, [' R ', 'CCC'], { R: I.BLAZE_ROD, C: B.COBBLESTONE });
   shaped(B.ENCHANTING_TABLE, 1, [' B ', 'D#D', '###'], { B: I.BOOK, D: I.DIAMOND, '#': B.OBSIDIAN });
 
   for (const [, mat, tier] of PLANK_LIKE) {
@@ -131,6 +145,7 @@
   smelting[B.SAND] = B.GLASS;
   smelting[B.COBBLESTONE] = B.STONE;
   smelting[B.LOG] = I.COAL;
+  smelting[B.NETHERRACK] = I.NETHER_BRICK;
   smelting[I.RAW_BEEF] = I.COOKED_BEEF;
   smelting[I.RAW_PORK] = I.COOKED_PORK;
   smelting[I.RAW_CHICKEN] = I.COOKED_CHICKEN;
