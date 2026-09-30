@@ -21,6 +21,9 @@
 
   function materialOf(id) {
     const B = Blocks;
+    const d = B.byId[id];
+    if (d && d.leaves) return 'grass';
+    if (d && (d.log || d.planks)) return 'wood';
     if (id === B.GRASS || id === B.LEAVES || id === B.SNOW_GRASS || id === B.TALL_GRASS ||
         id === B.DANDELION || id === B.POPPY || id >= B.WHEAT_0 && id <= B.WHEAT_3) return 'grass';
     if (id === B.DIRT || id === B.GRAVEL || id === B.FARMLAND) return 'dirt';

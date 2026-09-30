@@ -648,3 +648,7 @@ body.onTitle #rightControls, body.onTitle #topRight, body.onTitle #crosshair { d
 .serverStatus.live { color: #b8ffb0; }
 .checkRow { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #fff; margin: 4px 0; }
 .checkRow input { width: 20px; height: 20px; }
+
+/* Absorption: golden hearts */
+.goldHeart { filter: sepia(1) saturate(5) hue-rotate(5deg) brightness(1.15); }
+.goldHeart.hidden { display: none; }

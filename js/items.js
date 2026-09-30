@@ -126,6 +126,10 @@
   const ENDER_PEARL = def(1014, '엔더 진주', T.item_ender_pearl, { stackMax: 16 });
   const ENDER_EYE = def(1015, '엔더의 눈', T.item_ender_eye);
   const AMETHYST_SHARD = def(1016, '자수정 조각', T.item_amethyst_shard);
+  // eaten, it heals quickly and gives two extra hearts for two minutes
+  const GOLDEN_APPLE = def(1017, '황금 사과', T.item_golden_apple, {
+    food: 4, saturation: 9.6, always: true, effects: [['regen', 2, 5], ['absorption', 1, 120]]
+  });
 
   // potions: one id per kind, strength and length
   const EFFECTS = [
@@ -186,8 +190,8 @@
 
   function fuelSeconds(id) {
     if (isBlock(id)) {
-      if (id === Blocks.PLANKS || id === Blocks.LOG || id === Blocks.CRAFTING_TABLE ||
-          id === Blocks.CHEST) return 15;
+      const d = Blocks.byId[id];
+      if (d.planks || d.log || id === Blocks.CRAFTING_TABLE || id === Blocks.CHEST) return 15;
       return 0;
     }
     return byId[id].fuel || 0;
@@ -199,7 +203,7 @@
     SEEDS, WHEAT, BOAT, OAK_DOOR, BUCKET, WATER_BUCKET, LAVA_BUCKET,
     BOW, ARROW, FLINT, FEATHER, LEATHER, CARROT, LAPIS, PAPER, BOOK, EMERALD, QUARTZ, FLINT_AND_STEEL, REDSTONE, SLIME_BALL,
     BLAZE_ROD, BLAZE_POWDER, NETHER_WART, GLASS_BOTTLE, GHAST_TEAR, MAGMA_CREAM, SUGAR, GOLD_NUGGET,
-    GOLDEN_CARROT, MELON_SLICE, GLISTERING_MELON, SPIDER_EYE, NETHER_BRICK, ENDER_PEARL, ENDER_EYE, AMETHYST_SHARD, WATER_BOTTLE, AWKWARD,
+    GOLDEN_CARROT, MELON_SLICE, GLISTERING_MELON, SPIDER_EYE, NETHER_BRICK, ENDER_PEARL, ENDER_EYE, AMETHYST_SHARD, GOLDEN_APPLE, WATER_BOTTLE, AWKWARD,
     ...Object.keys(POTIONS).map((k) => POTIONS[k]),
     tools.wood_pickaxe, tools.wood_axe, tools.wood_shovel, tools.wood_sword, tools.wood_hoe,
     tools.stone_pickaxe, tools.stone_axe, tools.stone_shovel, tools.stone_sword, tools.stone_hoe,
@@ -225,7 +229,7 @@
     OAK_DOOR, BUCKET, WATER_BUCKET, LAVA_BUCKET, BOW, ARROW, FLINT, FEATHER, LEATHER, CARROT,
     LAPIS, PAPER, BOOK, EMERALD, QUARTZ, FLINT_AND_STEEL, REDSTONE, SLIME_BALL,
     BLAZE_ROD, BLAZE_POWDER, NETHER_WART, GLASS_BOTTLE, GHAST_TEAR, MAGMA_CREAM, SUGAR, GOLD_NUGGET,
-    GOLDEN_CARROT, MELON_SLICE, GLISTERING_MELON, SPIDER_EYE, NETHER_BRICK, ENDER_PEARL, ENDER_EYE, AMETHYST_SHARD, WATER_BOTTLE, AWKWARD,
+    GOLDEN_CARROT, MELON_SLICE, GLISTERING_MELON, SPIDER_EYE, NETHER_BRICK, ENDER_PEARL, ENDER_EYE, AMETHYST_SHARD, GOLDEN_APPLE, WATER_BOTTLE, AWKWARD,
     EFFECTS, POTIONS,
     PIECE_ORDER, creativeItems,
     isBlock, get, name, tileOf, icon, stackMax, maxDurability, fuelSeconds, foodOf

@@ -250,6 +250,7 @@
       add(I.BREAD, 0, 2, 1); add(I.WHEAT, 0, 4, 2); add(I.IRON_INGOT, 0, 4, 3); add(I.GOLD_INGOT, 0, 3, 4);
       add(I.REDSTONE, 0, 4, 5); add(I.STRING, 0, 4, 6); add(I.GUNPOWDER, 0, 4, 7); add(I.BONE, 0, 4, 8);
       add(I.ROTTEN_FLESH, 0, 4, 9); add(I.DIAMOND, 0, 1, 10);
+      if (r(12) < 0.3) out.push({ id: I.GOLDEN_APPLE, count: 1 });
       if (r(11) < 0.3) out.push({ id: I.ENDER_PEARL, count: 1 });
     } else {
       add(I.BREAD, 1, 3, 1); add(I.IRON_INGOT, 1, 5, 2); add(I.GOLD_INGOT, 0, 3, 3); add(I.REDSTONE, 2, 8, 4);

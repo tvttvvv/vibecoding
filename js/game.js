@@ -876,6 +876,7 @@
       xp: p.xp || 0,
       enchSeed: p.enchSeed || 0,
       effects: this.effects || {},
+      absorption: this.player.absorption || 0,
       endState: this.currentEndState(),
       dim: this.dimension,
       worldSpawn: this.worldSpawn || null,
@@ -989,6 +990,7 @@
     if (typeof saved.xp === 'number') p.xp = saved.xp;
     if (saved.enchSeed) p.enchSeed = saved.enchSeed;
     if (saved.effects && typeof saved.effects === 'object') this.effects = saved.effects;
+    if (saved.absorption > 0 && this.effects && this.effects.absorption) p.absorption = saved.absorption;
     if (saved.endState && typeof saved.endState === 'object') this.endState = saved.endState;
     if (saved.worldSpawn && typeof saved.worldSpawn.x === 'number') {
       this.worldSpawn = saved.worldSpawn;
@@ -2099,7 +2101,7 @@
   // What potions do: key -> { lvl, t } seconds left. Speed and Strength add
   // to what you do, Fire Resistance keeps lava off you, Night Vision lights
   // the dark, Regeneration and Poison heal and hurt a little at a time.
-  const EFFECT_NAMES = { speed: '신속', strength: '힘', fire_res: '화염 저항', regen: '재생', night_vision: '야간 투시', poison: '독' };
+  const EFFECT_NAMES = { speed: '신속', strength: '힘', fire_res: '화염 저항', regen: '재생', night_vision: '야간 투시', poison: '독', absorption: '흡수' };
 
   Game.addEffect = function (key, lvl, time) {
     const p = this.player;
@@ -2109,6 +2111,8 @@
       return;
     }
     if (!this.effects) this.effects = {};
+    // Absorption: golden hearts on top of the red, used up before them
+    if (key === 'absorption') { p.absorption = Math.max(p.absorption || 0, 4 * lvl); UI.renderStats(p); }
     const cur = this.effects[key];
     if (!cur || cur.lvl < lvl || (cur.lvl === lvl && cur.t < time)) this.effects[key] = { lvl, t: time };
     Sound.levelUp();
@@ -2136,7 +2140,10 @@
           if (k === 'poison' && p.health > 1 && this.mode === 'survival') p.hurt(1, true);
         }
       }
-      if (e.t <= 0) { delete fx[k]; changed = true; }
+      if (e.t <= 0) {
+        delete fx[k]; changed = true;
+        if (k === 'absorption') { p.absorption = 0; UI.renderStats(p); }
+      }
     }
     p.speedMul = 1 + 0.2 * this.effectLevel('speed');
     p.fireImmune = this.effectLevel('fire_res') > 0;
@@ -2752,7 +2759,7 @@
   Game.tryEat = function (stack) {
     if (!consumable(stack.id)) return false;
     if (this.eating) return true;
-    if (!drinkable(stack.id) && !this.canEat()) { UI.toast('배가 불러서 더 먹을 수 없어요', 1300); return true; }
+    if (!drinkable(stack.id) && !Items.get(stack.id).always && !this.canEat()) { UI.toast('배가 불러서 더 먹을 수 없어요', 1300); return true; }
     this.startEating(false);
     return true;
   };
@@ -2771,7 +2778,7 @@
     let e = this.eating;
     if (!e) {
       if (holdingFood) {
-        if (drinkable(stack.id) || this.canEat()) this.startEating(true);
+        if (drinkable(stack.id) || Items.get(stack.id).always || this.canEat()) this.startEating(true);
         else if (!this._fullWarned) { this._fullWarned = true; UI.toast('배가 불러서 더 먹을 수 없어요', 1300); }
       } else {
         this._fullWarned = false;
@@ -2808,6 +2815,7 @@
     const food = Items.foodOf(e.id);
     this.player.eat(food.food, food.saturation || 0);
     if (food.sideEffect && Math.random() < 0.8) this.addEffect(food.sideEffect[0], food.sideEffect[1], food.sideEffect[2]);
+    if (food.effects) for (const [k, lvl, t] of food.effects) this.addEffect(k, lvl, t);
     if (this.mode === 'survival') inv.consumeSelected();
     if (this.player.food >= 20) Sound.burp();
     UI.renderStats(this.player);
@@ -3295,6 +3303,8 @@
     p.saturation = 5;
     p.exhaustion = 0;
     p.air = PlayerConst.MAX_AIR;
+    p.absorption = 0;
+    if (this.effects && Object.keys(this.effects).length) { this.effects = {}; p.speedMul = 1; p.fireImmune = false; UI.renderEffects && UI.renderEffects(this); }
     p.vel.x = p.vel.y = p.vel.z = 0;
     p.pos.x = this.spawnPoint.x;
     p.pos.y = this.spawnPoint.y;
@@ -3652,6 +3662,17 @@
     this.loop();
   };
 
+  // a whole stack thrown out of the inventory screen, a little way ahead
+  Game.throwStack = function (stack) {
+    if (!stack) return;
+    const p = this.player;
+    this._fwd = this._fwd || { x: 0, y: 0, z: 0 };
+    p.forward(this._fwd);
+    this.spawnDrop(p.pos.x + this._fwd.x * 1.5, p.pos.y + 1.1, p.pos.z + this._fwd.z * 1.5, stack.id, stack.count, stack);
+    this.drops[this.drops.length - 1].age = -1.6;
+    Sound.pop && Sound.pop();
+  };
+
   Game.dropSelected = function () {
     if (!this.started || this.paused) return;
     const inv = this.inventory;
@@ -3664,6 +3685,7 @@
       p.pos.x + this._fwd.x * 1.2, p.pos.y + 1.1, p.pos.z + this._fwd.z * 1.2,
       stack.id, 1, stack
     );
+    this.drops[this.drops.length - 1].age = -1.6;
     inv.consumeSelected();
   };
 

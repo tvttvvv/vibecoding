@@ -38,7 +38,7 @@
 
   let OPAQUE = null, LIQUID = null, FACE_TILE_OF = null, TILE_UV = null;
   let CROSS = null, BHEIGHT = null, BOXES = null, LTOP = null, LAVAF = null, FLUIDK = null;
-  let WIREL = null, RSC = null, FENCEL = null;
+  let WIREL = null, RSC = null, FENCEL = null, LEAFL = null;
   function buildLookups() {
     const n = B.byId.length;
     OPAQUE = new Uint8Array(n);
@@ -52,12 +52,14 @@
     WIREL = new Uint8Array(n);
     RSC = new Uint8Array(n);
     FENCEL = new Uint8Array(n);
+    LEAFL = new Uint8Array(n);
     for (let i = 0; i < n; i++) {
       const d = B.byId[i];
       if (!d) continue;
       if (d.render === 'boxes') BOXES[i] = d.boxes;
       if (d.wire) WIREL[i] = 1;
       if (d.fence) FENCEL[i] = d.fence;
+      if (d.leaves) LEAFL[i] = 1;
       // what redstone dust reaches out and joins up with
       if (d.wire || d.rsTorch || d.lever || d.button || d.plate || d.rsBlock) RSC[i] = 1;
       // repeaters and comparators join only along their length
@@ -139,6 +141,8 @@
     const temp = Noise.fbm2(wx * 0.004, wz * 0.004, seed + 21, 3);
     const humid = Noise.fbm2(wx * 0.004, wz * 0.004, seed + 22, 3);
     if (temp > 0.56 && humid < 0.44) return 'desert';
+    if (temp > 0.58 && humid > 0.54) return 'jungle';
+    if (temp > 0.53 && humid < 0.5) return 'savanna';
     if (temp < 0.35) return 'snowy';
     if (humid > 0.52) return 'forest';
     return 'plains';
@@ -370,7 +374,7 @@
         if (chunk.data[i + CHUNK_SIZE * CHUNK_SIZE] !== B.AIR) continue;
         const biome = biomeAt(wx, wz, seed);
         const h = Noise.hash2(wx, wz, seed + 71);
-        const grass = biome === 'plains' ? 0.2 : biome === 'forest' ? 0.12 : 0.04;
+        const grass = biome === 'plains' ? 0.2 : biome === 'savanna' ? 0.28 : biome === 'jungle' ? 0.3 : biome === 'forest' ? 0.12 : 0.04;
         let plant = 0;
         if (h < grass) plant = B.TALL_GRASS;
         else if (h < grass + 0.012) plant = B.DANDELION;
@@ -510,46 +514,121 @@
     chunk.generated = true;
   }
 
+  // Each land grows its own trees, as in Minecraft: oaks (and some birches)
+  // on the plains, oak and birch woods, tall spruce cones in the snow, big
+  // jungle trees with bushes under them, flat-topped acacias on the savanna,
+  // and cactus in the desert.
+  const TREE_DENSITY = { forest: 0.030, plains: 0.005, snowy: 0.016, desert: 0.008, jungle: 0.05, savanna: 0.007 };
+
   function growFeatures(chunk, seed) {
     const baseX = chunk.cx * CHUNK_SIZE;
     const baseZ = chunk.cz * CHUNK_SIZE;
+    const W = B.WOODS;
 
-    for (let ox = -3; ox < CHUNK_SIZE + 3; ox++) {
-      for (let oz = -3; oz < CHUNK_SIZE + 3; oz++) {
+    // a tree whose trunk stands in a neighbouring chunk can still reach in
+    for (let ox = -5; ox < CHUNK_SIZE + 5; ox++) {
+      for (let oz = -5; oz < CHUNK_SIZE + 5; oz++) {
         const wx = baseX + ox, wz = baseZ + oz;
         const biome = biomeAt(wx, wz, seed);
-        let density = 0;
-        if (biome === 'forest') density = 0.030;
-        else if (biome === 'plains') density = 0.005;
-        else if (biome === 'snowy') density = 0.014;
-        else if (biome === 'desert') density = 0.008;
+        const density = TREE_DENSITY[biome] || 0;
         if (Noise.hash2(wx, wz, seed + 31) >= density) continue;
         if (global.Villages && Villages.near(wx, wz, seed, Villages.RADIUS + 3)) continue;
 
         const surfaceY = Math.floor(columnHeight(wx, wz, seed));
-        if (surfaceY <= SEA_LEVEL + 1 || surfaceY > WORLD_HEIGHT - 12) continue;
+        if (surfaceY <= SEA_LEVEL + 1 || surfaceY > WORLD_HEIGHT - 16) continue;
         if (surfaceOpen(wx, wz, surfaceY, seed)) continue;
 
         const r = Noise.hash2(wx, wz, seed + 32);
+        const r2 = Noise.hash2(wx, wz, seed + 34);
+        const leaf = (dx, y, dz, id) => placeIfAir(chunk, ox + dx, y, oz + dz, id);
+        const log = (dx, y, dz, id) => placeForce(chunk, ox + dx, y, oz + dz, id);
+        const g = surfaceY + 1;
+
         if (biome === 'desert') {
           const h = 2 + Math.floor(r * 2);
-          for (let i = 1; i <= h; i++) placeForce(chunk, ox, surfaceY + i, oz, B.CACTUS);
+          for (let i = 0; i < h; i++) log(0, g + i, 0, B.CACTUS);
+        } else if (biome === 'snowy') {
+          spruce(g, 6 + Math.floor(r * 4), leaf, log, W.spruce, wx, wz, seed);
+        } else if (biome === 'jungle') {
+          if (r2 < 0.35) jungleBush(g, leaf, log, W.jungle, wx, wz, seed);
+          else roundTree(g, 8 + Math.floor(r * 5), leaf, log, W.jungle.log, W.jungle.leaves, 3, wx, wz, seed);
+        } else if (biome === 'savanna') {
+          acacia(g, r, r2, leaf, log, W.acacia);
         } else {
-          const trunk = 4 + Math.floor(r * 3);
-          const topY = surfaceY + trunk;
-          for (let dy = -2; dy <= 1; dy++) {
-            const radius = dy <= -1 ? 2 : 1;
-            for (let dx = -radius; dx <= radius; dx++) {
-              for (let dz = -radius; dz <= radius; dz++) {
-                const corner = Math.abs(dx) === radius && Math.abs(dz) === radius;
-                if (corner && radius === 2 && Noise.hash3(wx + dx, topY + dy, wz + dz, seed + 33) < 0.55) continue;
-                if (corner && dy === 1) continue;
-                placeIfAir(chunk, ox + dx, topY + dy, oz + dz, B.LEAVES);
-              }
-            }
-          }
-          for (let i = 0; i < trunk; i++) placeForce(chunk, ox, surfaceY + 1 + i, oz, B.LOG);
+          const birch = biome === 'forest' ? r2 < 0.4 : r2 < 0.2;
+          if (birch) roundTree(g, 5 + Math.floor(r * 3), leaf, log, W.birch.log, W.birch.leaves, 2, wx, wz, seed);
+          else roundTree(g, 4 + Math.floor(r * 3), leaf, log, B.LOG, B.LEAVES, 2, wx, wz, seed);
         }
+      }
+    }
+  }
+
+  // oak, birch and the big jungle tree: a trunk with a rounded crown
+  function roundTree(g, trunk, leaf, log, logId, leafId, radius, wx, wz, seed) {
+    const topY = g + trunk - 1;
+    for (let dy = -2; dy <= 1; dy++) {
+      const rad = dy <= -1 ? radius : dy === 0 ? Math.max(1, radius - 1) : 1;
+      for (let dx = -rad; dx <= rad; dx++) {
+        for (let dz = -rad; dz <= rad; dz++) {
+          const corner = Math.abs(dx) === rad && Math.abs(dz) === rad;
+          if (corner && rad >= 2 && Noise.hash3(wx + dx, topY + dy, wz + dz, seed + 33) < 0.55) continue;
+          if (corner && dy === 1) continue;
+          if (rad === 3 && dx * dx + dz * dz > 10) continue;
+          leaf(dx, topY + dy, dz, leafId);
+        }
+      }
+    }
+    for (let i = 0; i < trunk; i++) log(0, g + i, 0, logId);
+  }
+
+  // spruce: a narrow cone of needles, wider and narrower by turns
+  function spruce(g, trunk, leaf, log, wood, wx, wz, seed) {
+    const top = g + trunk;
+    // a pointed tip of leaves over the trunk
+    leaf(0, top, 0, wood.leaves);
+    leaf(0, top - 1, 0, wood.leaves);
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) leaf(dx, top - 1, dz, wood.leaves);
+    for (let k = 1; k < trunk - 1; k++) {
+      const y = top - 1 - k;
+      const rad = k % 2 === 1 ? Math.min(3, 1 + Math.floor(k / 3)) : Math.max(1, Math.floor(k / 3));
+      for (let dx = -rad; dx <= rad; dx++) {
+        for (let dz = -rad; dz <= rad; dz++) {
+          if (dx * dx + dz * dz > rad * rad + (rad > 1 ? 1 : 0)) continue;
+          if (dx === 0 && dz === 0) continue;
+          leaf(dx, y, dz, wood.leaves);
+        }
+      }
+    }
+    for (let i = 0; i < trunk - 1; i++) log(0, g + i, 0, wood.log);
+  }
+
+  // a jungle bush: one log in a mound of leaves
+  function jungleBush(g, leaf, log, wood, wx, wz, seed) {
+    log(0, g, 0, wood.log);
+    for (let dy = 0; dy <= 1; dy++) {
+      const rad = dy === 0 ? 2 : 1;
+      for (let dx = -rad; dx <= rad; dx++) {
+        for (let dz = -rad; dz <= rad; dz++) {
+          if (Math.abs(dx) === rad && Math.abs(dz) === rad && Noise.hash3(wx + dx, g + dy, wz + dz, seed + 35) < 0.6) continue;
+          leaf(dx, g + dy, dz, wood.leaves);
+        }
+      }
+    }
+  }
+
+  // acacia: a trunk that leans off to one side under a flat, wide crown
+  function acacia(g, r, r2, leaf, log, wood) {
+    const dir = [[1, 0], [-1, 0], [0, 1], [0, -1]][Math.floor(r2 * 4) % 4];
+    const straight = 2 + Math.floor(r * 2);
+    let x = 0, z = 0, y = g;
+    for (let i = 0; i < straight; i++) log(0, y++, 0, wood.log);
+    for (let i = 0; i < 2; i++) { x += dir[0]; z += dir[1]; log(x, y++, z, wood.log); }
+    const top = y;
+    for (let dx = -3; dx <= 3; dx++) {
+      for (let dz = -3; dz <= 3; dz++) {
+        if (dx * dx + dz * dz > 10) continue;
+        leaf(x + dx, top, z + dz, wood.leaves);
+        if (dx * dx + dz * dz <= 2) leaf(x + dx, top + 1, z + dz, wood.leaves);
       }
     }
   }
@@ -829,7 +908,7 @@
       if (!d) continue;
       EMIT[i] = d.light || 0;
       // water and leaves let light through but take a little of it
-      DIM[i] = (d.liquid || i === B.LEAVES) ? 1 : 0;
+      DIM[i] = (d.liquid || d.leaves) ? 1 : 0;
     }
   }
 
@@ -1159,7 +1238,7 @@
             // the shared corners make one continuous surface, so faces between
             // two cells of the same fluid are never seen
             if (isLiquid && FLUIDK[nb] === FLUIDK[id]) continue;
-            else if (nb === id && !OPAQUE[id] && id !== B.LEAVES) continue;
+            else if (nb === id && !OPAQUE[id] && !LEAFL[id]) continue;
 
             if ((inLiquidMesh ? lVert : sVert) + 4 > capFaces * 4) ensureScratch(capFaces * 2);
             const P = inLiquidMesh ? lPos : sPos;

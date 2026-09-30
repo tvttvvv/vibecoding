@@ -401,6 +401,14 @@
     }
     amount = Math.max(0, Math.round(amount * 2) / 2);
     if (amount <= 0) return;
+    // the golden hearts from Absorption go first
+    if (this.absorption > 0) {
+      const soak = Math.min(this.absorption, amount);
+      this.absorption -= soak;
+      amount -= soak;
+      this.hurtFlash = 0.35;
+      if (amount <= 0) { if (this.onHurt) this.onHurt(); return; }
+    }
     this.health = Math.max(0, this.health - amount);
     this.hurtFlash = 0.35;
     this.hurtTilt = 1;

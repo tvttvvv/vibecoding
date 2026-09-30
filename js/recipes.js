@@ -67,6 +67,8 @@
     ['#', I.DIAMOND, 'diamond']
   ];
 
+  // each wood's logs make its own planks (these come first, and match exactly)
+  for (const k in B.WOODS) list.push(Object.assign(build({ out: B.WOODS[k].planks, count: 4, ingredients: [B.WOODS[k].log] }), { exact: true }));
   shapeless(B.PLANKS, 4, [B.LOG]);
   shaped(I.STICK, 4, ['#', '#'], { '#': B.PLANKS });
   shaped(B.CRAFTING_TABLE, 1, ['##', '##'], { '#': B.PLANKS });
@@ -164,7 +166,18 @@
     return trim(cells, w, h);
   }
 
+  // any planks count as planks, any logs as logs, any leaves as leaves
+  function canon(id) {
+    const d = B.byId[id];
+    if (!d || !Items.isBlock(id)) return id;
+    if (d.planks) return B.PLANKS;
+    if (d.log) return B.LOG;
+    if (d.leaves) return B.LEAVES;
+    return id;
+  }
+
   function matches(recipe, grid, w) {
+    if (!recipe.exact) grid = grid.map((s) => (s ? { id: canon(s.id), count: s.count } : s));
     if (recipe.ingredients) {
       const have = grid.filter(Boolean).map((s) => s.id).sort();
       const want = recipe.ingredients.slice().sort();
@@ -198,5 +211,8 @@
     return true;
   }
 
-  global.Recipes = { list, find, matches, canCraft, fitsGrid, smelting, gridIds };
+  for (const k in B.WOODS) smelting[B.WOODS[k].log] = I.COAL;
+  shaped(I.GOLDEN_APPLE, 1, ['###', '#A#', '###'], { '#': I.GOLD_INGOT, A: I.APPLE });
+
+  global.Recipes = { list, find, matches, canCraft, fitsGrid, smelting, gridIds, canon };
 })(window);

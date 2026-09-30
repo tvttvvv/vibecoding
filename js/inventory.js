@@ -106,10 +106,31 @@
     return Math.min(0.8, n * 0.04);
   };
 
+  // (what the recipe book sees: birch planks also count as planks)
   Inventory.prototype.counts = function () {
     const out = {};
-    for (const s of this.slots) if (s) out[s.id] = (out[s.id] || 0) + s.count;
+    for (const s of this.slots) {
+      if (!s) continue;
+      out[s.id] = (out[s.id] || 0) + s.count;
+      const c = global.Recipes ? Recipes.canon(s.id) : s.id;
+      if (c !== s.id) out[c] = (out[c] || 0) + s.count;
+    }
     return out;
+  };
+
+  // take one of this, or of anything that stands in for it in a recipe;
+  // returns what was taken
+  Inventory.prototype.takeOneLike = function (id) {
+    if (this.takeFromSlots(id, 1) > 0) return id;
+    for (let i = 0; i < this.slots.length; i++) {
+      const s = this.slots[i];
+      if (!s || Recipes.canon(s.id) !== id) continue;
+      const got = s.id;
+      s.count -= 1;
+      if (s.count <= 0) this.slots[i] = null;
+      return got;
+    }
+    return 0;
   };
 
   Inventory.prototype.count = function (id) {

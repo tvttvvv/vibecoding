@@ -492,6 +492,20 @@
   const CALCITE = simple(397, '방해석', T.calcite, { hardness: 0.75, tool: 'pickaxe', tier: 1 });
   const SMOOTH_BASALT = simple(398, '매끄러운 현무암', T.smooth_basalt, { hardness: 1.25, tool: 'pickaxe', tier: 1 });
 
+  // ---- more kinds of tree: birch, spruce, jungle, acacia --------------------
+  // Each has its own log, leaves and planks; in recipes any planks (or logs)
+  // will do, the way Minecraft lets you build a chest from mixed woods.
+  const WOODS = {};
+  [['birch', '자작나무', 400], ['spruce', '가문비나무', 403], ['jungle', '정글나무', 406], ['acacia', '아카시아나무', 409]].forEach(([k, n, id]) => {
+    def(id, n + ' 원목', { top: T[k + '_log_top'], side: T[k + '_log'], bottom: T[k + '_log_top'], hardness: 2.0, tool: 'axe', log: true });
+    simple(id + 1, n + ' 잎', T[k + '_leaves'], { hardness: 0.2, opaque: false, drop: 0, leaves: true });
+    simple(id + 2, n + ' 판자', T[k + '_planks'], { hardness: 2.0, tool: 'axe', planks: true });
+    WOODS[k] = { log: id, leaves: id + 1, planks: id + 2 };
+  });
+  byId[LOG].log = true;
+  byId[LEAVES].leaves = true;
+  byId[PLANKS].planks = true;
+
   byId[RS_TORCH].litId = byId[RS_TORCH_OFF].litId = RS_TORCH;
   byId[RS_TORCH].offId = byId[RS_TORCH_OFF].offId = RS_TORCH_OFF;
 
@@ -558,7 +572,8 @@
     REPEATER, COMPARATOR, PISTON, STICKY_PISTON, OBSERVER,
     NETHER_BRICKS, NETHER_FENCE, OAK_FENCE, BREWING_STAND, MELON,
     END_STONE, STONE_BRICKS, MOSSY_STONE_BRICKS, END_FRAME, DRAGON_EGG,
-    MOSSY_COBBLESTONE, SPAWNER, COBWEB, RAIL, AMETHYST_BLOCK, AMETHYST_CLUSTER, CALCITE, SMOOTH_BASALT
+    MOSSY_COBBLESTONE, SPAWNER, COBWEB, RAIL, AMETHYST_BLOCK, AMETHYST_CLUSTER, CALCITE, SMOOTH_BASALT,
+    400, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411
   ];
 
   global.Blocks = {
@@ -576,6 +591,7 @@
     NETHER_BRICKS, NETHER_FENCE, OAK_FENCE, NETHER_WART, BREWING_STAND, MELON,
     END_STONE, STONE_BRICKS, MOSSY_STONE_BRICKS, END_FRAME, END_FRAME_EYE, END_PORTAL, DRAGON_EGG,
     MOSSY_COBBLESTONE, SPAWNER, COBWEB, RAIL, AMETHYST_BLOCK, AMETHYST_CLUSTER, CALCITE, SMOOTH_BASALT,
+    WOODS,
     byId, tileFor, isOpaque, isSolid, isLiquid, mineTime, canHarvest, iconFor, creativeList
   };
 })(window);

@@ -786,6 +786,73 @@
     for (let i = 0; i < 9; i++) { api.put(4 + i, 12 - i, '#a67ae0'); api.put(5 + i, 12 - i, '#7248b0'); api.put(4 + i, 11 - i, '#e0c8ff'); }
   });
 
+  // ---- more kinds of tree -----------------------------------------------------
+  function barkTile(base, shades, dark) {
+    return (api) => {
+      api.fill(base);
+      for (let x = 0; x < TILE; x++) {
+        const col = pick(shades);
+        for (let y = 0; y < TILE; y++) api.put(x, y, rnd() < 0.25 ? pick(dark) : col);
+      }
+    };
+  }
+  function ringsTile(a, b, edge) {
+    return (api) => {
+      for (let x = 0; x < TILE; x++) for (let y = 0; y < TILE; y++) {
+        const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
+        api.put(x, y, d > 7 ? edge : Math.floor(d) % 2 === 0 ? a : b);
+      }
+    };
+  }
+  function leafTile(colors, gap) {
+    return (api) => {
+      api.clear();
+      for (let x = 0; x < TILE; x++) for (let y = 0; y < TILE; y++) {
+        if (rnd() < gap) continue;
+        api.put(x, y, pick(colors));
+      }
+    };
+  }
+  function planksTile(colors, line, knot) {
+    return (api) => {
+      for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) api.put(x, y, pick(colors));
+      for (let x = 0; x < TILE; x++) { api.put(x, 0, line); api.put(x, 5, line); api.put(x, 10, line); api.put(x, 15, line); }
+      api.put(3, 2, knot); api.put(4, 2, knot); api.put(11, 7, knot); api.put(7, 12, knot);
+    };
+  }
+  // birch: white bark with black marks
+  define('birch_log', (api) => {
+    speckle(api, '#e3e0d6', ['#d8d5ca', '#eeebe2', '#cfccc0'], 0.5);
+    for (let i = 0; i < 9; i++) {
+      const x = Math.floor(rnd() * 14), y = Math.floor(rnd() * TILE), w = 1 + Math.floor(rnd() * 3);
+      for (let k = 0; k < w; k++) api.put(x + k, y, pick(['#2a2a2a', '#3a3a3a']));
+    }
+  });
+  define('birch_log_top', ringsTile('#d8c89a', '#c4b27e', '#e3e0d6'));
+  define('birch_leaves', leafTile(['#6a9a3a', '#5a8a30', '#78a846', '#4e7c28'], 0.12));
+  define('birch_planks', planksTile(['#c8b77a', '#d2c286', '#bca96c'], '#9c8a54', '#a8955e'));
+  // spruce: dark bark, dark needles
+  define('spruce_log', barkTile('#3e2c1a', ['#3a2916', '#45311d', '#35251a', '#4a3520'], ['#2a1e10', '#553e26']));
+  define('spruce_log_top', ringsTile('#7a5a34', '#664a2a', '#3e2c1a'));
+  define('spruce_leaves', leafTile(['#2c4f2c', '#244426', '#355c34', '#1e3a20'], 0.1));
+  define('spruce_planks', planksTile(['#6f4f2e', '#7a5834', '#644628'], '#4a331c', '#533a20'));
+  // jungle: tan bark, bright broad leaves
+  define('jungle_log', barkTile('#5a4a26', ['#56461f', '#665230', '#4e3f1c', '#6e5a34'], ['#3e3216', '#7a6440']));
+  define('jungle_log_top', ringsTile('#b08a5a', '#9a764a', '#5a4a26'));
+  define('jungle_leaves', leafTile(['#2f8a1e', '#3a9a26', '#28781a', '#46aa2e'], 0.08));
+  define('jungle_planks', planksTile(['#a8784e', '#b48456', '#9c6c44'], '#7a5230', '#855a36'));
+  // acacia: grey bark, orange wood, olive leaves
+  define('acacia_log', barkTile('#6a6560', ['#65605a', '#726c66', '#5c5752', '#7a746c'], ['#4e4a44', '#85807a']));
+  define('acacia_log_top', ringsTile('#c0643a', '#a8542e', '#6a6560'));
+  define('acacia_leaves', leafTile(['#6a8a2a', '#5c7a22', '#789a34', '#52701e'], 0.14));
+  define('acacia_planks', planksTile(['#b85a30', '#c46636', '#a8502a'], '#84401e', '#8e4622'));
+  define('item_golden_apple', (api) => {
+    api.clear();
+    rectOn(api, 4, 5, 8, 8, '#f0c635'); rectOn(api, 3, 6, 10, 6, '#f0c635'); rectOn(api, 5, 13, 6, 1, '#c8980f');
+    rectOn(api, 5, 6, 2, 2, '#fff3a0'); rectOn(api, 11, 8, 1, 3, '#c8980f');
+    rectOn(api, 7, 2, 1, 3, '#6b4a2a'); rectOn(api, 8, 2, 3, 2, '#5d9c3c');
+  });
+
   define('chest_top', (api) => {
     speckle(api, '#a0712f', ['#8b5f24', '#b58239', '#946826'], 0.5);
     for (let i = 0; i < TILE; i++) { api.put(i, 0, '#4a3312'); api.put(i, 15, '#4a3312'); api.put(0, i, '#4a3312'); api.put(15, i, '#4a3312'); }

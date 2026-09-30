@@ -454,6 +454,14 @@
     };
     this.armorIcons = mk('armorRow', 'statIcon', 10);
     this.hearts = mk('healthRow', 'statIcon', 10);
+    // Absorption's golden hearts, after the red ones
+    this.goldHearts = [];
+    for (let i = 0; i < 4; i++) {
+      const g = document.createElement('img');
+      g.className = 'statIcon goldHeart hidden';
+      el('healthRow').appendChild(g);
+      this.goldHearts.push(g);
+    }
     this.foods = mk('foodRow', 'statIcon', 10);
     this.bubbles = mk('airRow', 'bubble', 10);
   };
@@ -509,6 +517,15 @@
   // drag across slots = drop one item into each, like Minecraft
   UI.initSlotGestures = function () {
     const panel = el('screenPanel');
+    // holding an item and tapping outside the window throws it out, as in Minecraft
+    const backdrop = el('screen');
+    let downOnBackdrop = false;
+    backdrop.addEventListener('pointerdown', (e) => { downOnBackdrop = e.target === backdrop; });
+    backdrop.addEventListener('pointerup', (e) => {
+      if (!downOnBackdrop || e.target !== backdrop) return;
+      downOnBackdrop = false;
+      this.throwHeld();
+    });
     const LONG_MS = 300;
     const MOVE_TOL = 9;
     let active = null;
@@ -627,6 +644,17 @@
     this.renderScreen();
   };
 
+  UI.throwHeld = function () {
+    const inv = this.game.inventory;
+    if (!inv.held || !this.screen) return;
+    const stack = inv.held;
+    inv.held = null;
+    this.game.throwStack(stack);
+    inv.changed();
+    this.renderScreen();
+    this.toast(Items.name(stack.id) + (stack.count > 1 ? ' ' + stack.count + '개' : '') + '를 버렸어요', 1400);
+  };
+
   UI.dropOneInto = function (kind, index) {
     const inv = this.game.inventory;
     if (!inv.held || kind === 'result' || kind === 'fout') return;
@@ -729,7 +757,7 @@
     const showAir = airRatio < 0.999;
     // showAir must be part of the signature: the last tick of refilling air
     // rounds to the same bucket as full, and the row would never hide again
-    const sig = player.health + '|' + player.food + '|' +
+    const sig = player.health + '|' + (player.absorption || 0) + '|' + player.food + '|' +
       Math.ceil(airRatio * 10) + '|' + showAir + '|' + armorPts;
     if (sig === this._statSig) return;
     this._statSig = sig;
@@ -744,6 +772,11 @@
       this.armorIcons[i].src = a >= 2 ? I.armorFull : a >= 1 ? I.armorHalf : I.armorEmpty;
     }
     el('armorRow').classList.toggle('hidden', armorPts <= 0);
+    for (let i = 0; i < this.goldHearts.length; i++) {
+      const g = (player.absorption || 0) - i * 2;
+      this.goldHearts[i].classList.toggle('hidden', g <= 0);
+      if (g > 0) this.goldHearts[i].src = g >= 2 ? I.heartFull : I.heartHalf;
+    }
 
     el('airRow').classList.toggle('hidden', !showAir);
     if (showAir) {
@@ -929,15 +962,16 @@
 
     if (recipe.ingredients) {
       for (let i = 0; i < recipe.ingredients.length; i++) {
-        const id = recipe.ingredients[i];
-        if (inv.takeFromSlots(id, 1) > 0) inv.craft[i] = inv.makeStack(id, 1);
+        const got = recipe.exact ? (inv.takeFromSlots(recipe.ingredients[i], 1) > 0 ? recipe.ingredients[i] : 0) : inv.takeOneLike(recipe.ingredients[i]);
+        if (got) inv.craft[i] = inv.makeStack(got, 1);
       }
     } else {
       for (let y = 0; y < recipe.h; y++) {
         for (let x = 0; x < recipe.w; x++) {
           const id = recipe.cells[y * recipe.w + x];
           if (!id) continue;
-          if (inv.takeFromSlots(id, 1) > 0) inv.craft[y * 3 + x] = inv.makeStack(id, 1);
+          const got = inv.takeOneLike(id);
+          if (got) inv.craft[y * 3 + x] = inv.makeStack(got, 1);
         }
       }
     }
@@ -1035,7 +1069,7 @@
     if (this.screen.kind === 'inventory') {
       const note = document.createElement('p');
       note.className = 'invNote';
-      note.textContent = '2x2 작업칸입니다. 3x3은 제작대를 설치하고 누르세요. 누르기: 전체 옮기기 · 길게 누르기: 반으로 나누기 / 1개만 놓기 · 꾹 눌러 스와이프: 지나간 칸마다 1개씩';
+      note.textContent = '2x2 작업칸입니다. 3x3은 제작대를 설치하고 누르세요. 누르기: 전체 옮기기 · 길게 누르기: 반으로 나누기 / 1개만 놓기 · 꾹 눌러 스와이프: 지나간 칸마다 1개씩 · 아이템을 집고 창 밖을 누르면 버리기';
       body.appendChild(note);
     }
   };
