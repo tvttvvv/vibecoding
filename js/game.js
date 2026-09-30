@@ -1081,7 +1081,7 @@
     g.textBaseline = 'middle';
     g.fillText(text, pad, c.height / 2 + 1);
     const tex = new THREE.CanvasTexture(c);
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true, fog: false }));
     sprite.scale.set(c.width / 44 * 0.45, 0.45, 1);
     sprite.position.y = 2.15;
     sprite.renderOrder = 10;
@@ -1114,7 +1114,10 @@
     box(0.08, 0.08, 0.02, 0xffffff, -0.11, 0.02, -0.24, head);
     box(0.08, 0.08, 0.02, 0xffffff, 0.11, 0.02, -0.24, head);
 
-    group.add(this.nameTag(name));
+    const tag = this.nameTag(name);
+    group.add(tag);
+    group.userData.tag = tag;
+    group.userData.tagScale = [tag.scale.x, tag.scale.y];
     group.userData.head = head;
     return group;
   };
@@ -1154,6 +1157,12 @@
       a.group.rotation.y = p.yaw;
       this.shadeGroup(a.group, this.lightAtPoint(a.group.position.x, a.group.position.y + 1.5, a.group.position.z));
       a.group.userData.head.rotation.x = Math.max(-1.2, Math.min(1.2, -p.pitch));
+      // far away, the name grows so it can still be read, through the hills
+      const pp = this.player.pos, gp = a.group.position;
+      const far = Math.max(1, Math.hypot(gp.x - pp.x, gp.y - pp.y, gp.z - pp.z) / 14);
+      const tag = a.group.userData.tag, ts = a.group.userData.tagScale;
+      tag.scale.set(ts[0] * far, ts[1] * far, 1);
+      tag.position.y = 2.15 + (far - 1) * 0.25;
     }
 
     for (const id in this.avatars) {
@@ -1161,6 +1170,114 @@
       this.scene.remove(this.avatars[id].group);
       delete this.avatars[id];
     }
+  };
+
+  // ------------------------------------------------------------ finding each other
+  // A bar at the top of the screen shows which way every other player is and
+  // how far; the one being tracked (picked in the room screen) stands out.
+  const DIM_NAMES = { overworld: '오버월드', nether: '네더', end: '엔드' };
+  Game.dimName = function (d) { return DIM_NAMES[d || 'overworld'] || d; };
+
+  Game.playerColor = function (name) {
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+    return 'hsl(' + (h % 360) + ',85%,62%)';
+  };
+
+  // where another player is, as seen from here
+  Game.bearingTo = function (p) {
+    const me = this.player;
+    const dx = p.x - me.pos.x, dz = p.z - me.pos.z, dy = p.y - me.pos.y;
+    const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw);
+    return {
+      angle: Math.atan2(fx * dz - fz * dx, fx * dx + fz * dz),   // + is to the right
+      dist: Math.hypot(dx, dy, dz),
+      dy
+    };
+  };
+
+  Game.updateLocator = function (dt) {
+    const box = document.getElementById('locator');
+    const on = Net.active && this.started && Object.keys(Net.players).length > 0 && this.settingsLocator !== false;
+    if (!on) {
+      if (!box.classList.contains('hidden')) box.classList.add('hidden');
+      this._locMarks = {};
+      document.getElementById('locatorTrack').innerHTML = '';
+      return;
+    }
+    box.classList.remove('hidden');
+    // fit between the buttons at the top right, or drop below them on a narrow screen
+    const W = window.innerWidth, tr = document.getElementById('topRight').getBoundingClientRect();
+    const room = (W / 2 - (W - tr.left) - 14) * 2;
+    const below = room < 200;
+    const width = below ? Math.min(340, W * 0.6) : Math.min(340, room);
+    let top = below ? tr.bottom + 6 : 10;
+    if (!document.getElementById('bossBar').classList.contains('hidden')) top = Math.max(top, 58);
+    const layout = width + ':' + top;
+    if (box._layout !== layout) { box._layout = layout; box.style.width = width + 'px'; box.style.top = top + 'px'; }
+    const track = document.getElementById('locatorTrack');
+    const marks = this._locMarks || (this._locMarks = {});
+    const HALF = 1.2;                     // radians from the middle to either end of the bar
+    let note = '';
+    for (const id in Net.players) {
+      const p = Net.players[id];
+      let m = marks[id];
+      if (!m) {
+        m = marks[id] = document.createElement('div');
+        m.className = 'locMark';
+        m.innerHTML = '<i class="locDot"></i><span class="locName"></span><span class="locDist"></span>';
+        track.appendChild(m);
+      }
+      const tracked = UI.trackId === id;
+      if ((p.dim || 'overworld') !== this.dimension) {
+        m.style.display = 'none';
+        if (tracked) note = p.name + ' 님은 ' + this.dimName(p.dim) + '에 있어요';
+        continue;
+      }
+      const b = this.bearingTo(p);
+      const edge = Math.abs(b.angle) > HALF;
+      const t = Math.max(-1, Math.min(1, b.angle / HALF));
+      m.style.display = '';
+      m.style.left = (50 + t * 50) + '%';
+      m.classList.toggle('tracked', tracked);
+      m.classList.toggle('edgeL', edge && b.angle < 0);
+      m.classList.toggle('edgeR', edge && b.angle > 0);
+      const color = this.playerColor(p.name);
+      if (m._color !== color) { m._color = color; m.firstChild.style.background = color; }
+      const name = p.name;
+      if (m.children[1].textContent !== name) m.children[1].textContent = name;
+      const d = Math.round(b.dist);
+      const arrow = b.dy > 4 ? ' ▲' : b.dy < -4 ? ' ▼' : '';
+      const dist = d + 'm' + arrow;
+      if (m.children[2].textContent !== dist) m.children[2].textContent = dist;
+      if (tracked && edge) note = p.name + ' 님은 ' + (b.angle < 0 ? '왼쪽' : '오른쪽') + ' 뒤에 있어요';
+    }
+    for (const id in marks) {
+      if (Net.players[id]) continue;
+      marks[id].remove();
+      delete marks[id];
+      if (UI.trackId === id) UI.trackId = null;
+    }
+    const n = document.getElementById('locatorNote');
+    if (n.textContent !== note) n.textContent = note;
+    // keep the numbers in an open room screen current
+    this._roomInfoT = (this._roomInfoT || 0) + dt;
+    if (this._roomInfoT > 0.4) { this._roomInfoT = 0; UI.refreshRoomInfo(); }
+  };
+
+  // creative only: go straight to another player
+  Game.teleportToPlayer = function (id) {
+    const p = Net.players[id];
+    if (!p || this.mode !== 'creative') return false;
+    if ((p.dim || 'overworld') !== this.dimension) { UI.toast(p.name + ' 님은 ' + this.dimName(p.dim) + '에 있어서 갈 수 없어요', 2500); return false; }
+    const me = this.player;
+    me.pos.x = p.x + 1; me.pos.y = p.y + 0.5; me.pos.z = p.z;
+    me.vel.x = me.vel.y = me.vel.z = 0;
+    me.fallStartY = me.pos.y;
+    me.flying = true;
+    UI.setFlyButtons(this.mode, true);
+    UI.toast(p.name + ' 님에게 이동했어요', 2000);
+    return true;
   };
 
   // ------------------------------------------------------------ multiplayer
@@ -3480,6 +3597,7 @@
       if (Net.isHost) Net.sendMobs(Mobs.snapshot());
     }
     this.updateAvatars(dt);
+    this.updateLocator(dt);
 
     const aim = this.mining.target;
     if (aim && !this.paused && !p.dead) {

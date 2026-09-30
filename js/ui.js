@@ -411,15 +411,75 @@
 
     const list = el('roomPlayers');
     list.innerHTML = '';
-    const add = (name, tag) => {
+    this.roomInfo = {};
+    const game = this.game;
+    const add = (id, name, tag) => {
       const row = document.createElement('div');
       row.className = 'roomRow';
-      row.textContent = name + (tag ? ' · ' + tag : '');
+      const head = document.createElement('div');
+      head.className = 'roomName';
+      if (id) {
+        const dot = document.createElement('i');
+        dot.className = 'locDot';
+        dot.style.background = game.playerColor(name);
+        head.appendChild(dot);
+      }
+      head.appendChild(document.createTextNode(name + (tag ? ' · ' + tag : '')));
+      row.appendChild(head);
+      const info = document.createElement('div');
+      info.className = 'roomInfo';
+      row.appendChild(info);
+      this.roomInfo[id || 'me'] = info;
+      if (id) {
+        const btns = document.createElement('div');
+        btns.className = 'roomBtns';
+        const find = document.createElement('button');
+        find.className = 'mcbtn small wide';
+        const label = () => { find.textContent = this.trackId === id ? '찾는 중 ✓' : '찾기'; };
+        label();
+        Controls.bindTap(find, () => {
+          this.trackId = this.trackId === id ? null : id;
+          this.renderRoom();
+          if (this.trackId) {
+            el('roomScreen').classList.add('hidden');
+            this.toast('화면 위 막대에서 ' + name + ' 님 쪽을 보여줘요', 2500);
+          }
+        });
+        btns.appendChild(find);
+        if (game.mode === 'creative') {
+          const go = document.createElement('button');
+          go.className = 'mcbtn small wide';
+          go.textContent = '순간이동';
+          Controls.bindTap(go, () => { if (game.teleportToPlayer(id)) el('roomScreen').classList.add('hidden'); });
+          btns.appendChild(go);
+        }
+        row.appendChild(btns);
+      }
       list.appendChild(row);
     };
-    add(Net.name, Net.isHost ? '방장 (나)' : '나');
+    add(null, Net.name, Net.isHost ? '방장 (나)' : '나');
     for (const id in Net.players) {
-      add(Net.players[id].name, id === 'host' ? '방장' : '');
+      add(id, Net.players[id].name, id === 'host' ? '방장' : '');
+    }
+    this.refreshRoomInfo(true);
+  };
+
+  // coordinates, where each one is and how far, kept up to date while the room screen is open
+  UI.refreshRoomInfo = function (force) {
+    if (!this.roomInfo || (!force && el('roomScreen').classList.contains('hidden'))) return;
+    const game = this.game, me = game.player;
+    if (!me) return;
+    const xyz = (x, y, z) => 'X ' + Math.floor(x) + ' · Y ' + Math.floor(y) + ' · Z ' + Math.floor(z);
+    for (const id in this.roomInfo) {
+      let text;
+      if (id === 'me') text = xyz(me.pos.x, me.pos.y, me.pos.z) + ' · ' + game.dimName(game.dimension);
+      else {
+        const p = Net.players[id];
+        if (!p) continue;
+        text = xyz(p.x, p.y, p.z) + ' · ' + game.dimName(p.dim);
+        if ((p.dim || 'overworld') === game.dimension) text += ' · ' + Math.round(game.bearingTo(p).dist) + 'm 떨어짐';
+      }
+      if (this.roomInfo[id].textContent !== text) this.roomInfo[id].textContent = text;
     }
   };
 

@@ -652,3 +652,42 @@ body.onTitle #rightControls, body.onTitle #topRight, body.onTitle #crosshair { d
 /* Absorption: golden hearts */
 .goldHeart { filter: sepia(1) saturate(5) hue-rotate(5deg) brightness(1.15); }
 .goldHeart.hidden { display: none; }
+
+/* ---------------------------------------------------------------- player locator */
+#locator {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+  width: min(340px, 46vw); pointer-events: none; z-index: 19;
+}
+#locatorTrack {
+  position: relative; height: 8px; border-radius: 4px;
+  background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.35);
+}
+#locatorTrack::after {
+  content: ''; position: absolute; left: 50%; top: -3px; width: 2px; height: 12px;
+  background: rgba(255,255,255,0.7); transform: translateX(-50%);
+}
+.locMark {
+  position: absolute; top: -3px; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; white-space: nowrap;
+  font-size: 11px; line-height: 1.2; color: #fff; text-shadow: 1px 1px 0 #000;
+}
+.locDot {
+  display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid #fff; box-shadow: 0 0 3px #000; flex: none;
+}
+.locMark .locName { margin-top: 2px; font-weight: 700; }
+.locMark .locDist { opacity: 0.85; }
+.locMark.tracked .locDot { width: 16px; height: 16px; margin-top: -2px; border-color: #ffe14d; }
+.locMark.tracked .locName { color: #ffe14d; font-size: 13px; }
+.locMark.edgeL .locDot, .locMark.edgeR .locDot { opacity: 0.7; }
+.locMark.edgeL .locName::before { content: '◀ '; }
+.locMark.edgeR .locName::after { content: ' ▶'; }
+#locatorNote {
+  margin-top: 30px; text-align: center; font-size: 12px; color: #ffe14d;
+  text-shadow: 1px 1px 0 #000;
+}
+#locatorNote:empty { display: none; }
+.roomName { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.roomInfo { font-size: 12px; opacity: 0.8; margin-top: 3px; }
+.roomBtns { display: flex; gap: 6px; margin-top: 6px; }
+.roomBtns .mcbtn.wide { width: auto; padding: 0 12px; font-size: 13px; }
