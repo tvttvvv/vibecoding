@@ -36,31 +36,60 @@
     return w;
   }
 
+  // more ways through home routers and mobile networks than the defaults
+  const PEER_OPTS = {
+    debug: 0,
+    config: {
+      iceServers: [
+        { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] },
+        { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' }
+      ],
+      sdpSemantics: 'unified-plan'
+    }
+  };
+
   const peerTransport = {
     createHost(code, cb) {
       if (typeof Peer === 'undefined') { cb.error('no-peerjs'); return null; }
-      const peer = new Peer(ID_PREFIX + code, { debug: 0 });
-      peer.on('open', () => cb.ready(code));
+      const peer = new Peer(ID_PREFIX + code, PEER_OPTS);
+      let opened = false, closed = false, retry = 0;
+      // the link to the matchmaking server can drop (sleeping tablet, a
+      // network change); the room keeps its players and quietly signs back
+      // in under the same code so new people can still find it
+      const reconnect = () => {
+        if (closed || peer.destroyed || !peer.disconnected) return;
+        retry++;
+        setTimeout(() => { if (!closed && !peer.destroyed && peer.disconnected) { try { peer.reconnect(); } catch (e) { reconnect(); } } }, Math.min(15000, 1000 * retry));
+      };
+      peer.on('open', () => { retry = 0; if (!opened) { opened = true; cb.ready(code); } });
+      peer.on('disconnected', reconnect);
       peer.on('connection', (conn) => {
         conn.on('open', () => cb.connection(wrap(conn)));
       });
-      peer.on('error', (err) => cb.error(err && err.type ? err.type : String(err)));
-      return { close: () => { try { peer.destroy(); } catch (e) { /* noop */ } } };
+      peer.on('error', (err) => {
+        const type = err && err.type ? err.type : String(err);
+        if (!opened) { cb.error(type); return; }
+        // once the room is open, only losing the server matters, and that heals itself
+        if (peer.disconnected) reconnect();
+      });
+      return { close: () => { closed = true; try { peer.destroy(); } catch (e) { /* noop */ } } };
     },
 
     connectTo(code, cb) {
       if (typeof Peer === 'undefined') { cb.error('no-peerjs'); return null; }
-      const peer = new Peer({ debug: 0 });
+      const peer = new Peer(PEER_OPTS);
       let settled = false;
+      // give up if the matchmaking server or the host never answers
+      const timer = setTimeout(() => { if (!settled) { settled = true; cb.error('timeout'); } }, 20000);
       peer.on('open', () => {
         const conn = peer.connect(ID_PREFIX + code, { reliable: true });
-        const timer = setTimeout(() => { if (!settled) cb.error('timeout'); }, 15000);
         conn.on('open', () => { settled = true; clearTimeout(timer); cb.ready(wrap(conn)); });
         conn.on('error', () => { if (!settled) { settled = true; clearTimeout(timer); cb.error('peer-unavailable'); } });
       });
       peer.on('error', (err) => {
         if (settled) return;
         settled = true;
+        clearTimeout(timer);
         cb.error(err && err.type ? err.type : String(err));
       });
       return { close: () => { try { peer.destroy(); } catch (e) { /* noop */ } } };
@@ -70,7 +99,7 @@
     // with its players; a code nobody holds comes back null.
     probe(codes, cb) {
       if (typeof Peer === 'undefined' || !codes.length) { cb({}); return; }
-      const peer = new Peer({ debug: 0 });
+      const peer = new Peer(PEER_OPTS);
       const out = {};
       let left = codes.length, done = false;
       const finish = () => {

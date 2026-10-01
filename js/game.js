@@ -1440,7 +1440,7 @@
     handlers.onWelcome = (msg) => this.onWelcome(msg, room.code);
     handlers.onError = (err) => {
       const nobodyHome = err === 'peer-unavailable' || err === 'timeout';
-      if (nobodyHome && this._publicTries <= 3) {
+      if (nobodyHome && this._publicTries <= 12) {
         UI.setLoading(true, '아무도 없어서 내가 방을 엽니다...');
         this._hostPublic(room, mode);
         return;
@@ -1470,9 +1470,10 @@
     };
     handlers.onError = (err) => {
       // someone opened it a moment before us, so join theirs instead
-      if (err === 'unavailable-id' && this._publicTries <= 3) {
+      // (or a host that just vanished still holds the code for a minute: keep trying)
+      if (err === 'unavailable-id' && this._publicTries <= 12) {
         UI.setLoading(true, '공개 서버에 접속하는 중...');
-        this._joinPublic(room, mode);
+        setTimeout(() => this._joinPublic(room, mode), this._publicTries > 2 ? 3000 : 0);
         return;
       }
       this._publicFailed(err);
