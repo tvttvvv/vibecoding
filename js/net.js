@@ -86,8 +86,10 @@
       peer.on('open', () => {
         if (cb.stage) cb.stage('host');
         const conn = peer.connect(ID_PREFIX + code, { reliable: true });
+        // the host is there but the direct link will not form (strict networks)
+        setTimeout(() => { if (!settled) { settled = true; clearTimeout(timer); cb.error('webrtc-failed'); } }, 9000);
         conn.on('open', () => { settled = true; clearTimeout(timer); cb.ready(wrap(conn)); });
-        conn.on('error', () => { if (!settled) { settled = true; clearTimeout(timer); cb.error('peer-unavailable'); } });
+        conn.on('error', () => { if (!settled) { settled = true; clearTimeout(timer); cb.error('webrtc-failed'); } });
       });
       peer.on('error', (err) => {
         if (settled) return;
@@ -109,7 +111,7 @@
         if (done) return;
         done = true;
         clearTimeout(timer);
-        for (const c of codes) if (out[c] === undefined) out[c] = null;
+        for (const c of codes) if (out[c] === undefined) out[c] = { unknown: true };
         setTimeout(() => { try { peer.destroy(); } catch (e) { /* noop */ } }, 200);
         cb(out);
       };
@@ -166,7 +168,19 @@
   // look up several rooms at once: cb({ CODE: info or null })
   Net.probe = function (codes, cb) {
     if (!this.transport.probe) { cb({}); return; }
-    this.transport.probe(codes.map(normalizeCode), cb);
+    this.transport.probe(codes.map(normalizeCode), (out) => {
+      // rooms we could not reach directly: ask through the relay
+      const unsure = Object.keys(out).filter((c) => out[c] && out[c].unknown);
+      if (!unsure.length || !this._relayOK()) {
+        for (const c of unsure) out[c] = null;
+        cb(out);
+        return;
+      }
+      global.Relay.probe(unsure, (found) => {
+        for (const c of unsure) out[c] = found[c] || null;
+        cb(out);
+      });
+    });
   };
   Net.normalizeCode = normalizeCode;
 
@@ -175,6 +189,7 @@
     this.handlers = {};
     clearTimeout(this._watchdog);
     this._parts = null;
+    if (this._relay) { this._relay.close(); this._relay = null; }
     for (const id in this.conns) { this.conns[id].onClose = null; this.conns[id].close(); }
     if (this.hostConn) { this.hostConn.onClose = null; this.hostConn.onData = null; this.hostConn.close(); }
     if (this._socket) this._socket.close();
@@ -232,6 +247,10 @@
     this._socket = this.transport.createHost(code, {
       ready: () => {
         this.active = true;
+        // also take guests who can only come through the relay
+        if (this._relayOK() && !this._relay) {
+          this._relay = global.Relay.host(code, (conn) => this._acceptGuest(conn));
+        }
         if (this.handlers.onReady) this.handlers.onReady(code);
       },
       error: (err) => {
@@ -262,7 +281,7 @@
     if (msg.t === 'info') {
       const names = [this.name];
       for (const id in this.players) names.push(this.players[id].name);
-      conn.send({ t: 'info', players: names.length, max: MAX_GUESTS + 1, names, mode: this.info ? this.info.mode : '', host: this.name });
+      conn.send({ t: 'info', code: this.code, players: names.length, max: MAX_GUESTS + 1, names, mode: this.info ? this.info.mode : '', host: this.name });
       return;
     }
     if (msg.t === 'hello') {
@@ -447,29 +466,47 @@
 
     this._parts = null;
     this._stage('접속 서버에 연결하는 중...');
-    this._socket = this.transport.connectTo(code, {
-      stage: () => this._stage('방장에게 연결하는 중...'),
-      ready: (conn) => {
-        this.hostConn = conn;
-        conn.onData = (msg) => this._guestMessage(msg);
-        conn.onClose = () => {
-          const wasIn = this.active;
-          this.active = false;
-          this._watch(0);
-          // dropped before the world arrived: that is a failed join, not a disconnect
-          if (!wasIn) { const h = this.handlers; this.reset(); if (h.onError) h.onError('timeout'); return; }
-          if (this.handlers.onDisconnect) this.handlers.onDisconnect();
-        };
-        this._stage('세계 정보를 받는 중...');
-        conn.send({ t: 'hello', name: this.name, parts: true });
-        this._watch(WELCOME_WAIT);
-      },
-      error: (err) => {
+    const ready = (conn) => {
+      this.hostConn = conn;
+      conn.onData = (msg) => this._guestMessage(msg);
+      conn.onClose = () => {
+        const wasIn = this.active;
         this.active = false;
         this._watch(0);
-        if (this.handlers.onError) this.handlers.onError(err);
+        // dropped before the world arrived: that is a failed join, not a disconnect
+        if (!wasIn) { const h = this.handlers; this.reset(); if (h.onError) h.onError('timeout'); return; }
+        if (this.handlers.onDisconnect) this.handlers.onDisconnect();
+      };
+      this._stage('세계 정보를 받는 중...');
+      conn.send({ t: 'hello', name: this.name, parts: true });
+      this._watch(WELCOME_WAIT);
+    };
+    const failed = (err) => {
+      this.active = false;
+      this._watch(0);
+      if (this.handlers.onError) this.handlers.onError(err);
+    };
+    const sock = this.transport.connectTo(code, {
+      stage: () => this._stage('방장에게 연결하는 중...'),
+      ready,
+      error: (err) => {
+        // nobody holds the code: nothing to fall back to
+        if (err === 'peer-unavailable' || !this._relayOK()) { failed(err); return; }
+        if (this._socket) { this._socket.close(); this._socket = null; }
+        this._stage('직접 연결이 안 돼서 중계 서버로 연결하는 중...');
+        this._socket = global.Relay.connect(code, {
+          ready,
+          error: () => failed(err === 'webrtc-failed' ? 'timeout' : err)
+        });
       }
     });
+    // (an error can come back before connectTo returns, with the relay already started)
+    if (!this._socket) this._socket = sock;
+  };
+
+  // the relay works next to real direct links (tests can switch it on for theirs)
+  Net._relayOK = function () {
+    return !!global.Relay && (this.transport === peerTransport || !!global.VXL_RELAY_FORCE);
   };
 
   Net._guestMessage = function (msg) {
