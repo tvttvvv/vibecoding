@@ -15,7 +15,9 @@
     { key: 'cancelMine', label: '시점을 돌리면 캐기 취소', type: 'bool', def: 1 },
     { key: 'btnScale', label: '버튼 크기', min: 70, max: 160, step: 5, def: 100, unit: '%' },
     { key: 'volume', label: '소리 크기', min: 0, max: 100, step: 5, def: 70, unit: '%' },
-    { key: 'viewBob', label: '걸을 때 화면 흔들림', type: 'bool', def: 1 }
+    { key: 'viewBob', label: '걸을 때 화면 흔들림', type: 'bool', def: 1 },
+    { key: 'shaders', label: '쉐이더 (햇빛·물결·흔들리는 잎)', type: 'bool', def: 1 },
+    { key: 'shadows', label: '그림자 (느리면 끄세요)', type: 'bool', def: 1 }
   ];
 
   const values = {};

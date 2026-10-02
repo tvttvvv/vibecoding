@@ -1247,6 +1247,303 @@
     }
   }
 
+  // ---- texture pack v2 (remaster): clustered shading, bevels, highlights ----
+  function redraw(name, draw) {
+    const index = TILES[name];
+    if (index === undefined) return;
+    const o = tileOrigin(index);
+    rngState = 0x2545f491 ^ Math.imul(index + 7, 0x9e3779b1);
+    actx.clearRect(o.x, o.y, TILE, TILE);
+    const put = (x, y, color) => { if (x < 0 || y < 0 || x >= TILE || y >= TILE) return; actx.fillStyle = color; actx.fillRect(o.x + x, o.y + y, 1, 1); };
+    const fill = (color) => { actx.fillStyle = color; actx.fillRect(o.x, o.y, TILE, TILE); };
+    const clear = () => actx.clearRect(o.x, o.y, TILE, TILE);
+    draw({ put, fill, clear, rnd, pick });
+  }
+  // tileable value noise, 0..1, with clusters of about `cell` pixels
+  function noiseField(cell, seed) {
+    const n = Math.ceil(TILE / cell);
+    const g = [];
+    for (let i = 0; i < n * n; i++) g.push(rnd());
+    const at = (i, j) => g[((j % n + n) % n) * n + ((i % n + n) % n)];
+    const out = [];
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const fx = x / cell, fy = y / cell, i = Math.floor(fx), j = Math.floor(fy);
+      const tx = fx - i, ty = fy - j, sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
+      const a = at(i, j) + (at(i + 1, j) - at(i, j)) * sx;
+      const b = at(i, j + 1) + (at(i + 1, j + 1) - at(i, j + 1)) * sx;
+      out.push(a + (b - a) * sy);
+    }
+    return out;
+  }
+  function mixNoise(cells, weights) {
+    const fields = cells.map((c) => noiseField(c));
+    const out = new Array(TILE * TILE).fill(0);
+    let tw = 0;
+    for (let k = 0; k < fields.length; k++) { tw += weights[k]; for (let i = 0; i < out.length; i++) out[i] += fields[k][i] * weights[k]; }
+    for (let i = 0; i < out.length; i++) out[i] /= tw;
+    return out;
+  }
+  const ramp = (cols, v) => cols[Math.max(0, Math.min(cols.length - 1, Math.floor(v * cols.length)))];
+  function shaded(api, cols, cells, weights, grain) {
+    const f = mixNoise(cells, weights);
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const v = f[y * TILE + x] + (rnd() - 0.5) * (grain || 0.25);
+      api.put(x, y, ramp(cols, (v - 0.2) / 0.6));
+    }
+  }
+  const GRASS = ['#2f6b25', '#3b7f2b', '#4a9234', '#5aa63c', '#6db849', '#83c95a'];
+  const DIRT = ['#4e3322', '#5f3f2a', '#6f4c33', '#80593c', '#916848', '#a27a57'];
+  const STONE = ['#5b5d61', '#6a6c70', '#797b7f', '#87898d', '#95979b', '#a6a8ac'];
+  const SAND = ['#cdbb85', '#d6c690', '#dfcf9b', '#e7d9a8', '#efe3b6', '#f6ecc4'];
+
+  redraw('grass_top', (api) => {
+    shaded(api, GRASS, [4, 2], [0.7, 0.3], 0.35);
+    for (let i = 0; i < 14; i++) { const x = Math.floor(rnd() * TILE), y = Math.floor(rnd() * TILE); api.put(x, y, '#9ad86a'); api.put(x, y + 1, '#6db849'); }
+    for (let i = 0; i < 8; i++) api.put(Math.floor(rnd() * TILE), Math.floor(rnd() * TILE), '#285b1f');
+  });
+  const dirtDraw = (api) => {
+    shaded(api, DIRT, [4, 2], [0.6, 0.4], 0.3);
+    for (let i = 0; i < 6; i++) { const x = Math.floor(rnd() * 15), y = Math.floor(rnd() * 15); api.put(x, y, '#a89a88'); api.put(x + 1, y, '#8c7e6c'); api.put(x, y + 1, '#6e6050'); }
+    for (let i = 0; i < 10; i++) api.put(Math.floor(rnd() * TILE), Math.floor(rnd() * TILE), '#3c271a');
+  };
+  redraw('dirt', dirtDraw);
+  redraw('grass_side', (api) => {
+    dirtDraw(api);
+    for (let x = 0; x < TILE; x++) {
+      const d = 3 + Math.floor(rnd() * 3) + (rnd() < 0.25 ? 2 : 0);
+      for (let y = 0; y < d; y++) api.put(x, y, ramp(GRASS, 0.9 - y / (d + 2) + (rnd() - 0.5) * 0.25));
+      api.put(x, d, '#3a2a1b');
+    }
+  });
+  redraw('stone', (api) => {
+    shaded(api, STONE, [5, 3, 2], [0.5, 0.3, 0.2], 0.22);
+    // a few cracks and glints
+    for (let k = 0; k < 3; k++) { let x = Math.floor(rnd() * TILE), y = Math.floor(rnd() * TILE); for (let s = 0; s < 4; s++) { api.put(x, y, '#4e5054'); x += rnd() < 0.5 ? 1 : 0; y += 1; } }
+    for (let i = 0; i < 8; i++) api.put(Math.floor(rnd() * TILE), Math.floor(rnd() * TILE), '#b8babe');
+  });
+  redraw('cobblestone', (api) => {
+    api.fill('#3f4043');
+    const stones = [[0, 0, 6, 5], [7, 0, 5, 4], [13, 0, 3, 6], [0, 6, 4, 5], [5, 5, 6, 5], [12, 7, 4, 4], [0, 12, 7, 4], [8, 11, 4, 5], [13, 12, 3, 4], [12, 5, 1, 1]];
+    for (const [sx, sy, w, h] of stones) {
+      const base = 0.3 + rnd() * 0.45;
+      for (let x = sx; x < Math.min(TILE, sx + w - 1); x++) for (let y = sy; y < Math.min(TILE, sy + h - 1); y++) {
+        let v = base + (rnd() - 0.5) * 0.2;
+        if (x === sx || y === sy) v += 0.25;
+        if (x === sx + w - 2 || y === sy + h - 2) v -= 0.22;
+        api.put(x, y, ramp(STONE, v));
+      }
+    }
+  });
+  redraw('sand', (api) => {
+    shaded(api, SAND, [4, 2], [0.5, 0.5], 0.4);
+    for (let i = 0; i < 6; i++) api.put(Math.floor(rnd() * TILE), Math.floor(rnd() * TILE), '#b59f6a');
+  });
+  redraw('gravel', (api) => {
+    api.fill('#57534f');
+    for (let i = 0; i < 26; i++) {
+      const x = Math.floor(rnd() * TILE), y = Math.floor(rnd() * TILE), w = 2 + Math.floor(rnd() * 2);
+      const tone = pick([['#8f8a85', '#a7a29c', '#6e6964'], ['#7a7470', '#938d88', '#5d5853'], ['#9b938a', '#b5ada3', '#7a7268']]);
+      for (let a = 0; a < w; a++) for (let b = 0; b < w; b++) api.put((x + a) % TILE, (y + b) % TILE, a === 0 || b === 0 ? tone[1] : a === w - 1 || b === w - 1 ? tone[2] : tone[0]);
+    }
+  });
+  function barkV2(cols) {
+    return (api) => {
+      for (let x = 0; x < TILE; x++) {
+        const groove = rnd() < 0.3;
+        let v = groove ? 0.12 : 0.45 + rnd() * 0.35;
+        for (let y = 0; y < TILE; y++) {
+          const vv = v + (rnd() - 0.5) * 0.18 + (y % 7 === 0 && rnd() < 0.3 ? -0.2 : 0);
+          api.put(x, y, ramp(cols, vv));
+        }
+      }
+      for (let i = 0; i < 2; i++) { const x = 2 + Math.floor(rnd() * 11), y = 2 + Math.floor(rnd() * 11); api.put(x, y, cols[0]); api.put(x + 1, y, cols[0]); api.put(x, y + 1, cols[1]); }
+    };
+  }
+  function ringsV2(rings, bark) {
+    return (api) => {
+      for (let x = 0; x < TILE; x++) for (let y = 0; y < TILE; y++) {
+        const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
+        if (d > 6.5) { api.put(x, y, ramp(bark, 0.3 + rnd() * 0.4)); continue; }
+        const ring = Math.floor(d + (rnd() - 0.5) * 0.6) % 2;
+        api.put(x, y, ramp(rings, ring ? 0.25 + rnd() * 0.2 : 0.6 + rnd() * 0.3));
+      }
+    };
+  }
+  function planksV2(cols) {
+    return (api) => {
+      for (let b = 0; b < 4; b++) {
+        const tone = 0.35 + rnd() * 0.3, y0 = b * 4, off = Math.floor(rnd() * 16);
+        for (let y = y0; y < y0 + 4; y++) for (let x = 0; x < TILE; x++) {
+          let v = tone + Math.sin((x + off) * 0.7 + y * 2.1) * 0.06 + (rnd() - 0.5) * 0.1;
+          if (y === y0) v += 0.2;
+          if (y === y0 + 3) v = 0.04;
+          api.put(x, y, ramp(cols, v));
+        }
+        const seam = (off + 5) % 16;
+        for (let y = y0; y < y0 + 3; y++) api.put(seam, y, ramp(cols, 0.08));
+        api.put((seam + 2) % 16, y0 + 1, ramp(cols, 0.15));
+      }
+    };
+  }
+  function leavesV2(cols, holes) {
+    return (api) => {
+      api.clear();
+      const f = mixNoise([3, 2], [0.6, 0.4]);
+      for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+        const v = f[y * TILE + x];
+        if (v < holes && rnd() < 0.8) continue;
+        api.put(x, y, ramp(cols, (v - 0.15) / 0.7 + (rnd() - 0.5) * 0.3));
+      }
+      for (let i = 0; i < 10; i++) api.put(Math.floor(rnd() * TILE), Math.floor(rnd() * TILE), cols[cols.length - 1]);
+    };
+  }
+  const OAK_BARK = ['#3a2a16', '#4d3820', '#5f472a', '#725735', '#866841'];
+  const OAK_WOOD = ['#5c4425', '#7d5f36', '#977645', '#ad8a53', '#c19e64', '#d2b077'];
+  redraw('log_side', barkV2(OAK_BARK));
+  redraw('log_top', ringsV2(OAK_WOOD, OAK_BARK));
+  redraw('planks', planksV2(OAK_WOOD));
+  redraw('leaves', leavesV2(['#1f4d18', '#2b6421', '#38792a', '#468f34', '#58a640', '#73bd52'], 0.22));
+  const BIRCH_BARK = ['#2b2b2b', '#cfcac0', '#dcd7cd', '#e6e2d9', '#f0ede6'];
+  redraw('birch_log', (api) => {
+    for (let x = 0; x < TILE; x++) for (let y = 0; y < TILE; y++) api.put(x, y, ramp(BIRCH_BARK, 0.35 + rnd() * 0.6));
+    for (let k = 0; k < 7; k++) { const y = Math.floor(rnd() * TILE), x = Math.floor(rnd() * 12), w = 2 + Math.floor(rnd() * 4); for (let i = 0; i < w; i++) api.put(x + i, y, i === 0 || i === w - 1 ? '#5a5650' : '#2b2b2b'); }
+  });
+  redraw('birch_leaves', leavesV2(['#3b5e22', '#4c7430', '#5e893c', '#719e49', '#86b25a', '#9cc66e'], 0.2));
+  redraw('spruce_log', barkV2(['#24170c', '#33210f', '#422c16', '#53381e', '#644527']));
+  redraw('spruce_leaves', leavesV2(['#14301c', '#1c3f25', '#25502f', '#2f603a', '#3b7146', '#4a8455'], 0.18));
+  redraw('jungle_log', barkV2(['#3a2c12', '#55421c', '#6e5726', '#836a31', '#9a7f3e']));
+  redraw('jungle_leaves', leavesV2(['#1b5212', '#256b18', '#2f831f', '#3b9a27', '#4cb032', '#66c446'], 0.16));
+  redraw('acacia_log', barkV2(['#3b3630', '#4d4740', '#5f5850', '#716a61', '#857d73']));
+  redraw('acacia_leaves', leavesV2(['#3e5a12', '#4f7118', '#61871f', '#749d28', '#89b233', '#a0c544'], 0.22));
+  function oreV2(name, cols) {
+    redraw(name, (api) => {
+      shaded(api, STONE, [5, 3, 2], [0.5, 0.3, 0.2], 0.22);
+      const spots = [[3, 3], [10, 2], [6, 8], [12, 10], [2, 12], [9, 13]];
+      for (const [cx, cy] of spots) {
+        if (rnd() < 0.15) continue;
+        const pts = [[0, 0], [1, 0], [0, 1], [1, 1], [2, 1], [1, 2]].filter(() => rnd() < 0.85);
+        for (const [dx, dy] of pts) api.put(cx + dx, cy + dy, dx + dy === 0 ? cols[2] : dx + dy >= 3 ? cols[0] : cols[1]);
+        api.put(cx + 2, cy + 2, '#45474b');
+      }
+    });
+  }
+  oreV2('coal_ore', ['#141414', '#262626', '#4a4a4a']);
+  oreV2('iron_ore', ['#a8775a', '#d2a283', '#f0d0b8']);
+  oreV2('gold_ore', ['#c4920f', '#f2c531', '#fff3a6']);
+  oreV2('diamond_ore', ['#1fa89a', '#4fe8d6', '#d6fffa']);
+  oreV2('redstone_ore', ['#7a0606', '#d01d1d', '#ff7a7a']);
+  oreV2('lapis_ore', ['#11307a', '#2459c9', '#86aaf5']);
+  redraw('water', (api) => {
+    shaded(api, ['#1f4f9e', '#2659ad', '#2d64bb', '#3570c8', '#3f7dd4', '#4f8ee0'], [4, 2], [0.6, 0.4], 0.15);
+  });
+  redraw('tall_grass', (api) => {
+    api.clear();
+    for (let b = 0; b < 9; b++) {
+      let x = 1 + Math.floor(rnd() * 14), h = 6 + Math.floor(rnd() * 9);
+      for (let i = 0; i < h; i++) { api.put(x, 15 - i, ramp(GRASS, 0.25 + i / h * 0.75)); if (i > h / 2 && rnd() < 0.3) x += rnd() < 0.5 ? 1 : -1; }
+    }
+  });
+  // more blocks in the same style
+  const SNOW = ['#c9d6e0', '#d8e3eb', '#e4edf3', '#eef4f8', '#f6fafc', '#ffffff'];
+  redraw('snow', (api) => shaded(api, SNOW, [4, 2], [0.6, 0.4], 0.2));
+  redraw('grass_side_snow', (api) => {
+    dirtDraw(api);
+    for (let x = 0; x < TILE; x++) {
+      const d = 3 + Math.floor(rnd() * 3);
+      for (let y = 0; y < d; y++) api.put(x, y, ramp(SNOW, 0.95 - y / (d + 3) + (rnd() - 0.5) * 0.2));
+      api.put(x, d, '#8e9aa6');
+    }
+  });
+  const CACTUS = ['#1f5a1c', '#2a6e24', '#36822d', '#43963a', '#55aa48'];
+  redraw('cactus_side', (api) => {
+    for (let x = 0; x < TILE; x++) for (let y = 0; y < TILE; y++) api.put(x, y, ramp(CACTUS, (x % 4 === 0 ? 0.15 : x % 4 === 2 ? 0.75 : 0.5) + (rnd() - 0.5) * 0.15));
+    for (let i = 0; i < 10; i++) { const x = 1 + Math.floor(rnd() * 14), y = Math.floor(rnd() * 16); api.put(x, y, '#e8e2b0'); }
+    for (let y = 0; y < TILE; y++) { api.put(0, y, CACTUS[0]); api.put(15, y, CACTUS[0]); }
+  });
+  redraw('cactus_top', (api) => {
+    for (let x = 0; x < TILE; x++) for (let y = 0; y < TILE; y++) {
+      const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
+      api.put(x, y, ramp(CACTUS, d > 6.5 ? 0.1 : d > 4.5 ? 0.45 + rnd() * 0.15 : 0.7 + rnd() * 0.2));
+    }
+  });
+  redraw('sandstone_top', (api) => shaded(api, SAND, [5, 3], [0.6, 0.4], 0.2));
+  redraw('sandstone_side', (api) => {
+    shaded(api, SAND, [6, 3], [0.6, 0.4], 0.18);
+    for (let x = 0; x < TILE; x++) { api.put(x, 0, SAND[5]); api.put(x, 4, ramp(SAND, 0.05)); api.put(x, 5, ramp(SAND, 0.75)); api.put(x, 11, ramp(SAND, 0.05)); api.put(x, 12, ramp(SAND, 0.75)); api.put(x, 15, ramp(SAND, 0.1)); }
+  });
+  function bricksV2(cols, mortar, moss) {
+    return (api) => {
+      api.fill(mortar);
+      for (let row = 0; row < 4; row++) {
+        const y0 = row * 4, off = row % 2 ? 4 : 0;
+        for (let b = -1; b < 2; b++) {
+          const x0 = b * 8 + off, tone = 0.3 + rnd() * 0.35;
+          for (let x = x0; x < x0 + 7; x++) for (let y = y0; y < y0 + 3; y++) {
+            if (x < 0 || x >= TILE) continue;
+            let v = tone + (rnd() - 0.5) * 0.18;
+            if (y === y0) v += 0.22;
+            if (y === y0 + 2 || x === x0 + 6) v -= 0.2;
+            api.put(x, y, moss && rnd() < moss ? pick(['#3f6b2a', '#4f7f33', '#5b8c3a']) : ramp(cols, v));
+          }
+        }
+      }
+    };
+  }
+  redraw('stone_bricks', bricksV2(STONE, '#3d3f43', 0));
+  redraw('mossy_stone_bricks', bricksV2(STONE, '#3a4236', 0.22));
+  redraw('nether_bricks', bricksV2(['#2a0f12', '#3a1519', '#4a1c21', '#5a242a', '#6a2c33'], '#160709', 0));
+  redraw('mossy_cobblestone', (api) => {
+    api.fill('#3f4043');
+    const stones = [[0, 0, 6, 5], [7, 0, 5, 4], [13, 0, 3, 6], [0, 6, 4, 5], [5, 5, 6, 5], [12, 7, 4, 4], [0, 12, 7, 4], [8, 11, 4, 5], [13, 12, 3, 4]];
+    for (const [sx, sy, w, h] of stones) {
+      const base = 0.3 + rnd() * 0.45;
+      for (let x = sx; x < Math.min(TILE, sx + w - 1); x++) for (let y = sy; y < Math.min(TILE, sy + h - 1); y++) {
+        let v = base + (rnd() - 0.5) * 0.2 + (x === sx || y === sy ? 0.25 : 0) - (x === sx + w - 2 || y === sy + h - 2 ? 0.22 : 0);
+        api.put(x, y, ramp(STONE, v));
+      }
+    }
+    const f = noiseField(4);
+    for (let i = 0; i < TILE * TILE; i++) if (f[i] > 0.6) api.put(i % TILE, Math.floor(i / TILE), pick(['#3f6b2a', '#4f7f33', '#5b8c3a', '#365c24']));
+  });
+  redraw('smooth_stone', (api) => {
+    shaded(api, STONE, [6, 3], [0.7, 0.3], 0.1);
+    for (let i = 0; i < TILE; i++) { api.put(i, 0, STONE[5]); api.put(0, i, STONE[4]); api.put(i, 15, STONE[0]); api.put(15, i, STONE[1]); }
+  });
+  redraw('bedrock', (api) => shaded(api, ['#141414', '#262626', '#3a3a3a', '#555555', '#727272', '#8e8e8e'], [3, 2], [0.5, 0.5], 0.5));
+  redraw('obsidian', (api) => {
+    shaded(api, ['#0b0814', '#140f22', '#1d1630', '#281e40', '#352954', '#4a3a72'], [4, 2], [0.6, 0.4], 0.25);
+    for (let i = 0; i < 6; i++) api.put(Math.floor(rnd() * TILE), Math.floor(rnd() * TILE), '#8d72c9');
+  });
+  redraw('netherrack', (api) => {
+    shaded(api, ['#4a1414', '#5e1a1a', '#722222', '#86302c', '#9a3e36', '#ad4d42'], [3, 2], [0.5, 0.5], 0.35);
+    for (let i = 0; i < 8; i++) api.put(Math.floor(rnd() * TILE), Math.floor(rnd() * TILE), '#38100f');
+  });
+  redraw('soul_sand', (api) => {
+    shaded(api, ['#2e2219', '#3d2e22', '#4c3a2c', '#5b4636', '#6a5240'], [3, 2], [0.5, 0.5], 0.3);
+    for (const [fx, fy] of [[3, 4], [10, 9]]) { api.put(fx, fy, '#1b130d'); api.put(fx + 3, fy, '#1b130d'); api.put(fx + 1, fy + 2, '#1b130d'); api.put(fx + 2, fy + 2, '#1b130d'); }
+  });
+  redraw('glowstone', (api) => {
+    shaded(api, ['#7a5a20', '#a87e2c', '#d4a63c', '#f0c95a', '#ffe48a', '#fff4c8'], [3, 2], [0.5, 0.5], 0.45);
+    for (let i = 0; i < 12; i++) api.put(Math.floor(rnd() * TILE), Math.floor(rnd() * TILE), '#ffffff');
+  });
+  redraw('end_stone', (api) => {
+    shaded(api, ['#bdb98a', '#cbc796', '#d8d4a3', '#e3e0b2', '#eeebc0'], [4, 2], [0.6, 0.4], 0.25);
+    for (let i = 0; i < 8; i++) { const x = Math.floor(rnd() * TILE), y = Math.floor(rnd() * TILE); api.put(x, y, '#a8a376'); api.put(x + 1, y, '#b3ae80'); }
+  });
+  redraw('farmland_top', (api) => {
+    const DRY = ['#3b2516', '#4a2f1d', '#5a3a25', '#6a462d', '#7a5236'];
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) api.put(x, y, ramp(DRY, (y % 4 === 0 ? 0.08 : y % 4 === 1 ? 0.75 : 0.45) + (rnd() - 0.5) * 0.2));
+  });
+  redraw('birch_planks', planksV2(['#8f7f50', '#ad9b66', '#c2b07a', '#d0bf89', '#ddcd98', '#e8daa8']));
+  redraw('spruce_planks', planksV2(['#3e2a15', '#53391e', '#664828', '#785632', '#89643c', '#9a7448']));
+  redraw('jungle_planks', planksV2(['#6a4428', '#83563a', '#9a6a45', '#ae7c52', '#c08e60', '#d09e70']));
+  redraw('acacia_planks', planksV2(['#7a3518', '#954421', '#ad532a', '#c26234', '#d4723f', '#e2844e']));
+  redraw('birch_log_top', ringsV2(['#a89868', '#bfae7c', '#d2c290', '#e0d2a2', '#ebdfb2'], BIRCH_BARK));
+  redraw('spruce_log_top', ringsV2(['#4a3218', '#5f4222', '#74532d', '#886438', '#9b7444'], ['#24170c', '#33210f', '#422c16', '#53381e', '#644527']));
+  redraw('jungle_log_top', ringsV2(['#82603a', '#9a7448', '#b08856', '#c49b66', '#d4ab76'], ['#3a2c12', '#55421c', '#6e5726', '#836a31', '#9a7f3e']));
+  redraw('acacia_log_top', ringsV2(['#8e3f1d', '#a84d25', '#c05c2e', '#d26c38', '#e07c44'], ['#3b3630', '#4d4740', '#5f5850', '#716a61', '#857d73']));
+  redraw('calcite', (api) => shaded(api, ['#c9ccce', '#d6d9db', '#e2e4e5', '#eceeef', '#f6f7f7'], [3, 2], [0.5, 0.5], 0.3));
+
   const texture = new THREE.CanvasTexture(atlas);
   texture.magFilter = THREE.NearestFilter;
   texture.minFilter = THREE.NearestFilter;

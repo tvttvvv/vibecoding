@@ -46,6 +46,7 @@
     this.renderer.autoClear = false;
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    this._touch = navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
     el('app').insertBefore(this.renderer.domElement, el('app').firstChild);
 
     this.fog = new THREE.Fog(0x88c6ff, 28, 62);
@@ -88,8 +89,82 @@
     };
   };
 
+  // A device that cannot keep up with shadows gets them switched off once,
+  // after a slow stretch of play (not while the world is still loading).
+  Game.watchFrameRate = function () {
+    // first the shadows go, then (if still slow) the rest of the shader pack
+    const step = Settings.bool('shaders') && Settings.bool('shadows') ? 1 : Settings.bool('shaders') ? 2 : 0;
+    if (!this.started || this.loading || this.paused || !step || (this._autoLowered || 0) >= step) { this._slowFor = 0; return; }
+    if (document.hidden) return;
+    this._playFor = (this._playFor || 0) + 0.5;
+    if (this._playFor < 12) return;
+    this._slowFor = this._fps < 24 ? (this._slowFor || 0) + 0.5 : Math.max(0, (this._slowFor || 0) - 0.5);
+    if (this._slowFor >= 6) {
+      this._slowFor = 0;
+      this._playFor = 4;
+      this._autoLowered = step;
+      if (step === 1) { Settings.set('shadows', 0); UI.toast('화면이 느려서 그림자를 껐어요. 설정에서 다시 켤 수 있어요', 4500); }
+      else { Settings.set('shaders', 0); UI.toast('화면이 느려서 쉐이더를 껐어요. 설정에서 다시 켤 수 있어요', 4500); }
+    }
+  };
+
+  // shader pack: the sun's view of the blocks near the player, for shadows
+  Game.renderShadows = function () {
+    const L = World.lightUniforms;
+    if (this.dimension !== 'overworld' || L.uSunCol.value.r < 0.05 || L.uFx.value < 0.5) { L.uShadowOn.value = 0; return; }
+    // a smaller map on phones and tablets, which also covers less ground
+    const SIZE = this._touch ? 1024 : 2048, RANGE = this._touch ? 36 : 44;
+    if (!this._shadowRT) {
+      this._shadowRT = new THREE.WebGLRenderTarget(SIZE, SIZE, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
+      this._shadowCam = new THREE.OrthographicCamera(-RANGE, RANGE, RANGE, -RANGE, 1, 260);
+      this._shadowMat = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: Textures.texture, alphaTest: 0.5, side: THREE.DoubleSide });
+      L.uShadowMap.value = this._shadowRT.texture;
+      L.uShadowTexel.value = 1 / SIZE;
+    }
+    const cam = this._shadowCam, p = this.player.pos, d = L.uSunDir.value;
+    const cx = Math.round(p.x), cy = Math.round(p.y), cz = Math.round(p.z);
+    // the sun creeps and blocks change rarely: redraw the map when the player
+    // steps to another block, or every few frames
+    const key = cx + ',' + cy + ',' + cz;
+    this._shadowAge = (this._shadowAge || 0) + 1;
+    if (L.uShadowOn.value && key === this._shadowKey && this._shadowAge < 8) return;
+    this._shadowKey = key;
+    this._shadowAge = 0;
+    cam.position.set(cx + d.x * 120, cy + d.y * 120, cz + d.z * 120);
+    cam.up.set(0, 0, 1);
+    cam.lookAt(cx, cy, cz);
+    cam.updateMatrixWorld();
+    cam.updateProjectionMatrix();
+    const hidden = [];
+    for (const c of this.scene.children) if (c !== this.world.group && c.visible) { c.visible = false; hidden.push(c); }
+    for (const ch of this.world.chunks.values()) if (ch.liquidMesh && ch.liquidMesh.visible) { ch.liquidMesh.visible = false; hidden.push(ch.liquidMesh); }
+    const r = this.renderer, bg = this.scene.background;
+    this.scene.background = null;
+    this.scene.overrideMaterial = this._shadowMat;
+    r.setRenderTarget(this._shadowRT);
+    r.setClearColor(0xffffff, 1);
+    r.clear();
+    r.render(this.scene, cam);
+    r.setRenderTarget(null);
+    this.scene.overrideMaterial = null;
+    this.scene.background = bg;
+    for (const o of hidden) o.visible = true;
+    L.uShadowMatrix.value.set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1)
+      .multiply(cam.projectionMatrix).multiply(cam.matrixWorldInverse);
+    L.uShadowOn.value = 1;
+  };
+
   Game.render = function (withHand) {
     const r = this.renderer;
+    const L = World.lightUniforms;
+    const fx = Settings.bool('shaders');
+    L.uFx.value = fx ? 1 : 0;
+    L.uCamPos.value.copy(this.camera.position);
+    L.uTime.value = performance.now() / 1000 % 3600;
+    document.body.classList.toggle('fx', fx);
+    if (this._skyDome) this._skyDome.visible = fx && this._domeWanted && this.dimension === 'overworld';
+    if (this.started && fx && Settings.bool('shadows') && r.capabilities.isWebGL2) this.renderShadows();
+    else L.uShadowOn.value = 0;
     r.clear();
     r.render(this.scene, this.camera);
     if (withHand) Hand.render(r);
@@ -1088,38 +1163,217 @@
     return sprite;
   };
 
+  // ------------------------------------------------------------ player model v2
+  // A proper blocky person: head, body, two arms and two legs, each a box
+  // with its own pixel-art skin (made from the player's name, so friends look
+  // different), lit by the sun like the world, with joints that swing when
+  // walking and an arm that swings when hitting.
+  const PX = 1.8 / 32;
+  const SKIN_TONES = ['#f1c7a5', '#e0ac85', '#c98e66', '#a8714d', '#8a5a3c', '#f6d5bd'];
+  const HAIR = ['#2b1d14', '#4a2f1b', '#7a4e26', '#c79a4a', '#e2c27a', '#1b1b22', '#8c2f1d', '#d9d9d9'];
+  const EYES = ['#3a6ee8', '#2f9a4a', '#6b4320', '#4b4b4b', '#7a3fc0'];
+  const PANTS = ['#2e3a64', '#3b3b3b', '#4a3a2a', '#24433a', '#5a2a3a'];
+
+  function nameHash(name, k) {
+    let h = 2166136261 ^ k;
+    for (let i = 0; i < name.length; i++) h = Math.imul(h ^ name.charCodeAt(i), 16777619);
+    return (h >>> 0);
+  }
+
+  Game.makeSkin = function (name) {
+    const c = document.createElement('canvas');
+    c.width = 64; c.height = 64;
+    const g = c.getContext('2d');
+    const pick = (list, k) => list[nameHash(name, k) % list.length];
+    const skin = pick(SKIN_TONES, 1), hair = pick(HAIR, 2), eye = pick(EYES, 3), pants = pick(PANTS, 4);
+    const shirt = Game.playerColor(name);
+    let seed = nameHash(name, 9);
+    const rnd = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+    const shade = (col, f) => { const t = new THREE.Color(col); t.multiplyScalar(f); return '#' + t.getHexString(); };
+    const rect = (x, y, w, h, col, vary) => {
+      for (let i = 0; i < w; i++) for (let j = 0; j < h; j++) {
+        g.fillStyle = vary ? shade(col, 1 + (rnd() - 0.5) * vary) : col;
+        g.fillRect(x + i, y + j, 1, 1);
+      }
+    };
+    // the six faces of a box laid out the usual way: u,v corner; w,h,d in pixels
+    const box = (u, v, w, h, d, paint) => {
+      paint('top', u + d, v, w, d);
+      paint('bottom', u + d + w, v, w, d);
+      paint('right', u, v + d, d, h);
+      paint('front', u + d, v + d, w, h);
+      paint('left', u + d + w, v + d, d, h);
+      paint('back', u + d + w + d, v + d, w, h);
+    };
+    // head
+    box(0, 0, 8, 8, 8, (f, x, y, w, h) => {
+      rect(x, y, w, h, skin, 0.06);
+      if (f === 'top') rect(x, y, w, h, hair, 0.18);
+      if (f === 'bottom') return;
+      if (f === 'back') { rect(x, y, w, h, hair, 0.18); return; }
+      if (f === 'front') {
+        rect(x, y, w, 2, hair, 0.18);
+        g.fillStyle = hair; g.fillRect(x, y + 2, 1, 1); g.fillRect(x + 7, y + 2, 1, 1);
+        g.fillStyle = '#ffffff'; g.fillRect(x + 1, y + 4, 2, 1); g.fillRect(x + 5, y + 4, 2, 1);
+        g.fillStyle = eye; g.fillRect(x + 2, y + 4, 1, 1); g.fillRect(x + 5, y + 4, 1, 1);
+        g.fillStyle = shade(skin, 0.82); g.fillRect(x + 3, y + 5, 2, 1);
+        g.fillStyle = shade(skin, 0.62); g.fillRect(x + 3, y + 6, 2, 1);
+        g.fillStyle = shade(skin, 0.9); g.fillRect(x + 1, y + 3, 2, 1); g.fillRect(x + 5, y + 3, 2, 1);
+      } else {
+        rect(x, y, w, 3, hair, 0.18);
+        g.fillStyle = hair; g.fillRect(f === 'right' ? x + 6 : x, y + 3, 2, 1);
+      }
+    });
+    // body: a shirt with a collar and a little shading at the waist
+    box(16, 16, 8, 12, 4, (f, x, y, w, h) => {
+      rect(x, y, w, h, shirt, 0.1);
+      rect(x, y + h - 2, w, 2, shade(shirt, 0.72), 0.06);
+      if (f === 'front') { rect(x + 3, y, 2, 2, skin, 0.05); g.fillStyle = shade(shirt, 1.25); g.fillRect(x + 2, y, 1, 2); g.fillRect(x + 5, y, 1, 2); }
+      if (f === 'front' || f === 'back') rect(x, y + h - 1, w, 1, '#3a2a1c', 0.1);
+    });
+    // arms: short sleeves, then skin, a darker hand
+    const arm = (u, v) => box(u, v, 4, 12, 4, (f, x, y, w, h) => {
+      rect(x, y, w, h, skin, 0.06);
+      if (f !== 'bottom') rect(x, y, w, Math.min(h, 4), shirt, 0.1);
+      if (f === 'top') rect(x, y, w, h, shirt, 0.1);
+      if (f !== 'top' && f !== 'bottom') rect(x, y + h - 2, w, 2, shade(skin, 0.88), 0.04);
+    });
+    arm(40, 16); arm(32, 48);
+    // legs: trousers and shoes
+    const leg = (u, v) => box(u, v, 4, 12, 4, (f, x, y, w, h) => {
+      rect(x, y, w, h, pants, 0.12);
+      if (f !== 'top' && f !== 'bottom') rect(x, y + h - 3, w, 3, '#2a221c', 0.15);
+      if (f === 'bottom') rect(x, y, w, h, '#1e1814', 0.1);
+    });
+    leg(0, 16); leg(16, 48);
+    const tex = new THREE.CanvasTexture(c);
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    return tex;
+  };
+
+  // a box w x h x d pixels with skin UVs from (u, v), pivot at the top middle
+  function skinBox(w, h, d, u, v, inflate) {
+    const s = PX * (1 + (inflate || 0));
+    const geo = new THREE.BoxGeometry(w * s, h * s, d * s);
+    geo.translate(0, -h * PX / 2, 0);
+    const uv = geo.attributes.uv;
+    const faces = [
+      [u, v + d, d, h],                 // +x: the right side
+      [u + d + w, v + d, d, h],         // -x: the left side
+      [u + d, v, w, d],                 // +y: top
+      [u + d + w, v, w, d],             // -y: bottom
+      [u + d + w + d, v + d, w, h],     // +z: back
+      [u + d, v + d, w, h]              // -z: front
+    ];
+    for (let f = 0; f < 6; f++) {
+      const [x, y, fw, fh] = faces[f];
+      const u0 = x / 64, u1 = (x + fw) / 64, v0 = 1 - (y + fh) / 64, v1 = 1 - y / 64;
+      const o = f * 4;
+      uv.setXY(o + 0, u0, v1); uv.setXY(o + 1, u1, v1); uv.setXY(o + 2, u0, v0); uv.setXY(o + 3, u1, v0);
+    }
+    return geo;
+  }
+
+  // lit by the same sun as the blocks: brighter on the sunny side
+  Game.avatarMaterial = function (tex) {
+    const m = new THREE.MeshBasicMaterial({ map: tex });
+    m.onBeforeCompile = (shader) => {
+      shader.uniforms.uSunDir = World.lightUniforms.uSunDir;
+      shader.uniforms.uSunCol = World.lightUniforms.uSunCol;
+      shader.uniforms.uAmb = World.lightUniforms.uAmb;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vWN;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWN = normalize(mat3(modelMatrix) * normal);');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vWN;\nuniform vec3 uSunDir;\nuniform vec3 uSunCol;\nuniform vec3 uAmb;')
+        .replace('#include <map_fragment>', [
+          '#include <map_fragment>',
+          'vec3 n = normalize(vWN);',
+          'float sun = max(dot(n, uSunDir), 0.0);',
+          'float sky = 0.5 + 0.5 * n.y;',
+          'diffuseColor.rgb *= uAmb * (0.55 + 0.25 * sky) + uSunCol * sun * 0.55;'
+        ].join('\n'));
+    };
+    return m;
+  };
+
   Game.makeAvatar = function (name) {
     const group = new THREE.Group();
-    const box = (w, h, d, color, x, y, z, parent) => {
-      const mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(w, h, d),
-        new THREE.MeshBasicMaterial({ color })
-      );
-      mesh.position.set(x, y, z);
-      (parent || group).add(mesh);
-      return mesh;
+    const mat = this.avatarMaterial(this.makeSkin(name));
+    const part = (geo, x, y, z) => {
+      const pivot = new THREE.Group();
+      pivot.position.set(x * PX, y * PX, z * PX);
+      pivot.add(new THREE.Mesh(geo, mat));
+      group.add(pivot);
+      return pivot;
     };
-
-    box(0.22, 0.7, 0.22, 0x3b4396, -0.12, 0.35, 0);
-    box(0.22, 0.7, 0.22, 0x3b4396, 0.12, 0.35, 0);
-    box(0.5, 0.7, 0.26, 0x2f9fa8, 0, 1.05, 0);
-    box(0.18, 0.66, 0.2, 0x2f9fa8, -0.34, 1.05, 0);
-    box(0.18, 0.66, 0.2, 0x2f9fa8, 0.34, 1.05, 0);
-
+    const legL = part(skinBox(4, 12, 4, 16, 48), -2, 12, 0);
+    const legR = part(skinBox(4, 12, 4, 0, 16), 2, 12, 0);
+    const body = part(skinBox(8, 12, 4, 16, 16), 0, 24, 0);
+    const armL = part(skinBox(4, 12, 4, 32, 48), -6, 24, 0);
+    const armR = part(skinBox(4, 12, 4, 40, 16), 6, 24, 0);
+    // the head turns on the neck
     const head = new THREE.Group();
-    head.position.y = 1.62;
+    head.position.set(0, 24 * PX, 0);
+    const hm = new THREE.Mesh(skinBox(8, 8, 8, 0, 0), mat);
+    hm.position.y = 8 * PX;
+    head.add(hm);
     group.add(head);
-    box(0.46, 0.46, 0.46, 0xc99b7c, 0, 0, 0, head);
-    box(0.47, 0.16, 0.47, 0x3b2a1c, 0, 0.17, 0, head);
-    box(0.08, 0.08, 0.02, 0xffffff, -0.11, 0.02, -0.24, head);
-    box(0.08, 0.08, 0.02, 0xffffff, 0.11, 0.02, -0.24, head);
-
     const tag = this.nameTag(name);
     group.add(tag);
-    group.userData.tag = tag;
-    group.userData.tagScale = [tag.scale.x, tag.scale.y];
-    group.userData.head = head;
+    group.userData = { head, body, armL, armR, legL, legR, tag, tagScale: [tag.scale.x, tag.scale.y], material: mat, walk: 0, walkAmt: 0, swing: 0 };
     return group;
+  };
+
+  // what another player holds shows in their right hand
+  Game.setAvatarHeld = function (group, id) {
+    const u = group.userData;
+    if (u.heldId === id) return;
+    u.heldId = id;
+    if (u.held) { u.armR.remove(u.held); u.held = null; }
+    if (!id || !Items.get(id)) return;
+    const flat = !Items.isBlock(id) || B.byId[id].render === 'cross' || B.byId[id].flatItem;
+    const mesh = new THREE.Mesh(this.blockGeometry(id, flat ? 0.8 : 0.3), this.itemMaterial);
+    if (flat) { mesh.position.set(0, -0.62, -0.22); mesh.rotation.set(-1.25, Math.PI / 2, -Math.PI / 4); }
+    else { mesh.position.set(0, -0.68, -0.12); mesh.rotation.set(0, 0.6, 0); }
+    u.armR.add(mesh);
+    u.held = mesh;
+  };
+
+  // the pose for this frame: walk is how fast the player is moving
+  Game.poseAvatar = function (group, dt, speed, pitch, swinging, sneaking) {
+    const u = group.userData;
+    const want = Math.min(1, speed / 4.3);
+    u.walkAmt += (want - u.walkAmt) * Math.min(1, dt * 10);
+    u.walk += dt * (4 + speed * 1.6) * (u.walkAmt > 0.02 ? 1 : 0);
+    const sw = Math.sin(u.walk) * 0.9 * u.walkAmt;
+    u.legL.rotation.x = sw;
+    u.legR.rotation.x = -sw;
+    u.armL.rotation.x = -sw * 0.75;
+    u.armR.rotation.x = sw * 0.75;
+    u.armL.rotation.z = -0.06 - Math.sin(u.walk * 0.5 + 1) * 0.02;
+    u.armR.rotation.z = 0.06;
+    // a hit: the right arm comes down from above the shoulder
+    if (swinging) u.swing = 1;
+    if (u.swing > 0) {
+      const t = 1 - u.swing;
+      u.armR.rotation.x = Math.sin(t * Math.PI) * 1.9 + sw * 0.2;
+      u.armR.rotation.y = Math.sin(t * Math.PI) * 0.4;
+      u.body.rotation.y = Math.sin(t * Math.PI) * 0.25;
+      u.swing = Math.max(0, u.swing - dt * 3.6);
+    } else { u.armR.rotation.y = 0; u.body.rotation.y = 0; }
+    // a little bob in the step, and a crouch when sneaking
+    const bob = Math.abs(Math.cos(u.walk)) * 0.05 * u.walkAmt;
+    const crouch = sneaking ? 1 : 0;
+    u.body.rotation.x = -crouch * 0.45;
+    u.head.position.y = (24 - crouch * 2) * PX + bob;
+    u.body.position.y = 24 * PX + bob;
+    u.armL.position.y = u.armR.position.y = (24 - crouch * 1.5) * PX + bob;
+    u.armL.position.z = u.armR.position.z = -crouch * 2.5 * PX;
+    if (crouch) { u.armL.rotation.x += 0.4; u.armR.rotation.x += 0.4; }
+    u.legL.position.z = u.legR.position.z = crouch * 3 * PX;
+    u.head.rotation.x = Math.max(-1.2, Math.min(1.2, pitch));
   };
 
   Game.clearAvatars = function () {
@@ -1151,12 +1405,26 @@
       }
       // smooth over the ~12 updates a second that arrive from the network
       const k = Math.min(1, dt * 12);
+      const ox = a.group.position.x, oz = a.group.position.z;
       a.group.position.x += (p.x - a.group.position.x) * k;
       a.group.position.y += (p.y - a.group.position.y) * k;
       a.group.position.z += (p.z - a.group.position.z) * k;
-      a.group.rotation.y = p.yaw;
-      this.shadeGroup(a.group, this.lightAtPoint(a.group.position.x, a.group.position.y + 1.5, a.group.position.z));
-      a.group.userData.head.rotation.x = Math.max(-1.2, Math.min(1.2, -p.pitch));
+      // turn the short way round
+      let dy = p.yaw - a.group.rotation.y;
+      dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+      a.group.rotation.y += dy * k;
+      // light from the brighter of feet and head, so a step into a block never blacks them out
+      const gp0 = a.group.position;
+      // (every part shares one material, so it is shaded once, not part by part)
+      a.group.userData.material.color.setScalar(Math.max(0.15, this.lightAtPoint(gp0.x, gp0.y + 0.5, gp0.z), this.lightAtPoint(gp0.x, gp0.y + 1.6, gp0.z)) || 1);
+      // walking, hitting (a new swing count, or held down while mining), crouching
+      const speed = dt > 0 ? Math.hypot(a.group.position.x - ox, a.group.position.z - oz) / dt : 0;
+      a.speed = (a.speed || 0) + (speed - (a.speed || 0)) * Math.min(1, dt * 8);
+      const u = a.group.userData;
+      const swing = (p.sw !== undefined && p.sw !== a.sw) || (p.m && u.swing <= 0);
+      a.sw = p.sw;
+      this.setAvatarHeld(a.group, p.h || 0);
+      this.poseAvatar(a.group, dt, a.speed, p.pitch || 0, swing, !!p.s);
       // far away, the name grows so it can still be read, through the hills
       const pp = this.player.pos, gp = a.group.position;
       const far = Math.max(1, Math.hypot(gp.x - pp.x, gp.y - pp.y, gp.z - pp.z) / 14);
@@ -1299,6 +1567,13 @@
       },
       onMobFeed: (msg) => { const m = Mobs.byId(msg.mobId); if (m) Mobs.feed(m, msg.from || null); },
       getGold: () => this.wearsGold(),
+      getLook: () => {
+        const st = this.inventory.selectedStack ? this.inventory.selectedStack() : this.inventory.slots[this.inventory.selected];
+        const look = { h: st ? st.id : 0, sw: Hand.swings || 0 };
+        if (Controls.state.mining && this.mining && this.mining.target) look.m = 1;
+        if (this.player.sneaking) look.s = 1;
+        return look;
+      },
       onEntity: (msg) => this.onEntity(msg),
       getSavedAt: () => this.worldSavedAt || 0,
       onRestore: (id, msg) => this.onRestore(id, msg),
@@ -3355,8 +3630,14 @@
 
   Game.updateSky = function (dt) {
     this.dayTime = (this.dayTime + dt / DAY_LENGTH) % 1;
-    if (this.dimension === 'nether') { this.updateNetherSky(dt); return; }
-    if (this.dimension === 'end') { this.updateEndSky(dt); return; }
+    if (this.dimension !== 'overworld') {
+      // no sun down there: light the blocks evenly, as before
+      World.lightUniforms.uSunCol.value.setRGB(0, 0, 0);
+      World.lightUniforms.uAmb.value.setRGB(1.24, 1.24, 1.24);
+      World.lightUniforms.uShadowOn.value = 0;
+      if (this.dimension === 'nether') this.updateNetherSky(dt); else this.updateEndSky(dt);
+      return;
+    }
     World.lightUniforms.uMinLight.value = 0.06;
     const t = this.dayTime;
     const sunAngle = t * Math.PI * 2 - Math.PI / 2;
@@ -3380,6 +3661,24 @@
     const brightness = 0.18 + daylight * 0.82;
     const L = World.lightUniforms;
     L.uDaylight.value = 0.22 + daylight * 0.78;
+    // shader pack: where the sun (or moon) is and what colour its light is
+    const warm = THREE.MathUtils.clamp(1 - Math.abs(height - 0.12) * 4, 0, 1) * (height > -0.05 ? 1 : 0);
+    L.uAmb.value.setRGB(0.72, 0.78, 0.92).lerp(new THREE.Color(0.6, 0.68, 0.95), 1 - daylight).lerp(new THREE.Color(1.1, 0.72, 0.58), warm * 0.8);
+    if (L.uWaterTile.value < 0) {
+      L.uWaterTile.value = Textures.TILES.water;
+      const fol = Object.keys(Textures.TILES).filter((n) => /leaves/.test(n)).map((n) => Textures.TILES[n])
+        .concat(Object.keys(Textures.TILES).filter((n) => /^(tall_grass|dandelion|poppy|sugar_cane|wheat_\d)$/.test(n)).map((n) => Textures.TILES[n] + 1000));
+      for (let i = 0; i < 24; i++) L.uFoliage.value[i] = i < fol.length ? fol[i] : -1;
+    }
+    const sx = Math.cos(sunAngle), sy = Math.sin(sunAngle);
+    if (sy > -0.05) {
+      L.uSunDir.value.set(sx, Math.max(sy, 0.02), 0.32).normalize();
+      const low = THREE.MathUtils.clamp(1 - sy * 2.6, 0, 1);
+      L.uSunCol.value.setRGB(1.05, 0.95 - low * 0.42, 0.86 - low * 0.62).multiplyScalar(THREE.MathUtils.clamp(sy * 5 + 0.3, 0, 1));
+    } else {
+      L.uSunDir.value.set(-sx, -sy, 0.32).normalize();
+      L.uSunCol.value.setRGB(0.32, 0.4, 0.58).multiplyScalar(THREE.MathUtils.clamp(-sy * 4, 0, 1));
+    }
     // moonlight is a little blue, dusk a little warm
     L.uSkyTint.value.setRGB(0.78 + daylight * 0.22, 0.84 + daylight * 0.16, 1);
     const here = Math.min(1, this.lightHere(brightness) + 0.1);
@@ -3405,6 +3704,37 @@
     }
     Sky.setVisible(!under && this._eyeSky > 0.25);
     Sky.update(this.camera, this.dayTime, dt);
+    // shader pack: a sky that shades from the horizon up, glowing round the sun
+    if (!this._skyDome) {
+      const mat = new THREE.ShaderMaterial({
+        side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
+        uniforms: { uZenith: { value: new THREE.Color() }, uHorizon: { value: new THREE.Color() }, uSunDir: L.uSunDir, uSunCol: L.uSunCol, uDusk: { value: 0 } },
+        vertexShader: 'varying vec3 vDir; void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader: [
+          'uniform vec3 uZenith; uniform vec3 uHorizon; uniform vec3 uSunDir; uniform vec3 uSunCol; uniform float uDusk; varying vec3 vDir;',
+          'void main() {',
+          '  vec3 d = normalize(vDir);',
+          '  float up = clamp(d.y, 0.0, 1.0);',
+          '  vec3 c = mix(uHorizon, uZenith, pow(up, 0.55));',
+          '  float s = max(dot(d, normalize(vec3(uSunDir.x, max(uSunDir.y, -0.1), uSunDir.z))), 0.0);',
+          '  vec3 duskCol = vec3(1.0, 0.45, 0.18);',
+          '  c += duskCol * uDusk * pow(s, 3.0) * (1.0 - up) * 0.9;',
+          '  c += uSunCol * pow(s, 24.0) * 0.45;',
+          '  gl_FragColor = vec4(c, 1.0);',
+          '}'
+        ].join('\n')
+      });
+      this._skyDome = new THREE.Mesh(new THREE.SphereGeometry(300, 32, 16), mat);
+      this._skyDome.renderOrder = -20;
+      this._skyDome.frustumCulled = false;
+      this.scene.add(this._skyDome);
+    }
+    const dome = this._skyDome;
+    this._domeWanted = !under && this._eyeSky > 0.25;
+    dome.position.copy(this.camera.position);
+    dome.material.uniforms.uHorizon.value.copy(this.fog.color);
+    dome.material.uniforms.uZenith.value.copy(this.fog.color).multiply(new THREE.Color(0.62, 0.74, 1.0)).multiplyScalar(0.85);
+    dome.material.uniforms.uDusk.value = duskAmount;
   };
 
   Game.respawn = function (mode) {
@@ -3481,6 +3811,7 @@
       this._fps = Math.round(this._fpsFrames / this._fpsAcc);
       this._fpsAcc = 0;
       this._fpsFrames = 0;
+      this.watchFrameRate();
     }
 
     if (!this.started) {

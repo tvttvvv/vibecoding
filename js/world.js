@@ -666,31 +666,189 @@
   World.lightUniforms = {
     uDaylight: { value: 1 },
     uSkyTint: { value: new THREE.Color(1, 1, 1) },
-    uMinLight: { value: 0.06 }
+    uMinLight: { value: 0.06 },
+    // the shader pack: sunlight from a direction, shadows, waving leaves,
+    // water that reflects the sky; uFx 0 turns it all off
+    uSunDir: { value: new THREE.Vector3(0.3, 0.9, 0.3).normalize() },
+    uSunCol: { value: new THREE.Color(1, 0.95, 0.85) },
+    uTime: { value: 0 },
+    uFx: { value: 1 },
+    uWaterTile: { value: -1 },
+    uFoliage: { value: new Array(24).fill(-1) },
+    uCamPos: { value: new THREE.Vector3() },
+    uShadowMap: { value: null },
+    uShadowMatrix: { value: new THREE.Matrix4() },
+    uShadowOn: { value: 0 },
+    uShadowTexel: { value: 1 / 2048 },
+    uAmb: { value: new THREE.Color(0.72, 0.78, 0.92) }
   };
+
+  const SHADER_VERT_HEAD = [
+    'uniform float uTime;',
+    'uniform float uFx;',
+    'uniform float uFoliage[24];',
+    'varying vec3 vWPos;',
+    'float tileOf(vec2 t) { return floor(t.x * 16.0) + (15.0 - floor(t.y * 16.0)) * 16.0; }'
+  ].join('\n');
+
+  const SHADER_VERT_BODY = [
+    '#include <begin_vertex>',
+    'vec4 wp0 = modelMatrix * vec4(transformed, 1.0);',
+    '#ifdef USE_UV',
+    'if (uFx > 0.5) {',
+    '  float tid = tileOf(uv);',
+    '  float sway = 0.0;',
+    '  float top = step(0.5, fract(uv.y * 16.0));',
+    '  for (int i = 0; i < 24; i++) { if (abs(uFoliage[i] - tid) < 0.5) sway = 1.0; if (abs(uFoliage[i] - 1000.0 - tid) < 0.5) sway = top * 1.6; }',
+    '  if (sway > 0.0) {',
+    '    float ph = uTime * 1.7 + wp0.x * 0.35 + wp0.z * 0.27;',
+    '    float w = sin(ph) * 0.045 + sin(ph * 2.3 + wp0.y) * 0.02;',
+    '    transformed.x += w; transformed.z += w * 0.6;',
+    '  }',
+    '}',
+    '#endif',
+    'vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;'
+  ].join('\n');
+
+  const SHADER_FRAG_HEAD = [
+    '#include <common>',
+    'uniform float uDaylight;',
+    'uniform vec3 uSkyTint;',
+    'uniform float uMinLight;',
+    'uniform vec3 uSunDir;',
+    'uniform vec3 uSunCol;',
+    'uniform float uTime;',
+    'uniform float uFx;',
+    'uniform float uWaterTile;',
+    'varying vec3 vWPos;',
+    'uniform vec3 uCamPos;',
+    'uniform sampler2D uShadowMap;',
+    'uniform mat4 uShadowMatrix;',
+    'uniform float uShadowOn;',
+    'uniform float uShadowTexel;',
+    'uniform vec3 uAmb;',
+    'float unpackD(vec4 v) { return dot(v, vec4(255.0/256.0) / vec4(256.0*256.0*256.0, 256.0*256.0, 256.0, 1.0)); }',
+    'float sunShadow(vec3 p, vec3 n) {',
+    '  if (uShadowOn < 0.5) return 1.0;',
+    '  vec4 sc = uShadowMatrix * vec4(p + n * 0.06, 1.0);',
+    '  sc.xyz /= sc.w;',
+    '  if (sc.x < 0.0 || sc.x > 1.0 || sc.y < 0.0 || sc.y > 1.0 || sc.z > 1.0) return 1.0;',
+    '  float d = sc.z - 0.0015;',
+    '  float s = 0.0;',
+    '  vec2 o = vec2(0.5, -0.5) * uShadowTexel;',
+    '  s += step(d, unpackD(texture2D(uShadowMap, sc.xy + o.xx)));',
+    '  s += step(d, unpackD(texture2D(uShadowMap, sc.xy + o.xy)));',
+    '  s += step(d, unpackD(texture2D(uShadowMap, sc.xy + o.yx)));',
+    '  s += step(d, unpackD(texture2D(uShadowMap, sc.xy + o.yy)));',
+    '  float edge = max(abs(sc.x - 0.5), abs(sc.y - 0.5));',
+    '  return mix(s / 4.0, 1.0, smoothstep(0.42, 0.5, edge));',
+    '}',
+    'float mcCurve(float f) { return f / (2.3 - 1.3 * f); }',
+    'float lum(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }',
+    // (older WebGL 1 devices have no screen-space derivatives: they get the plain look)
+    '#if __VERSION__ >= 300',
+    '#define FX_OK 1',
+    '#endif',
+    '#ifdef FX_OK',
+    'vec3 bumpNormal(vec3 p, vec3 n, vec2 dH) {',
+    '  vec3 sx = dFdx(p), sy = dFdy(p);',
+    '  vec3 r1 = cross(sy, n), r2 = cross(n, sx);',
+    '  float det = dot(sx, r1);',
+    '  vec3 g = sign(det) * (dH.x * r1 + dH.y * r2);',
+    '  return normalize(abs(det) * n - g);',
+    '}',
+    '#endif'
+  ].join('\n');
+
+  const SHADER_FRAG_LIGHT = [
+    '#ifdef USE_COLOR',
+    '  vec3 skyPart = uSkyTint * mcCurve(vColor.g * uDaylight);',
+    '  vec3 blkPart = vec3(1.0, 0.93, 0.8) * mcCurve(vColor.b);',
+    '  vec3 lit = max(max(skyPart, blkPart), vec3(uMinLight));',
+    '#ifdef FX_OK',
+    '  if (uFx > 0.5) {',
+    '    vec3 N = normalize(cross(dFdx(vWPos), dFdy(vWPos)));',
+    '    vec3 V = normalize(vWPos - uCamPos);',
+    '    if (dot(N, V) > 0.0) N = -N;',
+    '    float tid = floor(vUv.x * 16.0) + (15.0 - floor(vUv.y * 16.0)) * 16.0;',
+    '    bool water = abs(tid - uWaterTile) < 0.5;',
+    '    float open = mcCurve(vColor.g);',
+    '    if (water) {',
+    '      vec2 q = vWPos.xz;',
+    '      float t = uTime;',
+    '      vec3 wn = normalize(vec3(',
+    '        0.10 * cos(q.x * 1.3 + t * 1.6) + 0.06 * cos((q.x + q.y) * 2.1 - t * 2.2) + 0.03 * cos(q.y * 4.7 + t * 3.1),',
+    '        1.0,',
+    '        0.10 * cos(q.y * 1.1 + t * 1.3) + 0.06 * cos((q.x - q.y) * 1.7 + t * 1.9) + 0.03 * cos(q.x * 5.3 - t * 2.7)));',
+    '      if (N.y < 0.5) wn = N;',
+    '      float fres = pow(1.0 - max(dot(-V, wn), 0.0), 3.0);',
+    '      vec3 fogBase = vec3(0.62, 0.78, 1.0) * uDaylight;',
+    '      #ifdef USE_FOG',
+    '      fogBase = fogColor;',
+    '      #endif',
+    '      vec3 skyC = mix(fogBase, uSkyTint * vec3(0.55, 0.75, 1.0) * uDaylight, 0.35);',
+    '      vec3 deep = vec3(0.06, 0.22, 0.42);',
+    '      vec3 base = mix(diffuseColor.rgb * 0.45 + deep * 0.55, skyC, 0.22 + fres * 0.7);',
+    '      float spec = pow(max(dot(reflect(V, wn), uSunDir), 0.0), 220.0) * open * sunShadow(vWPos, vec3(0.0, 1.0, 0.0));',
+    '      diffuseColor.rgb = base * vColor.r * lit + uSunCol * spec * 1.6;',
+    '      diffuseColor.a = mix(diffuseColor.a, 0.92, fres);',
+    '    } else {',
+    '      vec2 tmin = floor(vUv * 16.0) / 16.0;',
+    '      vec2 lo = tmin + vec2(0.0009), hi = tmin + vec2(1.0 / 16.0 - 0.0009);',
+    '      float h0 = lum(diffuseColor.rgb);',
+    '      float hx = lum(texture2D(map, clamp(vUv + dFdx(vUv), lo, hi)).rgb) - h0;',
+    '      float hy = lum(texture2D(map, clamp(vUv + dFdy(vUv), lo, hi)).rgb) - h0;',
+    '      vec3 Nb = bumpNormal(vWPos, N, vec2(hx, hy) * 0.9);',
+    '      float sunAmt = max(dot(Nb, uSunDir), 0.0);',
+    '      float facing = max(dot(N, uSunDir), 0.0);',
+    '      vec3 amb = mix(uAmb, vec3(1.24), 1.0 - open);',
+    '      float sh = facing > 0.0 ? sunShadow(vWPos, N) : 0.0;',
+    '      vec3 direct = uSunCol * (0.25 + 0.75 * sunAmt) * smoothstep(0.0, 0.15, facing + 0.05) * open * sh;',
+    '      vec3 shade = amb * 0.72 + direct * 0.62;',
+    '      diffuseColor.rgb *= vColor.r * lit * shade * 1.12;',
+    '    }',
+    '    vec3 c = diffuseColor.rgb;',
+    '    float l = lum(c);',
+    '    c = mix(vec3(l), c, 1.18);',
+    '    c = c * (1.0 + 0.10 * (c - 0.5));',
+    '    diffuseColor.rgb = max(c, 0.0);',
+    '  } else {',
+    '#endif',
+    '    diffuseColor.rgb *= vColor.r * lit;',
+    '#ifdef FX_OK',
+    '  }',
+    '#endif',
+    '#endif'
+  ].join('\n');
+
+  const SHADER_FOG = [
+    '#ifdef USE_FOG',
+    '  float fogDepth2 = length(vWPos - uCamPos);',
+    '  float fogF = smoothstep(fogNear, fogFar, fogDepth2);',
+    '  vec3 fogC = fogColor;',
+    '  if (uFx > 0.5) {',
+    '    vec3 vd = normalize(vWPos - uCamPos);',
+    '    float glow = pow(max(dot(vd, uSunDir), 0.0), 6.0);',
+    '    float low = 1.0 - clamp(uSunDir.y * 2.5, 0.0, 1.0);',
+    '    fogC += uSunCol * glow * (0.3 + 0.6 * low) * uDaylight;',
+    '    fogF = max(fogF, (1.0 - exp(-fogDepth2 * 0.006)) * 0.18);',
+    '  }',
+    '  gl_FragColor.rgb = mix(gl_FragColor.rgb, fogC, fogF);',
+    '#endif'
+  ].join('\n');
 
   function litMaterial(opts) {
     const m = new THREE.MeshBasicMaterial(opts);
+    m.extensions = { derivatives: true };
     m.onBeforeCompile = (shader) => {
-      shader.uniforms.uDaylight = World.lightUniforms.uDaylight;
-      shader.uniforms.uSkyTint = World.lightUniforms.uSkyTint;
-      shader.uniforms.uMinLight = World.lightUniforms.uMinLight;
+      for (const k in World.lightUniforms) shader.uniforms[k] = World.lightUniforms[k];
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\n' + SHADER_VERT_HEAD)
+        .replace('#include <begin_vertex>', SHADER_VERT_BODY);
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', [
-          '#include <common>',
-          'uniform float uDaylight;',
-          'uniform vec3 uSkyTint;',
-          'uniform float uMinLight;',
-          'float mcCurve(float f) { return f / (2.3 - 1.3 * f); }'
-        ].join('\n'))
-        .replace('#include <color_fragment>', [
-          '#ifdef USE_COLOR',
-          '  vec3 skyPart = uSkyTint * mcCurve(vColor.g * uDaylight);',
-          '  vec3 blkPart = vec3(1.0, 0.93, 0.8) * mcCurve(vColor.b);',
-          '  vec3 lit = max(max(skyPart, blkPart), vec3(uMinLight));',
-          '  diffuseColor.rgb *= vColor.r * lit;',
-          '#endif'
-        ].join('\n'));
+        .replace('#include <common>', SHADER_FRAG_HEAD)
+        .replace('#include <color_fragment>', SHADER_FRAG_LIGHT)
+        .replace('#include <fog_fragment>', SHADER_FOG);
     };
     return m;
   }

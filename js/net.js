@@ -326,8 +326,9 @@
         p.yaw = msg.yaw; p.pitch = msg.pitch;
         p.dim = msg.dim || 'overworld';
         p.gold = !!msg.g;
+        p.h = msg.h | 0; p.sw = msg.sw; p.m = msg.m | 0; p.s = msg.s | 0;
       }
-      this._broadcast({ t: 'pos', id: conn.id, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch, dim: msg.dim }, conn.id);
+      this._broadcast({ t: 'pos', id: conn.id, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch, dim: msg.dim, h: msg.h, sw: msg.sw, m: msg.m, s: msg.s }, conn.id);
       return;
     }
 
@@ -577,6 +578,7 @@
       p.x = msg.x; p.y = msg.y; p.z = msg.z;
       p.yaw = msg.yaw; p.pitch = msg.pitch;
       p.dim = msg.dim || 'overworld';
+      p.h = msg.h | 0; p.sw = msg.sw; p.m = msg.m | 0; p.s = msg.s | 0;
       return;
     }
 
@@ -658,6 +660,8 @@
       dim: this.dim()
     };
     if (this.handlers.getGold && this.handlers.getGold()) msg.g = 1;
+    // what the others need to draw this player: held item, swings, mining, crouch
+    if (this.handlers.getLook) Object.assign(msg, this.handlers.getLook());
     if (this.isHost) {
       msg.id = 'host';
       this._broadcast(msg);

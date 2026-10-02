@@ -691,3 +691,8 @@ body.onTitle #rightControls, body.onTitle #topRight, body.onTitle #crosshair { d
 .roomInfo { font-size: 12px; opacity: 0.8; margin-top: 3px; }
 .roomBtns { display: flex; gap: 6px; margin-top: 6px; }
 .roomBtns .mcbtn.wide { width: auto; padding: 0 12px; font-size: 13px; }
+
+/* shader pack: a soft vignette round the edges */
+#vignette { position: absolute; inset: 0; pointer-events: none; display: none;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0) 58%, rgba(10,6,20,0.3) 100%); }
+body.fx #vignette { display: block; }

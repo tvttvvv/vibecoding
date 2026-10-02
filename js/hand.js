@@ -34,7 +34,7 @@
 
   Hand.swing = function () {
     // restarting mid-swing is what makes holding the button look like chopping
-    if (this.swingT > 0.55) this.swingT = 0;
+    if (this.swingT > 0.55) { this.swingT = 0; this.swings = (this.swings || 0) + 1; }
   };
 
   Hand.setHeld = function (id) {
