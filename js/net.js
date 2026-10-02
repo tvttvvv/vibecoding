@@ -42,7 +42,9 @@
     config: {
       iceServers: [
         { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] },
-        { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' }
+        { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' },
+        // relays on the web ports, for networks that let nothing else through
+        { urls: ['turn:openrelay.metered.ca:443?transport=tcp', 'turn:openrelay.metered.ca:80'], username: 'openrelayproject', credential: 'openrelayproject' }
       ],
       sdpSemantics: 'unified-plan'
     }
@@ -82,6 +84,7 @@
       // give up if the matchmaking server or the host never answers
       const timer = setTimeout(() => { if (!settled) { settled = true; cb.error('timeout'); } }, 20000);
       peer.on('open', () => {
+        if (cb.stage) cb.stage('host');
         const conn = peer.connect(ID_PREFIX + code, { reliable: true });
         conn.on('open', () => { settled = true; clearTimeout(timer); cb.ready(wrap(conn)); });
         conn.on('error', () => { if (!settled) { settled = true; clearTimeout(timer); cb.error('peer-unavailable'); } });
@@ -170,8 +173,10 @@
   Net.reset = function () {
     // closing our own connections is not the other side going away
     this.handlers = {};
-    for (const id in this.conns) this.conns[id].close();
-    if (this.hostConn) this.hostConn.close();
+    clearTimeout(this._watchdog);
+    this._parts = null;
+    for (const id in this.conns) { this.conns[id].onClose = null; this.conns[id].close(); }
+    if (this.hostConn) { this.hostConn.onClose = null; this.hostConn.onData = null; this.hostConn.close(); }
     if (this._socket) this._socket.close();
     this.active = false;
     this.isHost = false;
@@ -271,7 +276,7 @@
         name: String(msg.name || '플레이어').slice(0, 12),
         x: 0, y: 0, z: 0, yaw: 0, pitch: 0
       };
-      conn.send({
+      const welcome = {
         t: 'welcome',
         id: conn.id,
         seed: this.info.seed,
@@ -285,7 +290,11 @@
         end: this.handlers.getDimData ? this.handlers.getDimData('end') : null,
         roster: this.roster(),
         host: this.name
-      });
+      };
+      // a big world in one message can stall or break the link on the way;
+      // newer guests take it in small, paced pieces and show the progress
+      if (msg.parts) this._sendInParts(conn, welcome);
+      else conn.send(welcome);
       this._broadcast({ t: 'roster', roster: this.roster(), host: this.name });
       if (this.handlers.onPlayerJoin) this.handlers.onPlayerJoin(conn.id, this.players[conn.id]);
       return;
@@ -395,7 +404,40 @@
     }
   };
 
+  const PART_SIZE = 24000;
+  Net._sendInParts = function (conn, msg) {
+    const text = JSON.stringify(msg);
+    const n = Math.max(1, Math.ceil(text.length / PART_SIZE));
+    conn.send({ t: 'wbegin', n });
+    let i = 0;
+    const step = () => {
+      if (!this.conns[conn.id]) return;          // the guest went away meanwhile
+      for (let k = 0; k < 4 && i < n; k++, i++) conn.send({ t: 'wpart', i, s: text.slice(i * PART_SIZE, (i + 1) * PART_SIZE) });
+      if (i < n) setTimeout(step, 30);
+    };
+    step();
+  };
+
   // ----------------------------------------------------------------- guest
+  // How long a guest waits at each step before trying again: the host not
+  // answering after the link opens, or a piece of the world not arriving.
+  const WELCOME_WAIT = 15000;
+
+  Net._stage = function (text) {
+    if (this.handlers.onStage) this.handlers.onStage(text);
+  };
+
+  Net._watch = function (ms) {
+    clearTimeout(this._watchdog);
+    if (!ms) return;
+    this._watchdog = setTimeout(() => {
+      if (this.active || this.isHost) return;
+      const h = this.handlers;
+      this.reset();
+      if (h.onError) h.onError('timeout');
+    }, ms);
+  };
+
   Net.joinRoom = function (code, name, handlers) {
     this.reset();
     this.isHost = false;
@@ -403,18 +445,28 @@
     this.name = name || '플레이어';
     this.handlers = handlers || {};
 
+    this._parts = null;
+    this._stage('접속 서버에 연결하는 중...');
     this._socket = this.transport.connectTo(code, {
+      stage: () => this._stage('방장에게 연결하는 중...'),
       ready: (conn) => {
         this.hostConn = conn;
         conn.onData = (msg) => this._guestMessage(msg);
         conn.onClose = () => {
+          const wasIn = this.active;
           this.active = false;
+          this._watch(0);
+          // dropped before the world arrived: that is a failed join, not a disconnect
+          if (!wasIn) { const h = this.handlers; this.reset(); if (h.onError) h.onError('timeout'); return; }
           if (this.handlers.onDisconnect) this.handlers.onDisconnect();
         };
-        conn.send({ t: 'hello', name: this.name });
+        this._stage('세계 정보를 받는 중...');
+        conn.send({ t: 'hello', name: this.name, parts: true });
+        this._watch(WELCOME_WAIT);
       },
       error: (err) => {
         this.active = false;
+        this._watch(0);
         if (this.handlers.onError) this.handlers.onError(err);
       }
     });
@@ -423,7 +475,29 @@
   Net._guestMessage = function (msg) {
     if (!msg || !msg.t) return;
 
+    if (msg.t === 'wbegin') {
+      this._parts = { n: msg.n, got: 0, list: new Array(msg.n) };
+      this._watch(WELCOME_WAIT);
+      return;
+    }
+    if (msg.t === 'wpart') {
+      const P = this._parts;
+      if (!P || P.list[msg.i] !== undefined) return;
+      P.list[msg.i] = msg.s;
+      P.got++;
+      this._watch(WELCOME_WAIT);
+      this._stage('세계를 받는 중... ' + Math.floor(P.got / P.n * 100) + '%');
+      if (P.got < P.n) return;
+      this._parts = null;
+      let whole;
+      try { whole = JSON.parse(P.list.join('')); } catch (e) { whole = null; }
+      if (!whole) { const h = this.handlers; this.reset(); if (h.onError) h.onError('timeout'); return; }
+      this._guestMessage(whole);
+      return;
+    }
+
     if (msg.t === 'welcome') {
+      this._watch(0);
       this.myId = msg.id;
       this.active = true;
       this.players = {};
@@ -432,7 +506,15 @@
         this.players[id] = { name: msg.roster[id], x: 0, y: 0, z: 0, yaw: 0, pitch: 0 };
       }
       this.players.host = { name: msg.host || '방장', x: 0, y: 0, z: 0, yaw: 0, pitch: 0 };
-      if (this.handlers.onWelcome) this.handlers.onWelcome(msg);
+      if (this.handlers.onWelcome) {
+        try { this.handlers.onWelcome(msg); } catch (e) {
+          // never leave the player stuck on the loading screen
+          if (global.console) console.error(e);
+          const h = this.handlers;
+          this.reset();
+          if (h.onError) h.onError('welcome-failed');
+        }
+      }
       return;
     }
 

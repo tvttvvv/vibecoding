@@ -1291,6 +1291,8 @@
       getDimData: (dim) => this.dimSnapshot(dim),
       onBoat: (msg) => { if ((msg.dim || 'overworld') === this.dimension) Entities.applyRemoteBoat(msg); },
       onFx: (msg) => this.onFx(msg),
+      // how far a join has got, on the loading screen
+      onStage: (text) => { if (!this.started && !document.getElementById('loadingScreen').classList.contains('hidden')) UI.setLoading(true, text); },
       onArrow: (msg) => {
         if ((msg.dim || 'overworld') !== this.dimension) return;
         Entities.shootArrow(msg.x, msg.y, msg.z, msg.vx, msg.vy, msg.vz, { visual: true, damage: 0 });
@@ -1440,8 +1442,8 @@
     handlers.onWelcome = (msg) => this.onWelcome(msg, room.code);
     handlers.onError = (err) => {
       const nobodyHome = err === 'peer-unavailable' || err === 'timeout';
-      if (nobodyHome && this._publicTries <= 12) {
-        UI.setLoading(true, '아무도 없어서 내가 방을 엽니다...');
+      if (nobodyHome && this._publicTries <= 6) {
+        UI.setLoading(true, err === 'timeout' ? '응답이 없어서 다시 시도하는 중...' : '아무도 없어서 내가 방을 엽니다...');
         this._hostPublic(room, mode);
         return;
       }
@@ -1471,7 +1473,7 @@
     handlers.onError = (err) => {
       // someone opened it a moment before us, so join theirs instead
       // (or a host that just vanished still holds the code for a minute: keep trying)
-      if (err === 'unavailable-id' && this._publicTries <= 12) {
+      if (err === 'unavailable-id' && this._publicTries <= 6) {
         UI.setLoading(true, '공개 서버에 접속하는 중...');
         setTimeout(() => this._joinPublic(room, mode), this._publicTries > 2 ? 3000 : 0);
         return;
@@ -1482,6 +1484,8 @@
   };
 
   Game._publicFailed = function (err) {
+    // the server is held by someone we cannot reach
+    if (err === 'unavailable-id' || err === 'timeout') err = 'host-unreachable';
     Net.reset();
     UI.setLoading(false);
     UI.showMenu();
