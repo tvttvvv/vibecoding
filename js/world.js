@@ -341,6 +341,7 @@
     growPlants(chunk, seed);
     if (global.Villages) Villages.stamp(chunk, seed, columnHeight);
     if (global.Strongholds) Strongholds.stamp(chunk, seed);
+    if (global.Legends) Legends.stamp(chunk, seed);
     growFeatures(chunk, seed);
     chunk.generated = true;
   }
@@ -533,6 +534,7 @@
         const density = TREE_DENSITY[biome] || 0;
         if (Noise.hash2(wx, wz, seed + 31) >= density) continue;
         if (global.Villages && Villages.near(wx, wz, seed, Villages.RADIUS + 3)) continue;
+        if (global.Legends && Legends.near(wx, wz, seed, Legends.REACH + 3)) continue;
 
         const surfaceY = Math.floor(columnHeight(wx, wz, seed));
         if (surfaceY <= SEA_LEVEL + 1 || surfaceY > WORLD_HEIGHT - 16) continue;

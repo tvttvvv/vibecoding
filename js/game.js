@@ -776,6 +776,11 @@
         Underground.loot(x, y, z, this.seed).forEach((s, i) => { c.slots[(i * 3) % 27] = s; });
         this._worldDirty = true;
       }
+      if (!this.lootGiven.has(k) && this.dimension === 'overworld' && global.Legends && Legends.isLootChest(x, y, z, this.seed)) {
+        this.lootGiven.add(k);
+        Legends.loot(x, y, z, this.seed).forEach((s, i) => { c.slots[(i * 4 + 4) % 27] = s; });
+        this._worldDirty = true;
+      }
       if (!this.lootGiven.has(k) && this.dimension === 'overworld' && Strongholds.isLootChest(x, y, z, this.seed)) {
         this.lootGiven.add(k);
         Strongholds.loot(x, y, z, this.seed).forEach((s, i) => { c.slots[(i * 4) % 27] = s; });
@@ -1891,6 +1896,14 @@
       UI.toast('점프 버튼(키보드: Space)으로 내립니다', 1800);
       return;
     }
+    {
+      // Excalibur swings its wave of light at anything but a block to use
+      const held = this.inventory.selectedStack();
+      if (held && held.id === Items.EXCALIBUR) {
+        const at = this.targetAt(sx, sy);
+        if (!at || !B.byId[at.id].interactive) { this.excaliburWave(); Hand.swing(); }
+      }
+    }
     if (this.tryAttack(sx, sy)) return;
 
     const stack = this.inventory.selectedStack();
@@ -1901,6 +1914,17 @@
     if (hit && !(p.sneaking && stack && Items.isBlock(stack.id))) {
       const targetDef = B.byId[hit.id];
       if (targetDef.interactive === 'craft') { UI.openScreen('crafting'); return; }
+      if (targetDef.interactive === 'sword') { this.pullSword(hit); return; }
+      // the sword stands above its stone: a tap on the pedestal round it counts too
+      if (this.dimension === 'overworld' && global.Legends) {
+        for (const plan of Legends.shrinesNear(hit.x, hit.z, this.seed, 2)) {
+          const sw = Legends.swordAt(plan);
+          if (Math.abs(hit.x - sw.x) <= 1 && Math.abs(hit.z - sw.z) <= 1 && Math.abs(hit.y - sw.y) <= 1 && this.world.getBlock(sw.x, sw.y, sw.z) === B.SWORD_STONE) {
+            this.pullSword(sw);
+            return;
+          }
+        }
+      }
       if (targetDef.interactive === 'furnace') { UI.openScreen('furnace', this.furnaceAt(hit.x, hit.y, hit.z)); return; }
       if (targetDef.interactive === 'chest') {
         UI.openScreen('chest', this.chestAt(hit.x, hit.y, hit.z));
@@ -1984,6 +2008,298 @@
   };
 
   Game.myName = function () { return Net.active ? Net.name : 'me'; };
+
+  // ------------------------------------------------------------ legendary weapons
+  // Excalibur waits in the stone of a shrine; whoever taps the stone draws it.
+  // Swung, it sends a crescent of light ahead that strikes every monster in
+  // front. Aris's Supernova charges while held and fires a beam of light
+  // straight ahead when let go, through every monster in its path.
+  const WAVE_COOLDOWN = 1100, WAVE_RANGE = 7, WAVE_DAMAGE = 9;
+  const RAIL_COOLDOWN = 2500, RAIL_RANGE = 64, RAIL_FULL = 1.0;
+
+  Game.pullSword = function (hit) {
+    this.changeBlock(hit.x, hit.y, hit.z, B.MOSSY_COBBLESTONE);
+    // (add() answers how many fitted; a full bag drops it at your feet)
+    if (this.inventory.add(Items.EXCALIBUR, 1) < 1) this.spawnDropAtPlayer(Items.EXCALIBUR, 1);
+    this.inventory.changed();
+    Sound.legend();
+    for (let i = 0; i < 6; i++) Entities.crit(hit.x + 0.5, hit.y + 1.2 + i * 0.3, hit.z + 0.5);
+    UI.toast('엑스칼리버를 뽑았다!', 3500);
+    if (Net.active) Net.sendSystem((Net.name || '누군가') + ' 님이 엑스칼리버를 뽑았어요!');
+  };
+
+  // is there a clear line between two points? (a wave or beam stops at walls)
+  Game.clearLine = function (ax, ay, az, bx, by, bz) {
+    const len = Math.hypot(bx - ax, by - ay, bz - az);
+    for (let t = 0.5; t < len; t += 0.5) {
+      const k = t / len;
+      const id = this.world.getBlock(Math.floor(ax + (bx - ax) * k), Math.floor(ay + (by - ay) * k), Math.floor(az + (bz - az) * k));
+      if (id && B.byId[id].solid && B.byId[id].opaque) return false;
+    }
+    return true;
+  };
+
+  Game.excaliburWave = function () {
+    const now = performance.now();
+    if (now < (this._waveReadyAt || 0)) return;
+    this._waveReadyAt = now + WAVE_COOLDOWN;
+    const p = this.player;
+    const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw);
+    const ox = p.pos.x, oy = p.pos.y + 1.2, oz = p.pos.z;
+    // (a copy: a monster killed on the way leaves the list)
+    for (const m of Mobs.list.slice()) {
+      if (m.dead || m.def.villager) continue;
+      const dx = m.x - ox, dz = m.z - oz, dist = Math.hypot(dx, dz);
+      if (dist > WAVE_RANGE || Math.abs(m.y - p.pos.y) > 3) continue;
+      if (dist > 0.6 && (dx * fx + dz * fz) / dist < 0.7) continue;
+      if (!this.clearLine(ox, oy, oz, m.x, m.y + m.def.h * m.size * 0.5, m.z)) continue;
+      this.arrowHitMob(m, WAVE_DAMAGE, dx / (dist || 1), dz / (dist || 1));
+    }
+    this.waveFx(ox, oy - 0.2, oz, p.yaw);
+    Sound.wave();
+    if (Net.active) Net.sendFx({ kind: 'wave', x: +ox.toFixed(2), y: +(oy - 0.2).toFixed(2), z: +oz.toFixed(2), yaw: +p.yaw.toFixed(2) });
+  };
+
+  Game.updateRailgun = function (dt) {
+    const holding = Controls.state.mining && !this.paused && !this.player.dead;
+    const now = performance.now();
+    if (holding) {
+      if (now < (this._railReadyAt || 0)) {
+        if (!this._railWait) { this._railWait = true; UI.toast('슈퍼노바를 다시 충전하는 중...', 900); }
+        return;
+      }
+      if (!this.railCharge) Sound.charge();
+      this.railCharge = Math.min(RAIL_FULL * 1.2, (this.railCharge || 0) + dt);
+      // sparks gather at the muzzle as it charges
+      this._sparkT = (this._sparkT || 0) + dt;
+      if (this._sparkT > 0.12) {
+        this._sparkT = 0;
+        const ray = this.rayFrom(Controls.state.pointX, Controls.state.pointY).ray;
+        Entities.crit(ray.origin.x + ray.direction.x * 1.2, ray.origin.y + ray.direction.y * 1.2 - 0.2, ray.origin.z + ray.direction.z * 1.2);
+      }
+      return;
+    }
+    this._railWait = false;
+    if (this.railCharge > 0.25) this.fireSupernova(Math.min(1, this.railCharge / RAIL_FULL));
+    this.railCharge = 0;
+  };
+
+  Game.fireSupernova = function (power) {
+    this._railReadyAt = performance.now() + RAIL_COOLDOWN;
+    const ray = this.rayFrom(Controls.state.pointX, Controls.state.pointY).ray;
+    const o = ray.origin, d = ray.direction;
+    // the beam runs until it meets a solid block
+    let len = RAIL_RANGE;
+    for (let t = 0.5; t < RAIL_RANGE; t += 0.25) {
+      const id = this.world.getBlock(Math.floor(o.x + d.x * t), Math.floor(o.y + d.y * t), Math.floor(o.z + d.z * t));
+      if (id && B.byId[id].solid) { len = t; break; }
+    }
+    const damage = Math.round(8 + 22 * power);
+    const flat = Math.hypot(d.x, d.z) || 1;
+    // (a copy: a monster killed on the way leaves the list)
+    for (const m of Mobs.list.slice()) {
+      if (m.dead || m.def.villager) continue;
+      const cx = m.x - o.x, cy = m.y + m.def.h * m.size * 0.5 - o.y, cz = m.z - o.z;
+      const t = cx * d.x + cy * d.y + cz * d.z;
+      if (t < 0 || t > len + 0.5) continue;
+      const miss = Math.hypot(cx - d.x * t, cy - d.y * t, cz - d.z * t);
+      if (miss > 0.5 + (m.def.hw || 0.4) * m.size + m.def.h * m.size * 0.25) continue;
+      this.arrowHitMob(m, damage, d.x / flat, d.z / flat);
+    }
+    // drawn from the gun in the right hand, so the shooter sees it too
+    const yaw = this.player.yaw, rx = Math.cos(yaw) * 0.32, rz = -Math.sin(yaw) * 0.32;
+    const sx = o.x + d.x * 0.9 + rx, sy = o.y + d.y * 0.9 - 0.3, sz = o.z + d.z * 0.9 + rz;
+    const ex = o.x + d.x * len, ey = o.y + d.y * len, ez = o.z + d.z * len;
+    this.beamFx(sx, sy, sz, ex, ey, ez, power);
+    Sound.beam();
+    Hand.swing();
+    if (power >= 0.95) UI.toast('빛이여!', 1000);
+    if (Net.active) Net.sendFx({ kind: 'beam', x: +sx.toFixed(2), y: +sy.toFixed(2), z: +sz.toFixed(2), ex: +ex.toFixed(2), ey: +ey.toFixed(2), ez: +ez.toFixed(2), p: +power.toFixed(2) });
+  };
+
+  // ---- the light: short-lived meshes that fade away
+  function glowMat(color, opacity) {
+    return new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide });
+  }
+
+  Game.addFx = function (obj, dur, step) {
+    this.scene.add(obj);
+    (this._fx || (this._fx = [])).push({ obj, t: 0, dur, step });
+  };
+
+  Game.updateFx = function (dt) {
+    if (!this._fx || !this._fx.length) return;
+    for (let i = this._fx.length - 1; i >= 0; i--) {
+      const f = this._fx[i];
+      f.t += dt;
+      const k = Math.min(1, f.t / f.dur);
+      if (f.step) f.step(k, dt);
+      if (k >= 1) {
+        this.scene.remove(f.obj);
+        f.obj.traverse((n) => { if (n.geometry) n.geometry.dispose(); if (n.material) n.material.dispose(); });
+        this._fx.splice(i, 1);
+      }
+    }
+  };
+
+  Game.waveFx = function (x, y, z, yaw) {
+    // a standing crescent, like the trail of a slash, facing the way it flies
+    const g = new THREE.Group();
+    const arc = (r0, r1, mat) => {
+      const m = new THREE.Mesh(new THREE.RingGeometry(r0, r1, 28, 1, Math.PI * 0.12, Math.PI * 0.76), mat);
+      m.rotation.z = -0.35;
+      g.add(m);
+      return m;
+    };
+    const core = new THREE.MeshBasicMaterial({ color: 0xfffbe6, transparent: true, opacity: 0.95, depthWrite: false, fog: false, side: THREE.DoubleSide });
+    const parts = [arc(0.75, 0.92, core), arc(0.62, 1.1, glowMat(0x9fd8ff, 0.45))];
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    g.position.set(x + fx * 1.3, y + 0.15, z + fz * 1.3);
+    g.rotation.y = yaw;
+    this.addFx(g, 0.45, (k, dt) => {
+      g.position.x += fx * dt * 15;
+      g.position.z += fz * dt * 15;
+      g.scale.setScalar(1 + k * 1.2);
+      parts[0].material.opacity = 0.95 * (1 - k);
+      parts[1].material.opacity = 0.45 * (1 - k);
+    });
+  };
+
+  Game.beamFx = function (sx, sy, sz, ex, ey, ez, power) {
+    const a = new THREE.Vector3(sx, sy, sz), b = new THREE.Vector3(ex, ey, ez);
+    const len = a.distanceTo(b);
+    if (len < 0.1) return;
+    const dir = b.clone().sub(a).normalize();
+    const g = new THREE.Group();
+    const w = 0.6 + power * 0.6;
+    // a solid bright core (seen even against the sky) inside two glowing sleeves
+    const layers = [[0.08 * w, 0xd8fbff, 0.98], [0.2 * w, 0x5fe6ff, 0.55], [0.45 * w, 0x2a9dff, 0.2]].map(([r, col, op], i) => {
+      const mat = i ? glowMat(col, op) : new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, depthWrite: false, fog: false });
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 12, 1, true), mat);
+      m.userData.op = op;
+      g.add(m);
+      return m;
+    });
+    // a burst where it lands
+    const burst = new THREE.Mesh(new THREE.SphereGeometry(0.5 * w, 12, 8), glowMat(0xbff4ff, 0.7));
+    burst.position.y = len / 2;
+    burst.userData.op = 0.7;
+    g.add(burst);
+    g.position.copy(a).add(b).multiplyScalar(0.5);
+    g.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    this.addFx(g, 0.7, (k) => {
+      // full brightness for a moment, then fading out
+      const f = Math.min(1, (1 - k) / 0.6);
+      for (const m of layers.concat([burst])) m.material.opacity = m.userData.op * f;
+      layers[2].scale.set(1 + k * 1.5, 1, 1 + k * 1.5);
+      burst.scale.setScalar(1 + k * 2);
+    });
+    for (let i = 0; i < 4; i++) Entities.crit(ex, ey, ez);
+  };
+
+  // ---- the shrines: the sword in its stone and a pillar of light over it,
+  // seen from far away so a shrine can be found
+  Game.updateLegends = function (dt) {
+    const decos = this._shrines || (this._shrines = new Map());
+    this._legendT = (this._legendT || 0) + dt;
+    if (this._legendT > 0.5) {
+      this._legendT = 0;
+      const live = new Set();
+      if (this.dimension === 'overworld' && global.Legends) {
+        const p = this.player.pos;
+        for (const plan of Legends.shrinesNear(p.x, p.z, this.seed, 200)) {
+          const s = Legends.swordAt(plan), key = s.x + ',' + s.y + ',' + s.z;
+          const chunk = this.world.getChunk(Math.floor(s.x / WorldConst.CHUNK_SIZE), Math.floor(s.z / WorldConst.CHUNK_SIZE));
+          const there = chunk && chunk.generated ? this.world.getBlock(s.x, s.y, s.z) === B.SWORD_STONE
+            : !(this.editMap.has(key) && this.editMap.get(key) !== B.SWORD_STONE);
+          if (!there) continue;
+          live.add(key);
+          if (!decos.has(key)) decos.set(key, this.makeShrineLight(s));
+        }
+      }
+      for (const [key, g] of decos) {
+        if (live.has(key)) continue;
+        this.scene.remove(g);
+        g.traverse((n) => { if (n.geometry && n.userData.own) n.geometry.dispose(); if (n.material && n.userData.own) n.material.dispose(); });
+        decos.delete(key);
+      }
+    }
+    const t = performance.now() / 1000;
+    for (const g of decos.values()) {
+      const u = g.userData;
+      u.beam.material.opacity = 0.16 + 0.07 * Math.sin(t * 2);
+      u.glow.material.opacity = 0.16 + 0.06 * Math.sin(t * 3.1);
+    }
+  };
+
+  // an item picture turned into a solid little model: one cube per pixel,
+  // one unit across, centred, so it looks right from every side
+  Game.voxelItem = function (tile) {
+    this._voxelCache = this._voxelCache || {};
+    if (this._voxelCache[tile]) return this._voxelCache[tile];
+    const i = Textures.TILES[tile];
+    const px = Textures.atlasCanvas.getContext('2d').getImageData((i % 16) * 16, Math.floor(i / 16) * 16, 16, 16).data;
+    const pos = [], col = [], idx = [];
+    const s = 1 / 16, depth = s * 1.2;
+    const faces = [
+      [[1, 0, 0], 0.8], [[-1, 0, 0], 0.8], [[0, 1, 0], 1], [[0, -1, 0], 0.55], [[0, 0, 1], 0.95], [[0, 0, -1], 0.95]
+    ];
+    const op = (x, y) => x >= 0 && y >= 0 && x < 16 && y < 16 && px[(y * 16 + x) * 4 + 3] > 128;
+    for (let y = 0; y < 16; y++) {
+      for (let x = 0; x < 16; x++) {
+        if (!op(x, y)) continue;
+        const o = (y * 16 + x) * 4;
+        const r = px[o] / 255, gg = px[o + 1] / 255, bb = px[o + 2] / 255;
+        const cx = (x + 0.5) * s - 0.5, cy = 0.5 - (y + 0.5) * s;
+        for (const [[nx, ny, nz], shade] of faces) {
+          // skip the sides between two pixels
+          if ((nx === 1 && op(x + 1, y)) || (nx === -1 && op(x - 1, y)) || (ny === 1 && op(x, y - 1)) || (ny === -1 && op(x, y + 1))) continue;
+          const base = pos.length / 3;
+          const hx = s / 2, hy = s / 2, hz = depth / 2;
+          // four corners of this face
+          const u = nx ? [0, 1, 0] : [1, 0, 0], v = nz ? [0, 1, 0] : [0, 0, 1];
+          for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+            pos.push(cx + nx * hx + (u[0] * a + v[0] * b) * hx, cy + ny * hy + (u[1] * a + v[1] * b) * hy, nz * hz + (u[2] * a + v[2] * b) * hz);
+            col.push(r * shade, gg * shade, bb * shade);
+          }
+          idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+        }
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    geo.setIndex(idx);
+    geo.computeBoundingSphere();
+    this._voxelCache[tile] = geo;
+    return geo;
+  };
+
+  Game.makeShrineLight = function (s) {
+    const g = new THREE.Group();
+    g.position.set(s.x + 0.5, s.y + 1, s.z + 0.5);
+    if (!this._swordMat) this._swordMat = new THREE.MeshBasicMaterial({ map: Textures.texture, alphaTest: 0.5, side: THREE.DoubleSide });
+    // the sword itself, built up from its pixels, point down in the stone
+    const sword = new THREE.Mesh(this.voxelItem('item_excalibur'), this._voxelMat || (this._voxelMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })));
+    sword.scale.setScalar(2.2);
+    sword.rotation.z = -Math.PI * 0.75;
+    sword.position.y = 1.15;
+    const turn = new THREE.Group();
+    turn.add(sword);
+    turn.rotation.y = Math.PI / 4;
+    g.add(turn);
+    const glow = new THREE.Mesh(new THREE.SphereGeometry(0.9, 16, 12), glowMat(0x8fd8ff, 0.18));
+    glow.position.y = 0.9;
+    glow.userData.own = true;
+    g.add(glow);
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.35, 90, 12, 1, true), glowMat(0xbfe8ff, 0.2));
+    beam.position.y = 46;
+    beam.userData.own = true;
+    g.add(beam);
+    g.userData = { beam, glow };
+    this.scene.add(g);
+    return g;
+  };
 
   // ------------------------------------------------------------------ the bow
   // Minecraft's draw: power grows over about a second, (t^2 + 2t) / 3.
@@ -2767,6 +3083,12 @@
       Mobs.addArrow(msg.x, msg.y, msg.z, msg.vx, msg.vy, msg.vz, msg.fire === 2 ? 'small' : !!msg.fire);
     } else if (msg.kind === 'drop' && msg.to === Net.myId) {
       this.spawnDrop(msg.x, msg.y, msg.z, msg.id, msg.count);
+    } else if (msg.kind === 'wave') {
+      this.waveFx(msg.x, msg.y, msg.z, msg.yaw);
+      Sound.wave(this.distTo(msg.x, msg.y, msg.z));
+    } else if (msg.kind === 'beam') {
+      this.beamFx(msg.x, msg.y, msg.z, msg.ex, msg.ey, msg.ez, msg.p || 1);
+      Sound.beam(this.distTo(msg.x, msg.y, msg.z));
     } else if (msg.kind === 'xp' && msg.to === Net.myId) {
       const p = this.player;
       Entities.dropXp(p.pos.x, p.pos.y + 1, p.pos.z, msg.n);
@@ -3371,6 +3693,12 @@
     const m = this.mining;
     const held = this.inventory.selectedStack();
     const eatingHand = held && Items.foodOf(held.id);
+    if (held && held.id === Items.SUPERNOVA) {
+      this.updateRailgun(dt);
+      m.target = null; m.progress = 0; this.crackMesh.visible = false;
+      return;
+    }
+    this.railCharge = 0;
     const bowHand = held && Items.get(held.id) && Items.get(held.id).bow;
     if (bowHand) {
       this.updateBow(dt);
@@ -3934,6 +4262,17 @@
     }
     this.updateAvatars(dt);
     this.updateLocator(dt);
+    this.updateLegends(dt);
+    this.updateFx(dt);
+    // the first time a legendary weapon is in hand, say how to use it
+    const inHand = this.inventory.selectedStack();
+    const hid = inHand ? inHand.id : 0;
+    if (hid !== this._heldLegend) {
+      this._heldLegend = hid;
+      this._legendHints = this._legendHints || {};
+      if (hid === Items.EXCALIBUR && !this._legendHints.x) { this._legendHints.x = 1; UI.toast('엑스칼리버: 누를 때마다 앞으로 빛의 검기가 날아가요', 3500); }
+      if (hid === Items.SUPERNOVA && !this._legendHints.s) { this._legendHints.s = 1; UI.toast('슈퍼노바: 길게 눌러 충전하고, 손을 떼면 발사해요', 3500); }
+    }
 
     const aim = this.mining.target;
     if (aim && !this.paused && !p.dead) {
@@ -3966,7 +4305,7 @@
       this.eating ? this.eating.t : -1, this.bowCharge ? this.bowPower(this.bowCharge) : -1);
 
     // sprinting widens the view, as in Minecraft
-    const fovTarget = (p.sprinting ? 80 : 72) - (this.bowCharge ? this.bowPower(this.bowCharge) * 12 : 0);
+    const fovTarget = (p.sprinting ? 80 : 72) - (this.bowCharge ? this.bowPower(this.bowCharge) * 12 : 0) - (this.railCharge ? Math.min(1, this.railCharge) * 10 : 0);
     if (Math.abs(this.camera.fov - fovTarget) > 0.05) {
       this.camera.fov += (fovTarget - this.camera.fov) * Math.min(1, dt * 8);
       this.camera.updateProjectionMatrix();

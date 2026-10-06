@@ -502,6 +502,13 @@
     simple(id + 2, n + ' 판자', T[k + '_planks'], { hardness: 2.0, tool: 'axe', planks: true });
     WOODS[k] = { log: id, leaves: id + 1, planks: id + 2 };
   });
+  // the stone that holds Excalibur, at the heart of a shrine: it cannot be
+  // broken, only have the sword drawn out of it
+  const SWORD_STONE = def(412, '검이 꽂힌 바위', {
+    top: T.mossy_cobblestone, side: T.mossy_cobblestone, bottom: T.mossy_cobblestone,
+    hardness: Infinity, interactive: 'sword', drop: 0
+  });
+
   byId[LOG].log = true;
   byId[LEAVES].leaves = true;
   byId[PLANKS].planks = true;
@@ -591,7 +598,7 @@
     NETHER_BRICKS, NETHER_FENCE, OAK_FENCE, NETHER_WART, BREWING_STAND, MELON,
     END_STONE, STONE_BRICKS, MOSSY_STONE_BRICKS, END_FRAME, END_FRAME_EYE, END_PORTAL, DRAGON_EGG,
     MOSSY_COBBLESTONE, SPAWNER, COBWEB, RAIL, AMETHYST_BLOCK, AMETHYST_CLUSTER, CALCITE, SMOOTH_BASALT,
-    WOODS,
+    WOODS, SWORD_STONE,
     byId, tileFor, isOpaque, isSolid, isLiquid, mineTime, canHarvest, iconFor, creativeList
   };
 })(window);

@@ -1247,6 +1247,53 @@
     }
   }
 
+  // ---- legendary weapons: Excalibur and Aris's Supernova (hand-drawn) ----
+  function sprite(name, rows, pal) {
+    define(name, (api) => {
+      api.clear();
+      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+        const ch = (rows[y] || '')[x];
+        if (ch && ch !== '.' && pal[ch]) api.put(x, y, pal[ch]);
+      }
+    });
+  }
+  sprite('item_excalibur', [
+    '..............ow',
+    '.............owW',
+    '............owWo',
+    '...........owWo.',
+    '..........owWo..',
+    '.........owWo...',
+    '........owWo....',
+    '.......owWo.....',
+    '..gG..owWo......',
+    '...gGowWo.......',
+    '....gGWo........',
+    '....bgGG........',
+    '...nb.gGg.......',
+    '..nn....g.......',
+    '.Bn.............',
+    'BB..............'
+  ], { o: '#6fa8d8', w: '#e8f4ff', W: '#ffffff', g: '#c98f1c', G: '#ffd54a', b: '#2b3f8a', n: '#1d2850', B: '#3fb0ff' });
+  sprite('item_supernova', [
+    '................',
+    '................',
+    '.............cc.',
+    '............cCWc',
+    '...........wWCw.',
+    '..........wWwg..',
+    '.........wWwg...',
+    '....kk..wWwg....',
+    '...kwwkwWwg.....',
+    '..kwCCwWwg......',
+    '..kwCcWwg.......',
+    '...kwwWg........',
+    '..bbkwwk........',
+    '.bbn.kk.........',
+    'bbn.............',
+    'nn..............'
+  ], { w: '#e9eef5', W: '#ffffff', g: '#9aa6b8', k: '#5b6678', c: '#38d8ff', C: '#a8f4ff', b: '#3a4f9e', n: '#22305f' });
+
   // ---- texture pack v2 (remaster): clustered shading, bevels, highlights ----
   function redraw(name, draw) {
     const index = TILES[name];

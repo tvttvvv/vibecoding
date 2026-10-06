@@ -201,6 +201,29 @@
     noise({ freq: 700, q: 0.4, dur: 1.2, gain: 0.15, type: 'lowpass' });
   };
 
+  // the legendary weapons
+  Sound.legend = function () {
+    [392, 523, 659, 784, 1046].forEach((f, i) =>
+      tone({ from: f, to: f * 1.005, dur: 0.5, gain: 0.12, wave: 'triangle', delay: i * 0.09 }));
+    tone({ from: 1568, to: 2093, dur: 0.9, gain: 0.06, wave: 'sine', delay: 0.45 });
+  };
+
+  Sound.wave = function (dist) {
+    noise({ freq: 2400, q: 0.7, dur: 0.28, gain: 0.22, type: 'highpass', dist });
+    tone({ from: 880, to: 1760, dur: 0.22, gain: 0.08, wave: 'sine', dist });
+  };
+
+  Sound.charge = function () {
+    tone({ from: 180, to: 1400, dur: 1.0, gain: 0.08, wave: 'sawtooth' });
+    tone({ from: 360, to: 2200, dur: 1.0, gain: 0.04, wave: 'sine' });
+  };
+
+  Sound.beam = function (dist) {
+    tone({ from: 1800, to: 120, dur: 0.6, gain: 0.22, wave: 'sawtooth', dist });
+    tone({ from: 2600, to: 400, dur: 0.45, gain: 0.12, wave: 'square', dist });
+    noise({ freq: 900, q: 0.5, dur: 0.5, gain: 0.25, type: 'lowpass', dist });
+  };
+
   Sound.fizz = function (dist) {
     noise({ freq: 5200, q: 0.4, dur: 0.6, gain: 0.35, type: 'highpass', dist });
   };

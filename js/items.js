@@ -131,6 +131,16 @@
     food: 4, saturation: 9.6, always: true, effects: [['regen', 2, 5], ['absorption', 1, 120]]
   });
 
+  // the legendary weapons: Excalibur, drawn from the stone of a hidden shrine,
+  // never wears out and sends out a wave of light when swung; Aris's
+  // Supernova, found in the ruins of an ancient laboratory, charges while
+  // held and fires a beam of light when let go
+  const EXCALIBUR = def(1018, '엑스칼리버', T.item_excalibur, {
+    stackMax: 1, damage: 13, legendary: 'excalibur',
+    tool: { type: 'sword', tier: 4, speed: 10, material: 'diamond' }
+  });
+  const SUPERNOVA = def(1019, '아리스의 슈퍼노바', T.item_supernova, { stackMax: 1, railgun: true, legendary: 'supernova' });
+
   // potions: one id per kind, strength and length
   const EFFECTS = [
     ['speed', '신속', [180, 480, 90]], ['strength', '힘', [180, 480, 90]],
@@ -203,7 +213,7 @@
     SEEDS, WHEAT, BOAT, OAK_DOOR, BUCKET, WATER_BUCKET, LAVA_BUCKET,
     BOW, ARROW, FLINT, FEATHER, LEATHER, CARROT, LAPIS, PAPER, BOOK, EMERALD, QUARTZ, FLINT_AND_STEEL, REDSTONE, SLIME_BALL,
     BLAZE_ROD, BLAZE_POWDER, NETHER_WART, GLASS_BOTTLE, GHAST_TEAR, MAGMA_CREAM, SUGAR, GOLD_NUGGET,
-    GOLDEN_CARROT, MELON_SLICE, GLISTERING_MELON, SPIDER_EYE, NETHER_BRICK, ENDER_PEARL, ENDER_EYE, AMETHYST_SHARD, GOLDEN_APPLE, WATER_BOTTLE, AWKWARD,
+    GOLDEN_CARROT, MELON_SLICE, GLISTERING_MELON, SPIDER_EYE, NETHER_BRICK, ENDER_PEARL, ENDER_EYE, AMETHYST_SHARD, GOLDEN_APPLE, EXCALIBUR, SUPERNOVA, WATER_BOTTLE, AWKWARD,
     ...Object.keys(POTIONS).map((k) => POTIONS[k]),
     tools.wood_pickaxe, tools.wood_axe, tools.wood_shovel, tools.wood_sword, tools.wood_hoe,
     tools.stone_pickaxe, tools.stone_axe, tools.stone_shovel, tools.stone_sword, tools.stone_hoe,
@@ -229,7 +239,7 @@
     OAK_DOOR, BUCKET, WATER_BUCKET, LAVA_BUCKET, BOW, ARROW, FLINT, FEATHER, LEATHER, CARROT,
     LAPIS, PAPER, BOOK, EMERALD, QUARTZ, FLINT_AND_STEEL, REDSTONE, SLIME_BALL,
     BLAZE_ROD, BLAZE_POWDER, NETHER_WART, GLASS_BOTTLE, GHAST_TEAR, MAGMA_CREAM, SUGAR, GOLD_NUGGET,
-    GOLDEN_CARROT, MELON_SLICE, GLISTERING_MELON, SPIDER_EYE, NETHER_BRICK, ENDER_PEARL, ENDER_EYE, AMETHYST_SHARD, GOLDEN_APPLE, WATER_BOTTLE, AWKWARD,
+    GOLDEN_CARROT, MELON_SLICE, GLISTERING_MELON, SPIDER_EYE, NETHER_BRICK, ENDER_PEARL, ENDER_EYE, AMETHYST_SHARD, GOLDEN_APPLE, EXCALIBUR, SUPERNOVA, WATER_BOTTLE, AWKWARD,
     EFFECTS, POTIONS,
     PIECE_ORDER, creativeItems,
     isBlock, get, name, tileOf, icon, stackMax, maxDurability, fuelSeconds, foodOf
