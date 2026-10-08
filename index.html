@@ -69,10 +69,13 @@
       .catch(function () { /* offline: keep playing what we have */ });
   } catch (e) { /* no fetch or storage: ignore */ }
   // On the public hosts the game's own files come from the jsDelivr CDN,
-  // pinned to this release (the free page host turns away pages that ask
-  // for thirty files at once); a local copy loads them from next to itself.
+  // pinned to the commit that holds this release's files (the free page host
+  // turns away pages that ask for thirty files at once); a local copy loads
+  // them from next to itself. ASSETS_COMMIT is set after each release's
+  // files are pushed.
+  var ASSETS_COMMIT = '91b7371c41029538dd2a344752e5fcb55ff83606';
   var cdn = /(githack\.com|github\.io)$/.test(location.hostname)
-    ? 'https://cdn.jsdelivr.net/gh/tvttvvv/vibecoding@rel-' + BUILD + '/' : '';
+    ? 'https://cdn.jsdelivr.net/gh/tvttvvv/vibecoding@' + ASSETS_COMMIT + '/' : '';
   window.VXL_ASSETS = cdn;
   document.write('<link rel="stylesheet" href="' + cdn + 'css/style.css?v=' + BUILD + '">');
 })();
