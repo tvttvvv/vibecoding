@@ -46,12 +46,11 @@
 }
 </script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23795433'/><rect width='16' height='5' fill='%235d9c3c'/></svg>">
-<link rel="stylesheet" href="css/style.css?v=38">
 <script>
 // GitHub Pages caches this page for ten minutes, so a new build can sit
 // unseen. Ask an uncached version file and reload once if we are behind.
 (function () {
-  var BUILD = 38;
+  var BUILD = 39;
   window.VXL_BUILD = BUILD;
   // the version on the title screen always matches the build that is running
   document.addEventListener('DOMContentLoaded', function () {
@@ -69,6 +68,13 @@
       })
       .catch(function () { /* offline: keep playing what we have */ });
   } catch (e) { /* no fetch or storage: ignore */ }
+  // On the public hosts the game's own files come from the jsDelivr CDN,
+  // pinned to this release (the free page host turns away pages that ask
+  // for thirty files at once); a local copy loads them from next to itself.
+  var cdn = /(githack\.com|github\.io)$/.test(location.hostname)
+    ? 'https://cdn.jsdelivr.net/gh/tvttvvv/vibecoding@rel-' + BUILD + '/' : '';
+  window.VXL_ASSETS = cdn;
+  document.write('<link rel="stylesheet" href="' + cdn + 'css/style.css?v=' + BUILD + '">');
 })();
 </script>
 </head>
@@ -217,7 +223,7 @@
       <h1 class="gameTitle">복셀 크래프트</h1>
       <span id="splash" class="splash"></span>
     </div>
-    <p class="buildTag"><span class="maker">tvttvvv 복셀 크래프트</span> · <span id="buildTag">버전 v38</span></p>
+    <p class="buildTag"><span class="maker">tvttvvv 복셀 크래프트</span> · <span id="buildTag">버전 v39</span></p>
 
     <div id="menuMain" class="menuPage">
       <p>무한 지형, 강과 바다, 숲과 사막, 동굴과 광석. 캐고, 만들고, 살아남으세요.</p>
@@ -267,34 +273,13 @@
 
 <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/store.js?v=38"></script>
-<script src="js/settings.js?v=38"></script>
-<script src="js/noise.js?v=38"></script>
-<script src="js/textures.js?v=38"></script>
-<script src="js/blocks.js?v=38"></script>
-<script src="js/items.js?v=38"></script>
-<script src="js/recipes.js?v=38"></script>
-<script src="js/enchant.js?v=38"></script>
-<script src="js/world.js?v=38"></script>
-<script src="js/villages.js?v=38"></script>
-<script src="js/fortress.js?v=38"></script>
-<script src="js/strongholds.js?v=38"></script>
-<script src="js/underground.js?v=38"></script>
-<script src="js/legends.js?v=38"></script>
-<script src="js/brewing.js?v=38"></script>
-<script src="js/player.js?v=38"></script>
-<script src="js/inventory.js?v=38"></script>
-<script src="js/relay.js?v=38"></script>
-<script src="js/net.js?v=38"></script>
-<script src="js/sound.js?v=38"></script>
-<script src="js/fluids.js?v=38"></script>
-<script src="js/redstone.js?v=38"></script>
-<script src="js/entities.js?v=38"></script>
-<script src="js/sky.js?v=38"></script>
-<script src="js/hand.js?v=38"></script>
-<script src="js/mobs.js?v=38"></script>
-<script src="js/controls.js?v=38"></script>
-<script src="js/ui.js?v=38"></script>
-<script src="js/game.js?v=38"></script>
+<script>
+(function () {
+  var files = ['store', 'settings', 'noise', 'textures', 'blocks', 'items', 'recipes', 'enchant', 'world', 'villages', 'fortress', 'strongholds', 'underground', 'legends', 'brewing', 'player', 'inventory', 'relay', 'net', 'sound', 'fluids', 'redstone', 'entities', 'sky', 'hand', 'mobs', 'controls', 'ui', 'game'];
+  for (var i = 0; i < files.length; i++) {
+    document.write('<script src="' + window.VXL_ASSETS + 'js/' + files[i] + '.js?v=' + window.VXL_BUILD + '"><\/script>');
+  }
+})();
+</script>
 </body>
 </html>
