@@ -58,7 +58,11 @@
     if (tag) tag.textContent = '버전 v' + BUILD;
   });
   try {
-    fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
+    // (on the public hosts, asked of GitHub itself, not the page host)
+    var verUrl = /(githack\.com|github\.io)$/.test(location.hostname)
+      ? 'https://raw.githubusercontent.com/tvttvvv/vibecoding/claude/threejs-voxel-game-handoff-yl6wbz/version.json'
+      : 'version.json';
+    fetch(verUrl + '?t=' + Date.now(), { cache: 'no-store' })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (!d || d.v === BUILD) return;
